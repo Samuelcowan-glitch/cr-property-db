@@ -29,6 +29,9 @@ class Property(db.Model):
     description = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+    # ── Residential use type ──
+    residential_use   = db.Column(db.String(30))  # Owner Occupied, HMO, Residential Investment, Vacant
+
     # ── Website listing fields ──
     website_listed    = db.Column(db.Boolean, default=False)
     website_category  = db.Column(db.String(20))   # commercial / residential
@@ -78,6 +81,46 @@ class Transaction(db.Model):
     break_clause = db.Column(db.String(100))
     notes = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # ── Who handled the transaction ──
+    done_by           = db.Column(db.String(20))    # CR / Third Party
+    third_party_name  = db.Column(db.String(255))   # name if third party
+
+    # ── Leasehold detail fields ──
+    part_or_floor     = db.Column(db.String(100))
+    source            = db.Column(db.String(50))    # Agent / Direct / Auction etc.
+    source_contact    = db.Column(db.String(255))
+    nda               = db.Column(db.Boolean, default=False)
+    size_units        = db.Column(db.String(20))    # sq ft / sq m / acres
+    size_basis        = db.Column(db.String(20))    # GIA / NIA / GEA / IPMS
+    demise_description= db.Column(db.Text)
+    incentive_years   = db.Column(db.Float)         # rent-free period (years)
+    headline_rate     = db.Column(db.Float)         # headline rent £
+    headline_rate_unit= db.Column(db.String(10))    # pa / pcm / psf
+    net_rate          = db.Column(db.Float)         # net effective rent £
+    next_break_date   = db.Column(db.Date)
+    no_break          = db.Column(db.Boolean, default=False)
+    next_review_date  = db.Column(db.Date)
+    no_review         = db.Column(db.Boolean, default=False)
+    review_type       = db.Column(db.String(30))    # Open Market / RPI / Fixed / Stepped
+    repair            = db.Column(db.String(20))    # FRI / IRI / Internal
+    alienation        = db.Column(db.String(50))
+    primary_use_class = db.Column(db.String(20))    # E / B2 / B8 / C1 etc.
+    lt_act            = db.Column(db.String(30))    # Inside / Outside 1954 Act
+    epc_rating        = db.Column(db.String(5))     # A-G
+    fitted            = db.Column(db.String(20))    # Shell & Core / Cat A / Cat A+ / Cat B
+
+    # ── Capital analysis fields ──
+    description       = db.Column(db.Text)         # property description (for comps)
+    niy               = db.Column(db.Float)         # Net Initial Yield %  (commercial)
+    giy               = db.Column(db.Float)         # Gross Initial Yield % (residential investment)
+    capital_rate_psf  = db.Column(db.Float)         # £ per sq ft
+    wault             = db.Column(db.Float)         # Weighted Avg Unexpired Lease Term (years)
+    passing_income    = db.Column(db.Float)         # £ pa
+    income_pct        = db.Column(db.Float)         # % income producing
+    erv               = db.Column(db.Float)         # Estimated Rental Value £ pa
+    tenant_covenant   = db.Column(db.String(50))    # Strong / Satisfactory / Weak
+    written_analysis  = db.Column(db.Text)          # free-text analysis
 
     @property
     def display_value(self):
@@ -385,6 +428,7 @@ def property_edit(id):
         prop.lng                = float(request.form.get('lng')) if request.form.get('lng','').strip() else None
         prop.photo_id           = request.form.get('photo_id') or None
         prop.blurb              = request.form.get('blurb') or None
+        prop.residential_use    = request.form.get('residential_use') or None
         db.session.commit()
         flash('Property updated.', 'success')
         return redirect(url_for('property_detail', id=prop.id))
@@ -441,6 +485,40 @@ def transaction_new():
             rent_pa=parse_float(request.form.get('rent_pa')),
             break_clause=request.form.get('break_clause'),
             notes=request.form.get('notes'),
+            description=request.form.get('description') or None,
+            niy=parse_float(request.form.get('niy')),
+            giy=parse_float(request.form.get('giy')),
+            capital_rate_psf=parse_float(request.form.get('capital_rate_psf')),
+            wault=parse_float(request.form.get('wault')),
+            passing_income=parse_float(request.form.get('passing_income')),
+            income_pct=parse_float(request.form.get('income_pct')),
+            erv=parse_float(request.form.get('erv')),
+            tenant_covenant=request.form.get('tenant_covenant') or None,
+            written_analysis=request.form.get('written_analysis') or None,
+            done_by=request.form.get('done_by') or 'CR',
+            third_party_name=request.form.get('third_party_name') or None,
+            part_or_floor=request.form.get('part_or_floor') or None,
+            source=request.form.get('source') or None,
+            source_contact=request.form.get('source_contact') or None,
+            nda=bool(request.form.get('nda')),
+            size_units=request.form.get('size_units') or None,
+            size_basis=request.form.get('size_basis') or None,
+            demise_description=request.form.get('demise_description') or None,
+            incentive_years=parse_float(request.form.get('incentive_years')),
+            headline_rate=parse_float(request.form.get('headline_rate')),
+            headline_rate_unit=request.form.get('headline_rate_unit') or 'pa',
+            net_rate=parse_float(request.form.get('net_rate')),
+            next_break_date=parse_date(request.form.get('next_break_date')),
+            no_break=bool(request.form.get('no_break')),
+            next_review_date=parse_date(request.form.get('next_review_date')),
+            no_review=bool(request.form.get('no_review')),
+            review_type=request.form.get('review_type') or None,
+            repair=request.form.get('repair') or None,
+            alienation=request.form.get('alienation') or None,
+            primary_use_class=request.form.get('primary_use_class') or None,
+            lt_act=request.form.get('lt_act') or None,
+            epc_rating=request.form.get('epc_rating') or None,
+            fitted=request.form.get('fitted') or None,
         )
         db.session.add(t)
         db.session.commit()
@@ -472,8 +550,42 @@ def transaction_edit(id):
         t.lease_start = parse_date(request.form.get('lease_start'))
         t.lease_end = parse_date(request.form.get('lease_end'))
         t.rent_pa = parse_float(request.form.get('rent_pa'))
-        t.break_clause = request.form.get('break_clause')
-        t.notes = request.form.get('notes')
+        t.break_clause        = request.form.get('break_clause')
+        t.notes               = request.form.get('notes')
+        t.description         = request.form.get('description') or None
+        t.niy                 = parse_float(request.form.get('niy'))
+        t.giy                 = parse_float(request.form.get('giy'))
+        t.capital_rate_psf    = parse_float(request.form.get('capital_rate_psf'))
+        t.wault               = parse_float(request.form.get('wault'))
+        t.passing_income      = parse_float(request.form.get('passing_income'))
+        t.income_pct          = parse_float(request.form.get('income_pct'))
+        t.erv                 = parse_float(request.form.get('erv'))
+        t.tenant_covenant     = request.form.get('tenant_covenant') or None
+        t.written_analysis    = request.form.get('written_analysis') or None
+        t.done_by             = request.form.get('done_by') or 'CR'
+        t.third_party_name    = request.form.get('third_party_name') or None
+        t.part_or_floor       = request.form.get('part_or_floor') or None
+        t.source              = request.form.get('source') or None
+        t.source_contact      = request.form.get('source_contact') or None
+        t.nda                 = bool(request.form.get('nda'))
+        t.size_units          = request.form.get('size_units') or None
+        t.size_basis          = request.form.get('size_basis') or None
+        t.demise_description  = request.form.get('demise_description') or None
+        t.incentive_years     = parse_float(request.form.get('incentive_years'))
+        t.headline_rate       = parse_float(request.form.get('headline_rate'))
+        t.headline_rate_unit  = request.form.get('headline_rate_unit') or 'pa'
+        t.net_rate            = parse_float(request.form.get('net_rate'))
+        t.next_break_date     = parse_date(request.form.get('next_break_date'))
+        t.no_break            = bool(request.form.get('no_break'))
+        t.next_review_date    = parse_date(request.form.get('next_review_date'))
+        t.no_review           = bool(request.form.get('no_review'))
+        t.review_type         = request.form.get('review_type') or None
+        t.repair              = request.form.get('repair') or None
+        t.alienation          = request.form.get('alienation') or None
+        t.primary_use_class   = request.form.get('primary_use_class') or None
+        t.lt_act              = request.form.get('lt_act') or None
+        t.epc_rating          = request.form.get('epc_rating') or None
+        t.fitted              = request.form.get('fitted') or None
         db.session.commit()
         flash('Transaction updated.', 'success')
         return redirect(url_for('property_detail', id=t.property_id))
@@ -987,6 +1099,34 @@ def photo_delete(id):
     return redirect(url_for('project_detail', id=project_id))
 
 
+# ── One-time listing import ───────────────────────────────────────────────────
+
+@app.route('/api/import-listings', methods=['POST'])
+def api_import_listings():
+    from import_listings import listings as LISTINGS
+    added = 0; skipped = 0
+    for l in LISTINGS:
+        if Property.query.filter_by(address=l['address'], postcode=l['postcode']).first():
+            skipped += 1; continue
+        db.session.add(Property(**l)); added += 1
+    db.session.commit()
+    return jsonify({'ok': True, 'added': added, 'skipped': skipped,
+                    'total': Property.query.count()})
+
+
+# ── Property detail API (used by transaction form JS) ────────────────────────
+
+@app.route('/api/property/<int:id>/meta')
+def api_property_meta(id):
+    p = Property.query.get_or_404(id)
+    return jsonify({
+        'category':        p.website_category or '',
+        'residential_use': p.residential_use or '',
+        'property_type':   p.property_type or '',
+        'size':            p.size or 0,
+    })
+
+
 # ── Website → DB: inbound enquiry webhook ────────────────────────────────────
 
 @app.route('/api/enquiry', methods=['POST', 'OPTIONS'])
@@ -1132,7 +1272,43 @@ def _migrate_project_columns():
             ('client_email', 'TEXT'),     ('key_contact', 'TEXT'),
             ('landlord_name', 'TEXT'),    ('agent_assigned', 'TEXT'),
         ]
-        cont_existing = {col['name'] for col in insp.get_columns('contacts')}
+        cont_existing  = {col['name'] for col in insp.get_columns('contacts')}
+        prop_existing  = {col['name'] for col in insp.get_columns('properties')}
+        trans_existing = {col['name'] for col in insp.get_columns('transactions')}
+
+        prop_extra = [('residential_use', 'TEXT')]
+        trans_cols = [
+            ('description',       'TEXT'), ('niy',              'REAL'),
+            ('giy',               'REAL'), ('capital_rate_psf', 'REAL'),
+            ('wault',             'REAL'), ('passing_income',   'REAL'),
+            ('income_pct',        'REAL'), ('erv',              'REAL'),
+            ('tenant_covenant',   'TEXT'), ('written_analysis', 'TEXT'),
+            ('done_by',           'TEXT'), ('third_party_name', 'TEXT'),
+            ('part_or_floor',     'TEXT'), ('source',           'TEXT'),
+            ('source_contact',    'TEXT'), ('nda',              'BOOLEAN DEFAULT 0'),
+            ('size_units',        'TEXT'), ('size_basis',       'TEXT'),
+            ('demise_description','TEXT'), ('incentive_years',  'REAL'),
+            ('headline_rate',     'REAL'), ('headline_rate_unit','TEXT'),
+            ('net_rate',          'REAL'), ('next_break_date',  'TEXT'),
+            ('no_break',          'BOOLEAN DEFAULT 0'),
+            ('next_review_date',  'TEXT'), ('no_review',        'BOOLEAN DEFAULT 0'),
+            ('review_type',       'TEXT'), ('repair',           'TEXT'),
+            ('alienation',        'TEXT'), ('primary_use_class','TEXT'),
+            ('lt_act',            'TEXT'), ('epc_rating',       'TEXT'),
+            ('fitted',            'TEXT'),
+        ]
+
+        with db.engine.connect() as conn:
+            for col_name, col_def in proj_cols:
+                if col_name not in proj_existing:
+                    conn.execute(text(f'ALTER TABLE projects ADD COLUMN {col_name} {col_def}'))
+            for col_name, col_def in prop_extra:
+                if col_name not in prop_existing:
+                    conn.execute(text(f'ALTER TABLE properties ADD COLUMN {col_name} {col_def}'))
+            for col_name, col_def in trans_cols:
+                if col_name not in trans_existing:
+                    conn.execute(text(f'ALTER TABLE transactions ADD COLUMN {col_name} {col_def}'))
+
         cont_cols = [
             ('req_category', 'TEXT'),      ('req_property_type', 'TEXT'),
             ('req_use_class', 'TEXT'),     ('req_area', 'TEXT'),
@@ -1141,9 +1317,6 @@ def _migrate_project_columns():
             ('req_budget_unit', 'TEXT'),   ('req_notes', 'TEXT'),
         ]
         with db.engine.connect() as conn:
-            for col_name, col_def in proj_cols:
-                if col_name not in proj_existing:
-                    conn.execute(text(f'ALTER TABLE projects ADD COLUMN {col_name} {col_def}'))
             for col_name, col_def in cont_cols:
                 if col_name not in cont_existing:
                     conn.execute(text(f'ALTER TABLE contacts ADD COLUMN {col_name} {col_def}'))
