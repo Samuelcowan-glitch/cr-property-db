@@ -1,5 +1,7 @@
-import sys
-sys.path.insert(0, 'C:/Users/SamuelC/property-db')
+import sys, os
+# Allow running standalone or imported as module
+if __name__ == '__main__':
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from app import app, db, Property
 
 listings = [
@@ -41,7 +43,7 @@ listings = [
     {'address': "Queen's Gate Mews House, Queen's Gate Mews",   'postcode': 'SW7',     'property_type': 'Mews House',   'size': 1600, 'measurement_type': 'NIA', 'website_listed': True, 'website_category': 'residential','listing_status': 'available', 'featured': False, 'area': 'South Kensington','use_class': None,          'listing_price': 2850000, 'listing_price_unit': 'sale',  'beds': 3, 'baths': 2, 'lat': 51.4944, 'lng': -0.1768, 'photo_id': 'photo-1570129477492-45c003edd2be', 'blurb': 'A charming and immaculately presented mews house on a quiet cobbled lane, offering rare off-street parking and a flood of natural light throughout.'},
 ]
 
-with app.app_context():
+def run_import():
     added = 0
     skipped = 0
     for l in listings:
@@ -55,3 +57,11 @@ with app.app_context():
     db.session.commit()
     total = Property.query.count()
     print(f'Done. Added {added}, skipped {skipped} (already exist). Total in DB: {total}')
+    return added
+
+if __name__ == '__main__':
+    with app.app_context():
+        run_import()
+else:
+    # Called as module from serve.py — app context already active
+    run_import()
