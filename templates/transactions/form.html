@@ -7,140 +7,430 @@
 
 {% block content %}
 <div class="breadcrumb">
-  <a href="{{ url_for('dashboard') }}">Dashboard</a>
-  <span class="sep">/</span>
-  <a href="{{ url_for('transactions_list') }}">Transactions</a>
-  <span class="sep">/</span>
+  <a href="{{ url_for('dashboard') }}">Dashboard</a><span class="sep">/</span>
+  <a href="{{ url_for('transactions_list') }}">Transactions</a><span class="sep">/</span>
   <span class="current">{{ 'Edit' if trans else 'New' }}</span>
 </div>
 
-<div class="card" style="max-width:820px">
+<div class="card" style="max-width:980px">
   <div class="card-header">
-    <div class="card-title">{{ 'Edit Transaction Record' if trans else 'New Transaction Record' }}</div>
-    <div style="font-size:12px;color:#5f6368">Creating a leasehold transaction will also create a tenure record on the property.</div>
+    <div class="card-title">{{ 'Edit Transaction' if trans else 'New Transaction Record' }}</div>
   </div>
 
   <form method="post">
 
-    <!-- Property + Type -->
-    <div class="form-grid" style="margin-bottom:20px">
+    <!-- ══════════════ CORE — all transactions ══════════════ -->
+    <div class="form-grid cols-3" style="margin-bottom:14px">
+
       <div class="form-group span-2">
-        <label for="property_id">Property *</label>
-        <select id="property_id" name="property_id" required>
-          <option value="">— Select property —</option>
-          {% for p in properties %}
-          <option value="{{ p.id }}"
-            {{ 'selected' if (trans and trans.property_id == p.id) or (prop_id and prop_id|int == p.id) else '' }}>
-            {{ p.address }}, {{ p.postcode }}
-          </option>
-          {% endfor %}
-        </select>
+        <label>Property *</label>
+        <div style="display:flex;gap:8px">
+          <select id="property_id" name="property_id" required onchange="onPropertyChange(this)" style="flex:1">
+            <option value="">— Select property —</option>
+            {% for p in properties %}
+            <option value="{{ p.id }}"
+              data-category="{{ p.website_category or '' }}"
+              data-ruse="{{ p.residential_use or '' }}"
+              {{ 'selected' if (trans and trans.property_id == p.id) or (prop_id and prop_id|int == p.id) else '' }}>
+              {{ p.address }}, {{ p.postcode }}
+            </option>
+            {% endfor %}
+          </select>
+          <a href="{{ url_for('property_new') }}" class="btn btn-outline btn-sm" style="white-space:nowrap">+ New</a>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Transaction Date</label>
+        <input type="date" name="transaction_date"
+               value="{{ trans.transaction_date.strftime('%Y-%m-%d') if trans and trans.transaction_date else '' }}">
       </div>
 
       <div class="form-group span-2">
         <label>Transaction Type *</label>
         <div class="type-toggle">
-          <label>
-            <input type="radio" name="transaction_type" value="Capital"
-              {{ 'checked' if trans and trans.transaction_type == 'Capital' else ('checked' if not trans else '') }}>
-            Capital (Sale / Purchase)
-          </label>
-          <label>
-            <input type="radio" name="transaction_type" value="Leasehold"
-              {{ 'checked' if trans and trans.transaction_type == 'Leasehold' else '' }}>
-            Leasehold (Letting / Renewal)
-          </label>
+          <label><input type="radio" name="transaction_type" value="Capital"
+            {{ 'checked' if trans and trans.transaction_type == 'Capital' else ('checked' if not trans else '') }}
+            onchange="toggleTransFields()"> Capital (Sale / Purchase)</label>
+          <label><input type="radio" name="transaction_type" value="Leasehold"
+            {{ 'checked' if trans and trans.transaction_type == 'Leasehold' else '' }}
+            onchange="toggleTransFields()"> Leasehold (Letting / Renewal)</label>
         </div>
       </div>
 
       <div class="form-group">
-        <label for="tenure_type">Tenure Type</label>
-        <select id="tenure_type" name="tenure_type">
+        <label>Tenure Type</label>
+        <select name="tenure_type">
           <option value="">— Select —</option>
           {% for tt in ['Freehold','Long Leasehold','Leasehold','Sub-Lease','Virtual Freehold','Heritable'] %}
           <option value="{{ tt }}" {{ 'selected' if trans and trans.tenure_type == tt else '' }}>{{ tt }}</option>
           {% endfor %}
         </select>
       </div>
+    </div>
 
-      <div class="form-group">
-        <label for="transaction_date">Transaction Date</label>
-        <input type="date" id="transaction_date" name="transaction_date"
-               value="{{ trans.transaction_date.strftime('%Y-%m-%d') if trans and trans.transaction_date else '' }}">
+    <!-- Done by -->
+    <div style="background:#f8f9fa;border:1px solid #e8eaed;border-radius:6px;padding:12px 14px;margin-bottom:14px">
+      <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
+        <div style="font-size:12px;font-weight:700;color:#5f6368;text-transform:uppercase;letter-spacing:.4px">Done By</div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:normal">
+          <input type="radio" name="done_by" value="CR"
+            {{ 'checked' if not trans or trans.done_by in ('CR', None, '') else '' }}
+            onchange="toggleThirdParty()"> Cowan &amp; Rutter (C&amp;R)
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:normal">
+          <input type="radio" name="done_by" value="Third Party"
+            {{ 'checked' if trans and trans.done_by == 'Third Party' else '' }}
+            onchange="toggleThirdParty()"> Third Party
+        </label>
+        <div id="third-party-box" style="{{ '' if trans and trans.done_by == 'Third Party' else 'display:none' }};flex:1;min-width:200px">
+          <input type="text" name="third_party_name" placeholder="Agent / firm name"
+                 value="{{ trans.third_party_name or '' }}" style="width:100%">
+        </div>
       </div>
     </div>
 
     <hr class="divider">
 
-    <!-- Capital fields -->
+    <!-- ══════════════ CAPITAL ══════════════ -->
     <div class="capital-only">
       <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#5f6368;margin-bottom:12px">Capital Transaction Details</div>
-      <div class="form-grid" style="margin-bottom:20px">
+      <div class="form-grid" style="margin-bottom:14px">
         <div class="form-group">
-          <label for="value">Sale Price (£)</label>
-          <input type="number" id="value" name="value" step="1" min="0"
-                 value="{{ trans.value | int if trans and trans.value else '' }}"
-                 placeholder="e.g. 1250000">
-        </div>
-        <div class="form-group"></div>
-        <div class="form-group">
-          <label for="vendor">Vendor</label>
-          <input type="text" id="vendor" name="vendor"
-                 value="{{ trans.vendor or '' }}" placeholder="Vendor name">
+          <label>Sale Price (£)</label>
+          <input type="number" name="value" step="1" min="0"
+                 value="{{ trans.value | int if trans and trans.value else '' }}" placeholder="e.g. 1,250,000">
         </div>
         <div class="form-group">
-          <label for="purchaser">Purchaser</label>
-          <input type="text" id="purchaser" name="purchaser"
-                 value="{{ trans.purchaser or '' }}" placeholder="Purchaser name">
+          <label>Capital Rate (£ psf)</label>
+          <input type="number" name="capital_rate_psf" step="0.01"
+                 value="{{ '%.2f'|format(trans.capital_rate_psf) if trans and trans.capital_rate_psf else '' }}" placeholder="e.g. 450.00">
+        </div>
+        <div class="form-group">
+          <label>Vendor</label>
+          <input type="text" name="vendor" value="{{ trans.vendor or '' }}">
+        </div>
+        <div class="form-group">
+          <label>Purchaser</label>
+          <input type="text" name="purchaser" value="{{ trans.purchaser or '' }}">
+        </div>
+        <div class="form-group span-2">
+          <label>Property Description (for comparable evidence)</label>
+          <textarea name="description" rows="3" placeholder="Brief description of the property…">{{ trans.description or '' }}</textarea>
+        </div>
+      </div>
+
+      <!-- Commercial analysis -->
+      <div id="commercial-analysis" style="display:none">
+        <div style="font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#1a2e4a;margin-bottom:10px">Commercial Investment Analysis</div>
+        <div class="form-grid" style="margin-bottom:14px">
+          <div class="form-group">
+            <label>NIY — Net Initial Yield (%)</label>
+            <input type="number" name="niy" step="0.01"
+                   value="{{ '%.2f'|format(trans.niy) if trans and trans.niy else '' }}" placeholder="e.g. 5.50">
+          </div>
+          <div class="form-group">
+            <label>WAULT (years)</label>
+            <input type="number" name="wault" step="0.1"
+                   value="{{ '%.1f'|format(trans.wault) if trans and trans.wault else '' }}" placeholder="e.g. 4.5">
+          </div>
+          <div class="form-group">
+            <label>Passing Income (£ pa)</label>
+            <input type="number" name="passing_income" step="1"
+                   value="{{ trans.passing_income | int if trans and trans.passing_income else '' }}" placeholder="e.g. 75,000">
+          </div>
+          <div class="form-group">
+            <label>Tenant Covenant</label>
+            <select name="tenant_covenant">
+              <option value="">— Select —</option>
+              {% for s in ['Strong','Satisfactory','Weak','Undisclosed'] %}
+              <option value="{{ s }}" {{ 'selected' if trans and trans.tenant_covenant == s else '' }}>{{ s }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Residential investment analysis -->
+      <div id="resi-investment-analysis" style="display:none">
+        <div style="font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#1a2e4a;margin-bottom:10px">Residential Investment Analysis</div>
+        <div class="form-grid" style="margin-bottom:14px">
+          <div class="form-group">
+            <label>GIY — Gross Initial Yield (%)</label>
+            <input type="number" name="giy" step="0.01"
+                   value="{{ '%.2f'|format(trans.giy) if trans and trans.giy else '' }}" placeholder="e.g. 6.00">
+          </div>
+          <div class="form-group">
+            <label>% Income Producing</label>
+            <input type="number" name="income_pct" step="1" min="0" max="100"
+                   value="{{ trans.income_pct | int if trans and trans.income_pct else '' }}" placeholder="e.g. 75">
+          </div>
+          <div class="form-group">
+            <label>Passing Income (£ pa)</label>
+            <input type="number" name="passing_income" step="1"
+                   value="{{ trans.passing_income | int if trans and trans.passing_income else '' }}" placeholder="e.g. 36,000">
+          </div>
+          <div class="form-group">
+            <label>ERV — Estimated Rental Value (£ pa)</label>
+            <input type="number" name="erv" step="1"
+                   value="{{ trans.erv | int if trans and trans.erv else '' }}" placeholder="e.g. 42,000">
+          </div>
+          <div class="form-group">
+            <label>Tenant Covenant</label>
+            <select name="tenant_covenant">
+              <option value="">— Select —</option>
+              {% for s in ['Strong','Satisfactory','Weak','Undisclosed'] %}
+              <option value="{{ s }}" {{ 'selected' if trans and trans.tenant_covenant == s else '' }}>{{ s }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-grid" style="margin-bottom:14px">
+        <div class="form-group span-2">
+          <label>Written Analysis</label>
+          <textarea name="written_analysis" rows="4"
+                    placeholder="Market commentary, comparable reasoning, material factors affecting value…">{{ trans.written_analysis or '' }}</textarea>
         </div>
       </div>
     </div>
 
-    <!-- Leasehold fields -->
+    <!-- ══════════════ LEASEHOLD ══════════════ -->
     <div class="lease-only">
-      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#5f6368;margin-bottom:12px">Leasehold / Tenure Details</div>
-      <div class="form-grid" style="margin-bottom:20px">
+      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#5f6368;margin-bottom:14px">Leasehold / Letting Details</div>
+
+      <!-- Row 1: Parties + Source -->
+      <div class="form-grid cols-3" style="margin-bottom:14px">
         <div class="form-group">
-          <label for="landlord">Landlord</label>
-          <input type="text" id="landlord" name="landlord"
-                 value="{{ trans.landlord or '' }}" placeholder="Landlord name">
+          <label>Landlord</label>
+          <input type="text" name="landlord" value="{{ trans.landlord or '' }}" placeholder="Landlord name">
         </div>
         <div class="form-group">
-          <label for="tenant">Tenant</label>
-          <input type="text" id="tenant" name="tenant"
-                 value="{{ trans.tenant or '' }}" placeholder="Tenant name">
+          <label>Tenant</label>
+          <input type="text" name="tenant" value="{{ trans.tenant or '' }}" placeholder="Tenant name">
         </div>
         <div class="form-group">
-          <label for="rent_pa">Rent Per Annum (£)</label>
-          <input type="number" id="rent_pa" name="rent_pa" step="1" min="0"
+          <label>Tenant Covenant</label>
+          <select name="tenant_covenant">
+            <option value="">— Select —</option>
+            {% for s in ['Strong','Satisfactory','Weak','Undisclosed'] %}
+            <option value="{{ s }}" {{ 'selected' if trans and trans.tenant_covenant == s else '' }}>{{ s }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Part or Floor</label>
+          <input type="text" name="part_or_floor" value="{{ trans.part_or_floor or '' }}" placeholder="e.g. Ground Floor, Unit 3">
+        </div>
+        <div class="form-group">
+          <label>Source</label>
+          <select name="source">
+            <option value="">— Select —</option>
+            {% for s in ['Agent','Direct','Auction','Land Registry','CoStar','EGi','MSCI','Other'] %}
+            <option value="{{ s }}" {{ 'selected' if trans and trans.source == s else '' }}>{{ s }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Source Contact</label>
+          <input type="text" name="source_contact" value="{{ trans.source_contact or '' }}" placeholder="Contact name">
+        </div>
+      </div>
+
+      <!-- Row 2: Size + Rent -->
+      <div class="form-grid cols-3" style="margin-bottom:14px">
+        <div class="form-group">
+          <label>Size</label>
+          <div style="display:flex;gap:6px">
+            <input type="number" name="value" id="lease-size" step="0.01"
+                   value="{{ trans.value if trans and trans.value else '' }}" placeholder="Area" style="flex:2"
+                   oninput="calcHeadlineRatePsf()" onchange="calcHeadlineRatePsf()">
+            <select name="size_units" style="flex:1" onchange="calcHeadlineRatePsf()">
+              {% for u in ['sq ft','sq m','acres'] %}
+              <option value="{{ u }}" {{ 'selected' if trans and trans.size_units == u else '' }}>{{ u }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Measurement Basis</label>
+          <select name="size_basis">
+            <option value="">— Select —</option>
+            {% for b in ['NIA','GIA','GEA','IPMS 1','IPMS 2','IPMS 3'] %}
+            <option value="{{ b }}" {{ 'selected' if trans and trans.size_basis == b else '' }}>{{ b }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Primary Use Class</label>
+          <input type="text" name="primary_use_class" value="{{ trans.primary_use_class or '' }}" placeholder="e.g. E, B2, B8, C1">
+        </div>
+        <div class="form-group">
+          <label>Rent PA (£)</label>
+          <input type="number" name="rent_pa" step="1" id="rent-pa"
                  value="{{ trans.rent_pa | int if trans and trans.rent_pa else '' }}"
-                 placeholder="e.g. 85000">
+                 placeholder="e.g. 85,000"
+                 oninput="calcHeadlineRatePsf()" onchange="calcHeadlineRatePsf()">
         </div>
         <div class="form-group">
-          <label for="break_clause">Break Clause</label>
-          <input type="text" id="break_clause" name="break_clause"
-                 value="{{ trans.break_clause or '' }}" placeholder="e.g. 5-year break">
+          <label>Headline Rate <span style="font-weight:400;color:#1b7a3f;font-size:10.5px">auto-calculated</span></label>
+          <div id="headline-rate-display" style="padding:8px 12px;background:#f0fdf4;border:1px solid #86efac;border-radius:5px;font-size:14px;font-weight:700;color:#1a2e4a;min-height:36px">
+            {% if trans and trans.headline_rate %}£{{ '%.2f'|format(trans.headline_rate) }} {{ trans.headline_rate_unit or 'psf pa' }}{% else %}—{% endif %}
+          </div>
+          <input type="hidden" name="headline_rate" id="headline-rate-val" value="{{ '%.2f'|format(trans.headline_rate) if trans and trans.headline_rate else '' }}">
+          <input type="hidden" name="headline_rate_unit" id="headline-rate-unit-val" value="{{ trans.headline_rate_unit or 'psf pa' }}">
         </div>
         <div class="form-group">
-          <label for="lease_start">Lease Start</label>
-          <input type="date" id="lease_start" name="lease_start"
-                 value="{{ trans.lease_start.strftime('%Y-%m-%d') if trans and trans.lease_start else '' }}">
+          <label>Net Effective Rate <span style="font-weight:400;color:#1b7a3f;font-size:10.5px">auto-calculated</span></label>
+          <div id="net-rate-display" style="padding:8px 12px;background:#f0fdf4;border:1px solid #86efac;border-radius:5px;font-size:14px;font-weight:700;color:#1a2e4a;min-height:36px">
+            {% if trans and trans.net_rate %}£{{ '%.2f'|format(trans.net_rate) }} psf pa{% else %}—{% endif %}
+          </div>
+          <div id="net-rate-basis" style="font-size:10.5px;color:#1b7a3f;margin-top:3px"></div>
+          <input type="hidden" name="net_rate" id="net-rate-val" value="{{ '%.2f'|format(trans.net_rate) if trans and trans.net_rate else '' }}">
         </div>
         <div class="form-group">
-          <label for="lease_end">Lease Expiry</label>
-          <input type="date" id="lease_end" name="lease_end"
-                 value="{{ trans.lease_end.strftime('%Y-%m-%d') if trans and trans.lease_end else '' }}">
+          <label>Incentive / Rent Free (years)</label>
+          <input type="number" name="incentive_years" step="0.25" id="incentive-years"
+                 value="{{ trans.incentive_years if trans and trans.incentive_years else '' }}"
+                 placeholder="e.g. 1.5"
+                 oninput="calcNetRate()" onchange="calcNetRate()">
+        </div>
+      </div>
+
+      <!-- Row 3: Lease dates + break/review -->
+      <div class="form-grid cols-3" style="margin-bottom:14px">
+        <div class="form-group">
+          <label>Lease Start Date</label>
+          <input type="date" name="lease_start"
+                 value="{{ trans.lease_start.strftime('%Y-%m-%d') if trans and trans.lease_start else '' }}"
+                 onchange="calcLeaseLength()">
+        </div>
+        <div class="form-group">
+          <label>Lease End Date</label>
+          <input type="date" name="lease_end"
+                 value="{{ trans.lease_end.strftime('%Y-%m-%d') if trans and trans.lease_end else '' }}"
+                 onchange="calcLeaseLength()">
+        </div>
+        <div class="form-group">
+          <label>Lease Term (years) <span style="font-weight:400;color:#9aa0a6;font-size:10.5px">or enter directly</span></label>
+          <input type="number" id="lease-term-years" step="0.25" min="0"
+                 placeholder="e.g. 10"
+                 oninput="calcNetRate()" onchange="calcNetRate()"
+                 style="background:#fff">
+          <div id="lease-length-display" style="font-size:10.5px;color:#5f6368;margin-top:3px"></div>
+        </div>
+        <div class="form-group">
+          <label>Next Break Date</label>
+          <input type="date" name="next_break_date"
+                 value="{{ trans.next_break_date.strftime('%Y-%m-%d') if trans and trans.next_break_date else '' }}"
+                 onchange="calcNetRate()">
+        </div>
+        <div class="form-group" style="justify-content:flex-end;padding-top:22px">
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:normal">
+            <input type="checkbox" name="no_break" value="1" {{ 'checked' if trans and trans.no_break else '' }}>
+            No Break
+          </label>
+        </div>
+        <div class="form-group">
+          <label>Next Review Date</label>
+          <input type="date" name="next_review_date"
+                 value="{{ trans.next_review_date.strftime('%Y-%m-%d') if trans and trans.next_review_date else '' }}">
+        </div>
+        <div class="form-group" style="justify-content:flex-end;padding-top:22px">
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:normal">
+            <input type="checkbox" name="no_review" value="1" {{ 'checked' if trans and trans.no_review else '' }}>
+            No Review
+          </label>
+        </div>
+        <div class="form-group">
+          <label>Type of Rent Review</label>
+          <select name="review_type">
+            <option value="">— Select —</option>
+            {% for r in ['Open Market','RPI','Fixed','Stepped','Turnover','None'] %}
+            <option value="{{ r }}" {{ 'selected' if trans and trans.review_type == r else '' }}>{{ r }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <!-- Row 4: Terms + conditions -->
+      <div class="form-grid cols-3" style="margin-bottom:14px">
+        <div class="form-group">
+          <label>Repair</label>
+          <select name="repair">
+            <option value="">— Select —</option>
+            {% for r in ['FRI','IRI','Internal Only','Landlord Insuring','Schedule of Condition'] %}
+            <option value="{{ r }}" {{ 'selected' if trans and trans.repair == r else '' }}>{{ r }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Alienation</label>
+          <select name="alienation">
+            <option value="">— Select —</option>
+            {% for a in ['Full','Subletting Only','Assignment Only','Restricted','Not Permitted'] %}
+            <option value="{{ a }}" {{ 'selected' if trans and trans.alienation == a else '' }}>{{ a }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>L&amp;T Act</label>
+          <select name="lt_act">
+            <option value="">— Select —</option>
+            {% for l in ['Inside 1954 Act','Outside 1954 Act'] %}
+            <option value="{{ l }}" {{ 'selected' if trans and trans.lt_act == l else '' }}>{{ l }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>EPC Rating</label>
+          <select name="epc_rating">
+            <option value="">— Select —</option>
+            {% for e in ['A','B','C','D','E','F','G','Exempt'] %}
+            <option value="{{ e }}" {{ 'selected' if trans and trans.epc_rating == e else '' }}>{{ e }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Fitted</label>
+          <select name="fitted">
+            <option value="">— Select —</option>
+            {% for f in ['Shell & Core','Cat A','Cat A+','Cat B','Fully Fitted','Furnished'] %}
+            <option value="{{ f }}" {{ 'selected' if trans and trans.fitted == f else '' }}>{{ f }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group" style="justify-content:flex-end;padding-top:22px">
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:normal">
+            <input type="checkbox" name="nda" value="1" {{ 'checked' if trans and trans.nda else '' }}>
+            NDA / Confidential
+          </label>
+        </div>
+      </div>
+
+      <!-- Demise description + Analysis -->
+      <div class="form-grid" style="margin-bottom:14px">
+        <div class="form-group span-2">
+          <label>Demise Description</label>
+          <textarea name="demise_description" rows="3"
+                    placeholder="Description of the demise — location, specification, access, amenities…">{{ trans.demise_description or '' }}</textarea>
+        </div>
+        <div class="form-group span-2">
+          <label>Analysis</label>
+          <textarea name="written_analysis" rows="4"
+                    placeholder="Market commentary, comparable context, material factors…">{{ trans.written_analysis or '' }}</textarea>
         </div>
       </div>
     </div>
 
     <hr class="divider">
 
-    <div class="form-grid" style="margin-bottom:16px">
+    <div class="form-grid" style="margin-bottom:14px">
       <div class="form-group span-2">
-        <label for="notes">Notes</label>
-        <textarea id="notes" name="notes" rows="3"
-                  placeholder="Any additional notes, conditions, caveats…">{{ trans.notes or '' }}</textarea>
+        <label>Additional Notes</label>
+        <textarea name="notes" rows="2"
+                  placeholder="Any other conditions, caveats, source…">{{ trans.notes or '' }}</textarea>
       </div>
     </div>
 
@@ -157,4 +447,167 @@
     </div>
   </form>
 </div>
+
+<script>
+function getSelectedPropMeta() {
+  var sel = document.getElementById('property_id');
+  var opt = sel ? sel.options[sel.selectedIndex] : null;
+  if (!opt || !opt.value) return { category:'', ruse:'' };
+  return { category: opt.getAttribute('data-category')||'', ruse: opt.getAttribute('data-ruse')||'' };
+}
+
+function onPropertyChange() { updateAnalysisFields(); }
+
+function updateAnalysisFields() {
+  var meta = getSelectedPropMeta();
+  var type = document.querySelector('input[name="transaction_type"]:checked');
+  var isCapital = type && type.value === 'Capital';
+  var isCom  = meta.category === 'commercial';
+  var isResi = meta.category === 'residential' &&
+               (meta.ruse === 'HMO' || meta.ruse === 'Residential Investment' || meta.ruse === 'Vacant');
+  var ca = document.getElementById('commercial-analysis');
+  var ri = document.getElementById('resi-investment-analysis');
+  if (ca) ca.style.display = (isCapital && isCom)  ? '' : 'none';
+  if (ri) ri.style.display = (isCapital && isResi) ? '' : 'none';
+}
+
+function toggleTransFields() {
+  var type = document.querySelector('input[name="transaction_type"]:checked');
+  var isCapital = type && type.value === 'Capital';
+  document.querySelectorAll('.capital-only').forEach(function(el){ el.style.display = isCapital ? '' : 'none'; });
+  document.querySelectorAll('.lease-only').forEach(function(el){ el.style.display = isCapital ? 'none' : ''; });
+  updateAnalysisFields();
+}
+
+function toggleThirdParty() {
+  var tp = document.querySelector('input[name="done_by"][value="Third Party"]');
+  var box = document.getElementById('third-party-box');
+  if (box) box.style.display = tp && tp.checked ? '' : 'none';
+}
+
+/* Month difference between two date strings */
+function monthDiff(startStr, endStr) {
+  if (!startStr || !endStr) return null;
+  var s = new Date(startStr), e = new Date(endStr);
+  var m = (e.getFullYear() - s.getFullYear()) * 12 + (e.getMonth() - s.getMonth());
+  return m > 0 ? m : null;
+}
+
+/* Auto-calculate lease length from dates and populate term field */
+function calcLeaseLength() {
+  var start     = document.querySelector('[name="lease_start"]');
+  var end       = document.querySelector('[name="lease_end"]');
+  var termEl    = document.getElementById('lease-term-years');
+  var dispEl    = document.getElementById('lease-length-display');
+  if (!start || !end) return;
+  var months = monthDiff(start.value, end.value);
+  if (months) {
+    var yrs = Math.floor(months / 12), mths = months % 12;
+    var label = yrs + ' yr' + (yrs !== 1 ? 's' : '') + (mths ? ' ' + mths + ' mo' : '');
+    if (dispEl) dispEl.textContent = label;
+    /* Auto-fill the term field from dates */
+    if (termEl && !termEl._manuallySet) termEl.value = (months / 12).toFixed(2);
+  } else {
+    if (dispEl) dispEl.textContent = '';
+  }
+  calcNetRate();
+}
+
+/* Mark term field as manually set if user types in it */
+var termYearsEl = document.getElementById('lease-term-years');
+if (termYearsEl) {
+  termYearsEl.addEventListener('input', function() { this._manuallySet = true; });
+}
+
+/* Auto-calculate net effective rate
+   Formula: Headline Rate × (Term months − Rent Free months) ÷ Term months
+   Term = lease_start → next_break_date (if set) else lease_end            */
+function calcNetRate() {
+  var leaseStart   = document.querySelector('[name="lease_start"]');
+  var leaseEnd     = document.querySelector('[name="lease_end"]');
+  var breakDate    = document.querySelector('[name="next_break_date"]');
+  var incentiveEl  = document.querySelector('[name="incentive_years"]');
+  var headlineVal  = document.getElementById('headline-rate-val');
+  var netDispEl    = document.getElementById('net-rate-display');
+  var netValEl     = document.getElementById('net-rate-val');
+  var netLabelEl   = document.getElementById('net-rate-basis');
+  if (!leaseStart || !headlineVal) return;
+
+  var headlineRate = parseFloat(headlineVal ? headlineVal.value : 0);
+  if (!headlineRate) return;
+
+  /* Get term in months — prefer direct term field, fall back to dates */
+  var termYearsEl = document.getElementById('lease-term-years');
+  var termMonths = null;
+
+  if (breakDate && breakDate.value && leaseStart && leaseStart.value) {
+    termMonths = monthDiff(leaseStart.value, breakDate.value);
+  }
+  if (!termMonths && leaseStart && leaseStart.value && leaseEnd && leaseEnd.value) {
+    termMonths = monthDiff(leaseStart.value, leaseEnd.value);
+  }
+  if (!termMonths && termYearsEl && parseFloat(termYearsEl.value) > 0) {
+    termMonths = Math.round(parseFloat(termYearsEl.value) * 12);
+  }
+
+  if (!termMonths) {
+    if (netLabelEl) netLabelEl.textContent = 'Enter lease term or dates to calculate';
+    return;
+  }
+
+  var rfYears  = incentiveEl ? parseFloat(incentiveEl.value) || 0 : 0;
+  var rfMonths = rfYears * 12;
+
+  if (rfMonths >= termMonths) {
+    if (netDispEl) netDispEl.textContent = '£0.00 psf pa';
+    if (netValEl)  netValEl.value = '0.00';
+    if (netLabelEl) netLabelEl.textContent = 'Rent free exceeds term';
+    return;
+  }
+
+  var netRate = headlineRate * (termMonths - rfMonths) / termMonths;
+  if (netDispEl) netDispEl.textContent = '£' + netRate.toFixed(2) + ' psf pa';
+  if (netValEl)  netValEl.value = netRate.toFixed(2);
+
+  var basisParts = [];
+  var yrs = Math.floor(termMonths / 12), mos = termMonths % 12;
+  basisParts.push('Term: ' + yrs + 'yr' + (mos ? ' ' + mos + 'mo' : ''));
+  if (rfMonths) basisParts.push('RF: ' + rfYears + 'yr');
+  basisParts.push((breakDate && breakDate.value) ? 'to break' : 'to expiry');
+  if (netLabelEl) netLabelEl.textContent = basisParts.join(' · ');
+}
+
+/* Auto-calculate Headline Rate PSF = Rent PA ÷ Size (sq ft) */
+function calcHeadlineRatePsf() {
+  var rentEl   = document.getElementById('rent-pa');
+  var sizeEl   = document.getElementById('lease-size');
+  var unitEl   = document.querySelector('[name="size_units"]');
+  var dispEl   = document.getElementById('headline-rate-display');
+  var valEl    = document.getElementById('headline-rate-val');
+  var uValEl   = document.getElementById('headline-rate-unit-val');
+  if (!rentEl || !sizeEl) return;
+  var rent = parseFloat(rentEl.value) || 0;
+  var size = parseFloat(sizeEl.value) || 0;
+  var unit = unitEl ? unitEl.value : 'sq ft';
+  if (rent > 0 && size > 0 && unit === 'sq ft') {
+    var psf = (rent / size).toFixed(2);
+    if (dispEl) dispEl.textContent = '£' + psf + ' psf pa';
+    if (valEl)  valEl.value  = psf;
+    if (uValEl) uValEl.value = 'psf pa';
+    calcNetRate();
+  } else {
+    if (dispEl) dispEl.textContent = '—';
+    if (valEl)  valEl.value = '';
+  }
+}
+
+document.querySelectorAll('[name="lease_start"],[name="lease_end"],[name="next_break_date"],[name="incentive_years"],[name="headline_rate"]').forEach(function(el){
+  el.addEventListener('change', function(){ calcLeaseLength(); calcNetRate(); });
+  el.addEventListener('input',  function(){ calcNetRate(); });
+});
+
+toggleTransFields();
+updateAnalysisFields();
+calcLeaseLength();
+</script>
 {% endblock %}
