@@ -1,0 +1,216 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit Property' if prop else 'Add Property' }}{% endblock %}
+{% block topbar_title %}{{ 'Edit Property' if prop else 'Add Property' }}{% endblock %}
+{% block topbar_actions %}
+  <a href="{{ url_for('properties_list') }}" class="btn btn-outline btn-sm">← Properties</a>
+{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+  <a href="{{ url_for('dashboard') }}">Dashboard</a>
+  <span class="sep">/</span>
+  <a href="{{ url_for('properties_list') }}">Properties</a>
+  <span class="sep">/</span>
+  <span class="current">{{ 'Edit' if prop else 'New' }}</span>
+</div>
+
+<div class="card" style="max-width:760px">
+  <div class="card-header">
+    <div class="card-title">{{ 'Edit Property Details' if prop else 'New Property' }}</div>
+  </div>
+
+  <form method="post">
+    <div class="form-grid" style="margin-bottom:16px">
+      <div class="form-group span-2">
+        <label for="address">Address *</label>
+        <input type="text" id="address" name="address" required
+               value="{{ prop.address if prop else '' }}"
+               placeholder="e.g. 12 King Street, Manchester">
+      </div>
+
+      <div class="form-group">
+        <label for="postcode">Postcode *</label>
+        <input type="text" id="postcode" name="postcode" required
+               value="{{ prop.postcode if prop else '' }}"
+               placeholder="e.g. M2 4LQ" style="text-transform:uppercase">
+      </div>
+
+      <div class="form-group">
+        <label for="property_type">Property Type</label>
+        <select id="property_type" name="property_type">
+          <option value="">— Select —</option>
+          {% for t in ['Office','Retail','Industrial','Warehouse','Residential','Mixed Use','Land','Hotel','Leisure','Other'] %}
+          <option value="{{ t }}" {{ 'selected' if prop and prop.property_type == t else '' }}>{{ t }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="size">Floor Area / Size</label>
+        <input type="number" id="size" name="size" step="0.01" min="0"
+               value="{{ prop.size if prop and prop.size else '' }}"
+               placeholder="e.g. 2500">
+      </div>
+
+      <div class="form-group">
+        <label for="measurement_type">Measurement Basis</label>
+        <select id="measurement_type" name="measurement_type">
+          <option value="">— Select —</option>
+          <option value="GIA" {{ 'selected' if prop and prop.measurement_type == 'GIA' else '' }}>GIA — Gross Internal Area</option>
+          <option value="NIA" {{ 'selected' if prop and prop.measurement_type == 'NIA' else '' }}>NIA — Net Internal Area</option>
+          <option value="GEA" {{ 'selected' if prop and prop.measurement_type == 'GEA' else '' }}>GEA — Gross External Area</option>
+          <option value="IPMS 1" {{ 'selected' if prop and prop.measurement_type == 'IPMS 1' else '' }}>IPMS 1</option>
+          <option value="IPMS 2" {{ 'selected' if prop and prop.measurement_type == 'IPMS 2' else '' }}>IPMS 2</option>
+          <option value="IPMS 3" {{ 'selected' if prop and prop.measurement_type == 'IPMS 3' else '' }}>IPMS 3</option>
+        </select>
+      </div>
+
+      <div class="form-group span-2">
+        <label for="description">Description / Notes</label>
+        <textarea id="description" name="description" rows="4"
+                  placeholder="Brief property description, location notes, condition etc.">{{ prop.description if prop and prop.description else '' }}</textarea>
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <!-- Website Listing Section -->
+    <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#5f6368;margin-bottom:14px">
+      🌐 Website Listing
+      <span style="font-weight:400;text-transform:none;letter-spacing:0;margin-left:8px;color:#9aa0a6">Fill this section to show this property on the public website.</span>
+    </div>
+
+    <div class="form-grid" style="margin-bottom:16px">
+      <div class="form-group span-2" style="flex-direction:row;align-items:center;gap:10px">
+        <input type="checkbox" id="website_listed" name="website_listed" value="1"
+               {{ 'checked' if prop and prop.website_listed else '' }} style="width:auto">
+        <label for="website_listed" style="font-size:13px;font-weight:500;color:#1a202c;text-transform:none;letter-spacing:0">
+          List this property on the public website
+        </label>
+      </div>
+
+      <div class="form-group">
+        <label for="website_category">Category</label>
+        <select id="website_category" name="website_category">
+          <option value="">— Select —</option>
+          <option value="commercial"   {{ 'selected' if prop and prop.website_category == 'commercial' else '' }}>Commercial</option>
+          <option value="residential"  {{ 'selected' if prop and prop.website_category == 'residential' else '' }}>Residential</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="listing_status">Listing Status</label>
+        <select id="listing_status" name="listing_status">
+          <option value="available"    {{ 'selected' if prop and prop.listing_status == 'available' else '' }}>Available</option>
+          <option value="under-offer"  {{ 'selected' if prop and prop.listing_status == 'under-offer' else '' }}>Under Offer</option>
+          <option value="let-agreed"   {{ 'selected' if prop and prop.listing_status == 'let-agreed' else '' }}>Let Agreed</option>
+          <option value="sold"         {{ 'selected' if prop and prop.listing_status == 'sold' else '' }}>Sold</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="use_class">Use Class (Commercial)</label>
+        <select id="use_class" name="use_class">
+          <option value="">— Select —</option>
+          <option value="office"     {{ 'selected' if prop and prop.use_class == 'office' else '' }}>Office</option>
+          <option value="retail"     {{ 'selected' if prop and prop.use_class == 'retail' else '' }}>Retail</option>
+          <option value="industrial" {{ 'selected' if prop and prop.use_class == 'industrial' else '' }}>Industrial / Warehouse</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="area">Area / Neighbourhood</label>
+        <input type="text" id="area" name="area"
+               value="{{ prop.area if prop and prop.area else '' }}"
+               placeholder="e.g. Chelsea, Fulham, Knightsbridge">
+      </div>
+
+      <div class="form-group">
+        <label for="listing_price">Asking Price / Rent</label>
+        <input type="number" id="listing_price" name="listing_price" step="1" min="0"
+               value="{{ prop.listing_price | int if prop and prop.listing_price else '' }}"
+               placeholder="e.g. 85000">
+      </div>
+
+      <div class="form-group">
+        <label for="listing_price_unit">Price Unit</label>
+        <select id="listing_price_unit" name="listing_price_unit">
+          <option value="pa"   {{ 'selected' if prop and prop.listing_price_unit == 'pa'   else '' }}>£ per annum (pa)</option>
+          <option value="pcm"  {{ 'selected' if prop and prop.listing_price_unit == 'pcm'  else '' }}>£ per calendar month (pcm)</option>
+          <option value="sale" {{ 'selected' if prop and prop.listing_price_unit == 'sale' else '' }}>Sale price (£)</option>
+          <option value="poa"  {{ 'selected' if prop and prop.listing_price_unit == 'poa'  else '' }}>Price on application (POA)</option>
+        </select>
+      </div>
+
+      <div class="form-group span-2">
+        <label for="price_display">Custom Price Display (optional)</label>
+        <input type="text" id="price_display" name="price_display"
+               value="{{ prop.price_display if prop and prop.price_display else '' }}"
+               placeholder="e.g. OIRO £1,300,000 — overrides the price field if set">
+      </div>
+
+      <div class="form-group">
+        <label for="beds">Bedrooms (Residential)</label>
+        <input type="number" id="beds" name="beds" min="0"
+               value="{{ prop.beds if prop and prop.beds else '' }}"
+               placeholder="e.g. 3">
+      </div>
+
+      <div class="form-group">
+        <label for="baths">Bathrooms (Residential)</label>
+        <input type="number" id="baths" name="baths" min="0"
+               value="{{ prop.baths if prop and prop.baths else '' }}"
+               placeholder="e.g. 2">
+      </div>
+
+      <div class="form-group">
+        <label for="lat">Latitude (for map)</label>
+        <input type="number" id="lat" name="lat" step="0.00001"
+               value="{{ prop.lat if prop and prop.lat else '' }}"
+               placeholder="e.g. 51.4891">
+      </div>
+
+      <div class="form-group">
+        <label for="lng">Longitude (for map)</label>
+        <input type="number" id="lng" name="lng" step="0.00001"
+               value="{{ prop.lng if prop and prop.lng else '' }}"
+               placeholder="e.g. -0.1836">
+      </div>
+
+      <div class="form-group">
+        <label for="featured">
+          <input type="checkbox" name="featured" value="1"
+                 {{ 'checked' if prop and prop.featured else '' }}
+                 style="width:auto;margin-right:5px">
+          Featured listing
+        </label>
+      </div>
+
+      <div class="form-group">
+        <label for="photo_id">Unsplash Photo ID</label>
+        <input type="text" id="photo_id" name="photo_id"
+               value="{{ prop.photo_id if prop and prop.photo_id else '' }}"
+               placeholder="e.g. photo-1497366216548-37526070297c">
+      </div>
+
+      <div class="form-group span-2">
+        <label for="blurb">Website Description / Marketing Blurb</label>
+        <textarea id="blurb" name="blurb" rows="4"
+                  placeholder="Public-facing description shown on the property search page…">{{ prop.blurb if prop and prop.blurb else '' }}</textarea>
+      </div>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">{{ 'Save Changes' if prop else 'Create Property' }}</button>
+      {% if prop %}
+        <a href="{{ url_for('property_detail', id=prop.id) }}" class="btn btn-secondary">Cancel</a>
+        <form method="post" action="{{ url_for('property_delete', id=prop.id) }}" class="confirm-delete" style="margin-left:auto">
+          <button type="submit" class="btn btn-danger btn-sm">Delete Property</button>
+        </form>
+      {% else %}
+        <a href="{{ url_for('properties_list') }}" class="btn btn-secondary">Cancel</a>
+      {% endif %}
+    </div>
+  </form>
+</div>
+{% endblock %}

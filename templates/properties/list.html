@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Properties{% endblock %}
+{% block topbar_title %}Properties &amp; Tenures{% endblock %}
+{% block topbar_actions %}
+  <a href="{{ url_for('property_new') }}" class="btn btn-primary btn-sm">+ Add Property</a>
+{% endblock %}
+
+{% block content %}
+<div class="section-header">
+  <h2>Properties</h2>
+  <form class="search-bar" method="get">
+    <input type="text" name="q" value="{{ q }}" placeholder="Search address or postcode…">
+    <button class="btn btn-secondary btn-sm" type="submit">Search</button>
+    {% if q %}<a href="{{ url_for('properties_list') }}" class="btn btn-outline btn-sm">Clear</a>{% endif %}
+  </form>
+</div>
+
+{% if properties %}
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Address</th>
+        <th>Postcode</th>
+        <th>Type</th>
+        <th>Size</th>
+        <th>Tenures</th>
+        <th>Projects</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in properties %}
+      <tr>
+        <td><a href="{{ url_for('property_detail', id=p.id) }}"><strong>{{ p.address }}</strong></a></td>
+        <td>{{ p.postcode }}</td>
+        <td>{{ p.property_type or '—' }}</td>
+        <td>{{ p.display_size }}</td>
+        <td>{{ p.transactions | length }}</td>
+        <td>{{ p.projects | length }}</td>
+        <td>
+          <div class="td-actions">
+            <a href="{{ url_for('property_detail', id=p.id) }}" class="btn btn-sm btn-outline">View</a>
+            <a href="{{ url_for('property_edit', id=p.id) }}" class="btn btn-sm btn-outline">Edit</a>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card">
+  <div class="empty-state">
+    <div class="empty-icon">🏢</div>
+    <p>{% if q %}No properties match "{{ q }}".{% else %}No properties yet. Add your first property to get started.{% endif %}</p>
+    {% if not q %}<a href="{{ url_for('property_new') }}" class="btn btn-primary" style="margin-top:12px">+ Add Property</a>{% endif %}
+  </div>
+</div>
+{% endif %}
+{% endblock %}

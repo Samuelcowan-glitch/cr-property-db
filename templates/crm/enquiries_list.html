@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Enquiries{% endblock %}
+{% block topbar_title %}Enquiries{% endblock %}
+{% block topbar_actions %}
+  <a href="{{ url_for('enquiry_new') }}" class="btn btn-primary btn-sm">+ New Enquiry</a>
+{% endblock %}
+
+{% block content %}
+<div class="section-header">
+  <h2>Enquiries</h2>
+  <form class="search-bar" method="get" style="flex-wrap:wrap;gap:8px">
+    <input type="text" name="q" value="{{ q }}" placeholder="Search subject, type, fee earner…" style="max-width:240px">
+    <select name="status" style="max-width:160px">
+      <option value="">All Statuses</option>
+      <option value="Open"    {{ 'selected' if status=='Open' }}>Open</option>
+      <option value="Won"     {{ 'selected' if status=='Won' }}>Won</option>
+      <option value="Lost"    {{ 'selected' if status=='Lost' }}>Lost</option>
+      <option value="On Hold" {{ 'selected' if status=='On Hold' }}>On Hold</option>
+    </select>
+    <button class="btn btn-secondary btn-sm" type="submit">Filter</button>
+    {% if q or status %}<a href="{{ url_for('enquiries_list') }}" class="btn btn-outline btn-sm">Clear</a>{% endif %}
+  </form>
+</div>
+
+{% if enquiries %}
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Subject</th>
+        <th>Type</th>
+        <th>Property</th>
+        <th>Contact / Org</th>
+        <th>Fee Earner</th>
+        <th>Received</th>
+        <th>Linked Project</th>
+        <th>Status</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for e in enquiries %}
+      <tr>
+        <td><strong>{{ e.subject }}</strong></td>
+        <td>{{ e.enquiry_type or '—' }}</td>
+        <td>{% if e.property %}<a href="{{ url_for('property_detail', id=e.property.id) }}" style="font-size:12px">{{ e.property.address }}</a>{% else %}—{% endif %}</td>
+        <td style="font-size:12px">
+          {% if e.contact %}<a href="{{ url_for('contact_detail', id=e.contact.id) }}">{{ e.contact.full_name }}</a>{% endif %}
+          {% if e.contact and e.organisation %}<br>{% endif %}
+          {% if e.organisation %}<a href="{{ url_for('organisation_detail', id=e.organisation.id) }}">{{ e.organisation.name }}</a>{% endif %}
+          {% if not e.contact and not e.organisation %}—{% endif %}
+        </td>
+        <td>{{ e.fee_earner or '—' }}</td>
+        <td>{{ e.received_date.strftime('%d %b %Y') if e.received_date else '—' }}</td>
+        <td>{% if e.project %}<a href="{{ url_for('project_detail', id=e.project.id) }}" style="font-size:12px">{{ e.project.name }}</a>{% else %}—{% endif %}</td>
+        <td>
+          <span class="badge {{ 'badge-active' if e.status == 'Open' else 'badge-complete' if e.status == 'Won' else 'badge-hold' }}">{{ e.status }}</span>
+        </td>
+        <td>
+          <div class="td-actions">
+            <a href="{{ url_for('enquiry_edit', id=e.id) }}" class="btn btn-sm btn-outline">Edit</a>
+            <form method="post" action="{{ url_for('enquiry_delete', id=e.id) }}" class="confirm-delete">
+              <button class="btn btn-sm btn-danger" type="submit">Del</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card">
+  <div class="empty-state">
+    <div class="empty-icon">📩</div>
+    <p>{% if q or status %}No enquiries match your filter.{% else %}No enquiries recorded yet.{% endif %}</p>
+    <a href="{{ url_for('enquiry_new') }}" class="btn btn-primary" style="margin-top:12px">+ New Enquiry</a>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

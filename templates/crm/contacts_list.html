@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Contacts{% endblock %}
+{% block topbar_title %}Contacts{% endblock %}
+{% block topbar_actions %}
+  <a href="{{ url_for('contact_new') }}" class="btn btn-primary btn-sm">+ Add Contact</a>
+{% endblock %}
+
+{% block content %}
+<div class="section-header">
+  <h2>Contacts</h2>
+  <form class="search-bar" method="get">
+    <input type="text" name="q" value="{{ q }}" placeholder="Search name, email, type…">
+    <button class="btn btn-secondary btn-sm" type="submit">Search</button>
+    {% if q %}<a href="{{ url_for('contacts_list') }}" class="btn btn-outline btn-sm">Clear</a>{% endif %}
+  </form>
+</div>
+
+{% if contacts %}
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Job Title</th>
+        <th>Organisation</th>
+        <th>Type</th>
+        <th>Email</th>
+        <th>Phone</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in contacts %}
+      <tr>
+        <td><a href="{{ url_for('contact_detail', id=c.id) }}"><strong>{{ c.full_name }}</strong></a></td>
+        <td>{{ c.job_title or '—' }}</td>
+        <td>
+          {% if c.organisation %}
+            <a href="{{ url_for('organisation_detail', id=c.organisation.id) }}" style="font-size:12px">{{ c.organisation.name }}</a>
+          {% else %}—{% endif %}
+        </td>
+        <td>{{ c.contact_type or '—' }}</td>
+        <td>{% if c.email %}<a href="mailto:{{ c.email }}">{{ c.email }}</a>{% else %}—{% endif %}</td>
+        <td>{{ c.phone or c.mobile or '—' }}</td>
+        <td>
+          <div class="td-actions">
+            <a href="{{ url_for('contact_detail', id=c.id) }}" class="btn btn-sm btn-outline">View</a>
+            <a href="{{ url_for('contact_edit', id=c.id) }}" class="btn btn-sm btn-outline">Edit</a>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card">
+  <div class="empty-state">
+    <div class="empty-icon">👤</div>
+    <p>{% if q %}No contacts match "{{ q }}".{% else %}No contacts yet.{% endif %}</p>
+    {% if not q %}<a href="{{ url_for('contact_new') }}" class="btn btn-primary" style="margin-top:12px">+ Add First Contact</a>{% endif %}
+  </div>
+</div>
+{% endif %}
+{% endblock %}

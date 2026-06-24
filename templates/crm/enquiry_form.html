@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit Enquiry' if enquiry else 'New Enquiry' }}{% endblock %}
+{% block topbar_title %}{{ 'Edit Enquiry' if enquiry else 'New Enquiry' }}{% endblock %}
+{% block topbar_actions %}
+  <a href="{{ url_for('enquiries_list') }}" class="btn btn-outline btn-sm">← Enquiries</a>
+{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+  <a href="{{ url_for('dashboard') }}">Dashboard</a><span class="sep">/</span>
+  <a href="{{ url_for('enquiries_list') }}">Enquiries</a><span class="sep">/</span>
+  <span class="current">{{ 'Edit' if enquiry else 'New' }}</span>
+</div>
+
+<div class="card" style="max-width:760px">
+  <div class="card-header">
+    <div class="card-title">{{ 'Edit Enquiry' if enquiry else 'New Enquiry' }}</div>
+    <div style="font-size:12px;color:#5f6368">Link to a property, contact, organisation and/or project to build the full picture.</div>
+  </div>
+  <form method="post">
+    <div class="form-grid" style="margin-bottom:16px">
+
+      <div class="form-group span-2">
+        <label for="subject">Subject *</label>
+        <input type="text" id="subject" name="subject" required
+               value="{{ enquiry.subject if enquiry else '' }}"
+               placeholder="e.g. Rent Review enquiry — Unit 4 Industrial Estate">
+      </div>
+
+      <div class="form-group">
+        <label for="enquiry_type">Enquiry Type</label>
+        <select id="enquiry_type" name="enquiry_type">
+          <option value="">— Select —</option>
+          {% for t in ['Valuation','Lease Advisory','Agency — Letting','Agency — Sale','Building Consultancy','Business Rates','Rent Review','Lease Renewal','Other'] %}
+          <option value="{{ t }}" {{ 'selected' if enquiry and enquiry.enquiry_type == t else '' }}>{{ t }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="status">Status</label>
+        <select id="status" name="status">
+          <option value="Open"    {{ 'selected' if enquiry and enquiry.status == 'Open'    else ('selected' if not enquiry else '') }}>Open</option>
+          <option value="Won"     {{ 'selected' if enquiry and enquiry.status == 'Won'     else '' }}>Won — converted to instruction</option>
+          <option value="Lost"    {{ 'selected' if enquiry and enquiry.status == 'Lost'    else '' }}>Lost</option>
+          <option value="On Hold" {{ 'selected' if enquiry and enquiry.status == 'On Hold' else '' }}>On Hold</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="fee_earner">Fee Earner</label>
+        <input type="text" id="fee_earner" name="fee_earner"
+               value="{{ enquiry.fee_earner if enquiry else '' }}" placeholder="e.g. B. Rutter">
+      </div>
+
+      <div class="form-group">
+        <label for="received_date">Date Received</label>
+        <input type="date" id="received_date" name="received_date"
+               value="{{ enquiry.received_date.strftime('%Y-%m-%d') if enquiry and enquiry.received_date else '' }}">
+      </div>
+
+      <hr class="divider" style="grid-column:span 2;margin:8px 0">
+
+      <div style="grid-column:span 2;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#5f6368;">Link to Records</div>
+
+      <div class="form-group span-2">
+        <label for="property_id">Property</label>
+        <select id="property_id" name="property_id">
+          <option value="">— No property linked —</option>
+          {% for p in properties %}
+          <option value="{{ p.id }}" {{ 'selected' if enquiry and enquiry.property_id == p.id else '' }}>
+            {{ p.address }}, {{ p.postcode }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="contact_id">Contact</label>
+        <select id="contact_id" name="contact_id">
+          <option value="">— No contact —</option>
+          {% for c in contacts %}
+          <option value="{{ c.id }}" {{ 'selected' if enquiry and enquiry.contact_id == c.id else '' }}>
+            {{ c.full_name }}{% if c.organisation %} ({{ c.organisation.name }}){% endif %}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="organisation_id">Organisation</label>
+        <select id="organisation_id" name="organisation_id">
+          <option value="">— No organisation —</option>
+          {% for o in organisations %}
+          <option value="{{ o.id }}" {{ 'selected' if enquiry and enquiry.organisation_id == o.id else '' }}>{{ o.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="form-group span-2">
+        <label for="project_id">Linked Project (if converted to instruction)</label>
+        <select id="project_id" name="project_id">
+          <option value="">— No project —</option>
+          {% for p in projects %}
+          <option value="{{ p.id }}" {{ 'selected' if enquiry and enquiry.project_id == p.id else '' }}>{{ p.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="form-group span-2">
+        <label for="notes">Notes</label>
+        <textarea id="notes" name="notes" rows="4"
+                  placeholder="Details of the enquiry, source, requirements…">{{ enquiry.notes if enquiry else '' }}</textarea>
+      </div>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">{{ 'Save Changes' if enquiry else 'Record Enquiry' }}</button>
+      {% if enquiry %}
+        <a href="{{ url_for('enquiries_list') }}" class="btn btn-secondary">Cancel</a>
+        <form method="post" action="{{ url_for('enquiry_delete', id=enquiry.id) }}" class="confirm-delete" style="margin-left:auto">
+          <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+        </form>
+      {% else %}
+        <a href="{{ url_for('enquiries_list') }}" class="btn btn-secondary">Cancel</a>
+      {% endif %}
+    </div>
+  </form>
+</div>
+{% endblock %}

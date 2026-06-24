@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}{{ org.name }}{% endblock %}
+{% block topbar_title %}Organisation{% endblock %}
+{% block topbar_actions %}
+  <a href="{{ url_for('organisation_edit', id=org.id) }}" class="btn btn-outline btn-sm">Edit</a>
+  <a href="{{ url_for('contact_new') }}" class="btn btn-primary btn-sm">+ Add Contact</a>
+{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+  <a href="{{ url_for('dashboard') }}">Dashboard</a><span class="sep">/</span>
+  <a href="{{ url_for('organisations_list') }}">Organisations</a><span class="sep">/</span>
+  <span class="current">{{ org.name }}</span>
+</div>
+
+<div style="margin-bottom:20px">
+  <h2 style="font-size:22px;font-weight:700;color:#1a2e4a">{{ org.name }}</h2>
+  <div style="color:#5f6368;font-size:13px;margin-top:4px">
+    {{ org.org_type or '' }}{% if org.postcode %} &nbsp;·&nbsp; {{ org.postcode }}{% endif %}
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 2fr;gap:16px">
+  <div class="card">
+    <div class="card-header"><div class="card-title">Organisation Details</div></div>
+    <table class="detail-table">
+      <tr><td>Name</td><td>{{ org.name }}</td></tr>
+      <tr><td>Type</td><td>{{ org.org_type or '—' }}</td></tr>
+      <tr><td>Address</td><td>{{ org.address or '—' }}</td></tr>
+      <tr><td>Postcode</td><td>{{ org.postcode or '—' }}</td></tr>
+      <tr><td>Phone</td><td>{{ org.phone or '—' }}</td></tr>
+      <tr><td>Email</td><td>{% if org.email %}<a href="mailto:{{ org.email }}">{{ org.email }}</a>{% else %}—{% endif %}</td></tr>
+      <tr><td>Website</td><td>{% if org.website %}<a href="{{ org.website }}" target="_blank">{{ org.website }}</a>{% else %}—{% endif %}</td></tr>
+      <tr><td>Notes</td><td>{{ org.notes or '—' }}</td></tr>
+    </table>
+  </div>
+
+  <div>
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-header">
+        <div class="card-title">Contacts ({{ org.contacts | length }})</div>
+        <a href="{{ url_for('contact_new') }}" class="btn btn-sm btn-primary">+ Add</a>
+      </div>
+      {% if org.contacts %}
+      <table>
+        <thead><tr><th>Name</th><th>Job Title</th><th>Type</th><th>Email</th><th></th></tr></thead>
+        <tbody>
+          {% for c in org.contacts %}
+          <tr>
+            <td><a href="{{ url_for('contact_detail', id=c.id) }}">{{ c.full_name }}</a></td>
+            <td>{{ c.job_title or '—' }}</td>
+            <td>{{ c.contact_type or '—' }}</td>
+            <td>{% if c.email %}<a href="mailto:{{ c.email }}">{{ c.email }}</a>{% else %}—{% endif %}</td>
+            <td><a href="{{ url_for('contact_edit', id=c.id) }}" class="btn btn-sm btn-outline">Edit</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty-state" style="padding:16px"><p>No contacts linked to this organisation.</p></div>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Enquiries ({{ org.enquiries | length }})</div>
+        <a href="{{ url_for('enquiry_new') }}" class="btn btn-sm btn-primary">+ New</a>
+      </div>
+      {% if org.enquiries %}
+      <table>
+        <thead><tr><th>Subject</th><th>Type</th><th>Status</th><th>Date</th></tr></thead>
+        <tbody>
+          {% for e in org.enquiries %}
+          <tr>
+            <td><a href="{{ url_for('enquiry_edit', id=e.id) }}">{{ e.subject }}</a></td>
+            <td>{{ e.enquiry_type or '—' }}</td>
+            <td><span class="badge {{ 'badge-active' if e.status == 'Open' else 'badge-complete' if e.status == 'Won' else 'badge-hold' }}">{{ e.status }}</span></td>
+            <td>{{ e.received_date.strftime('%d %b %Y') if e.received_date else '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty-state" style="padding:16px"><p>No enquiries linked.</p></div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Transactions{% endblock %}
+{% block topbar_title %}Transaction Records{% endblock %}
+{% block topbar_actions %}
+  <a href="{{ url_for('transaction_new') }}" class="btn btn-primary btn-sm">+ Record Transaction</a>
+{% endblock %}
+
+{% block content %}
+<div class="section-header">
+  <h2>Transactions</h2>
+  <form class="search-bar" method="get" style="flex-wrap:wrap;gap:8px">
+    <input type="text" name="q" value="{{ q }}" placeholder="Search address or postcode…" style="max-width:240px">
+    <select name="type" style="max-width:160px">
+      <option value="">All Types</option>
+      <option value="Capital"   {{ 'selected' if ttype=='Capital' }}>Capital</option>
+      <option value="Leasehold" {{ 'selected' if ttype=='Leasehold' }}>Leasehold</option>
+    </select>
+    <button class="btn btn-secondary btn-sm" type="submit">Filter</button>
+    {% if q or ttype %}<a href="{{ url_for('transactions_list') }}" class="btn btn-outline btn-sm">Clear</a>{% endif %}
+  </form>
+</div>
+
+{% if transactions %}
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Property</th>
+        <th>Postcode</th>
+        <th>Type</th>
+        <th>Tenure</th>
+        <th>Date</th>
+        <th>Value / Rent</th>
+        <th>Parties</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in transactions %}
+      <tr>
+        <td><a href="{{ url_for('property_detail', id=t.property.id) }}">{{ t.property.address }}</a></td>
+        <td>{{ t.property.postcode }}</td>
+        <td>
+          {% if t.transaction_type == 'Capital' %}
+            <span class="badge badge-capital">Capital</span>
+          {% else %}
+            <span class="badge badge-leasehold">Leasehold</span>
+          {% endif %}
+        </td>
+        <td>{{ t.tenure_type or '—' }}</td>
+        <td>{{ t.transaction_date.strftime('%d %b %Y') if t.transaction_date else '—' }}</td>
+        <td>
+          {% if t.transaction_type == 'Capital' %}{{ t.display_value }}
+          {% else %}{{ t.display_rent }}{% endif %}
+        </td>
+        <td style="max-width:180px;font-size:12px">{{ t.parties }}</td>
+        <td>
+          <div class="td-actions">
+            <a href="{{ url_for('transaction_edit', id=t.id) }}" class="btn btn-sm btn-outline">Edit</a>
+            <form method="post" action="{{ url_for('transaction_delete', id=t.id) }}" class="confirm-delete">
+              <button class="btn btn-sm btn-danger" type="submit">Del</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card">
+  <div class="empty-state">
+    <div class="empty-icon">📋</div>
+    <p>{% if q or ttype %}No transactions match your filter.{% else %}No transactions recorded yet.{% endif %}</p>
+    <a href="{{ url_for('transaction_new') }}" class="btn btn-primary" style="margin-top:12px">+ Record First Transaction</a>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

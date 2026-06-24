@@ -1,0 +1,197 @@
+{% extends "base.html" %}
+{% block title %}{{ prop.address }}{% endblock %}
+{% block topbar_title %}Property Overview{% endblock %}
+{% block topbar_actions %}
+  <a href="{{ url_for('property_edit', id=prop.id) }}" class="btn btn-outline btn-sm">Edit Property</a>
+  <a href="{{ url_for('transaction_new') }}?property_id={{ prop.id }}" class="btn btn-teal btn-sm">+ Record Transaction</a>
+  <a href="{{ url_for('project_new') }}?property_id={{ prop.id }}" class="btn btn-primary btn-sm">+ New Project</a>
+{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+  <a href="{{ url_for('dashboard') }}">Dashboard</a>
+  <span class="sep">/</span>
+  <a href="{{ url_for('properties_list') }}">Properties</a>
+  <span class="sep">/</span>
+  <span class="current">{{ prop.address }}</span>
+</div>
+
+<!-- ── Property header ── -->
+<div style="margin-bottom:20px">
+  <h2 style="font-size:22px;font-weight:700;color:#1a2e4a">{{ prop.address }}</h2>
+  <div style="color:#5f6368;font-size:13px;margin-top:2px">{{ prop.postcode }}{% if prop.property_type %} &nbsp;·&nbsp; {{ prop.property_type }}{% endif %}{% if prop.display_size != '—' %} &nbsp;·&nbsp; {{ prop.display_size }}{% endif %}</div>
+</div>
+
+<!-- ── 04 Property Overview section ── -->
+<div class="overview-grid" style="margin-bottom:24px">
+
+  <!-- Left: property details (mirrors 04.04 General) -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">04.04 General</div>
+      <a href="{{ url_for('property_edit', id=prop.id) }}" class="btn btn-sm btn-outline">Edit</a>
+    </div>
+    <table class="detail-table">
+      <tr><td>Address</td><td>{{ prop.address }}</td></tr>
+      <tr><td>Postcode</td><td>{{ prop.postcode }}</td></tr>
+      <tr><td>Property Type</td><td>{{ prop.property_type or '—' }}</td></tr>
+      <tr><td>Floor Area</td><td>{{ prop.display_size }}</td></tr>
+      <tr><td>Description</td><td>{{ prop.description or '—' }}</td></tr>
+      <tr><td>Added</td><td>{{ prop.created_at.strftime('%d %b %Y') }}</td></tr>
+    </table>
+  </div>
+
+  <!-- Right: key documents placeholder + quick stats -->
+  <div>
+    <div class="card" style="margin-bottom:12px">
+      <div class="card-header">
+        <div class="card-title">04.11 Property Key Documents</div>
+      </div>
+      <div class="empty-state" style="padding:16px">
+        <p style="font-size:12px;color:#9aa0a6">Document uploads can be linked from project folders below.</p>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="stat-card" style="padding:14px">
+        <div class="stat-label">Transactions / Tenures</div>
+        <div class="stat-value" style="font-size:24px">{{ prop.transactions | length }}</div>
+      </div>
+      <div class="stat-card" style="padding:14px">
+        <div class="stat-label">Projects</div>
+        <div class="stat-value" style="font-size:24px">{{ prop.projects | length }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Tabs: Tenures / Projects ── -->
+<div class="tabs" data-group="prop">
+  <button class="tab-btn active" data-tab="tenures">
+    Tenures &amp; Transactions ({{ prop.transactions | length }})
+  </button>
+  <button class="tab-btn" data-tab="projects">
+    Projects / Instructions ({{ prop.projects | length }})
+  </button>
+</div>
+
+<!-- ── Tenures tab ── -->
+<div class="tab-panel active" data-tab-group="prop" data-tab="tenures">
+  <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
+    <a href="{{ url_for('transaction_new') }}?property_id={{ prop.id }}" class="btn btn-primary btn-sm">+ Record Transaction</a>
+  </div>
+
+  {% if prop.transactions %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Tenure</th>
+          <th>Date</th>
+          <th>Value / Rent</th>
+          <th>Parties</th>
+          <th>Lease Period</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in prop.transactions | sort(attribute='transaction_date', reverse=True) %}
+        <tr>
+          <td>
+            {% if t.transaction_type == 'Capital' %}
+              <span class="badge badge-capital">Capital</span>
+            {% else %}
+              <span class="badge badge-leasehold">Leasehold</span>
+            {% endif %}
+          </td>
+          <td>{{ t.tenure_type or '—' }}</td>
+          <td>{{ t.transaction_date.strftime('%d %b %Y') if t.transaction_date else '—' }}</td>
+          <td>
+            {% if t.transaction_type == 'Capital' %}
+              {{ t.display_value }}
+            {% else %}
+              {{ t.display_rent }}
+            {% endif %}
+          </td>
+          <td style="max-width:200px">{{ t.parties }}</td>
+          <td>
+            {% if t.lease_start and t.lease_end %}
+              {{ t.lease_start.strftime('%d/%m/%Y') }} – {{ t.lease_end.strftime('%d/%m/%Y') }}
+            {% else %}—{% endif %}
+          </td>
+          <td>
+            <div class="td-actions">
+              <a href="{{ url_for('transaction_edit', id=t.id) }}" class="btn btn-sm btn-outline">Edit</a>
+              <form method="post" action="{{ url_for('transaction_delete', id=t.id) }}" class="confirm-delete">
+                <button class="btn btn-sm btn-danger" type="submit">Del</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="card">
+    <div class="empty-state">
+      <div class="empty-icon">📋</div>
+      <p>No transactions recorded yet.</p>
+      <a href="{{ url_for('transaction_new') }}?property_id={{ prop.id }}" class="btn btn-primary" style="margin-top:12px">+ Record First Transaction</a>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<!-- ── Projects tab ── -->
+<div class="tab-panel" data-tab-group="prop" data-tab="projects">
+  <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
+    <a href="{{ url_for('project_new') }}?property_id={{ prop.id }}" class="btn btn-primary btn-sm">+ New Project</a>
+  </div>
+
+  {% if prop.projects %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Ref</th>
+          <th>Project Name</th>
+          <th>Client</th>
+          <th>Fee Earner</th>
+          <th>Instructed</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in prop.projects | sort(attribute='created_at', reverse=True) %}
+        <tr>
+          <td>{{ p.project_ref or '—' }}</td>
+          <td><a href="{{ url_for('project_detail', id=p.id) }}">{{ p.name }}</a></td>
+          <td>{{ p.client or '—' }}</td>
+          <td>{{ p.fee_earner or '—' }}</td>
+          <td>{{ p.instruction_date.strftime('%d %b %Y') if p.instruction_date else '—' }}</td>
+          <td>
+            {% if p.status == 'Active' %}<span class="badge badge-active">Active</span>
+            {% elif p.status == 'Complete' %}<span class="badge badge-complete">Complete</span>
+            {% else %}<span class="badge badge-hold">On Hold</span>{% endif %}
+          </td>
+          <td>
+            <a href="{{ url_for('project_detail', id=p.id) }}" class="btn btn-sm btn-outline">Open</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="card">
+    <div class="empty-state">
+      <div class="empty-icon">📁</div>
+      <p>No projects linked to this property.</p>
+      <a href="{{ url_for('project_new') }}?property_id={{ prop.id }}" class="btn btn-primary" style="margin-top:12px">+ Create First Project</a>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

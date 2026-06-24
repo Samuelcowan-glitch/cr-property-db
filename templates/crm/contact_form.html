@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit Contact' if contact else 'Add Contact' }}{% endblock %}
+{% block topbar_title %}{{ 'Edit Contact' if contact else 'Add Contact' }}{% endblock %}
+{% block topbar_actions %}
+  <a href="{{ url_for('contacts_list') }}" class="btn btn-outline btn-sm">← Contacts</a>
+{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+  <a href="{{ url_for('dashboard') }}">Dashboard</a>
+  <span class="sep">/</span>
+  <a href="{{ url_for('contacts_list') }}">Contacts</a>
+  <span class="sep">/</span>
+  <span class="current">{{ 'Edit' if contact else 'New' }}</span>
+</div>
+
+<div class="card" style="max-width:680px">
+  <div class="card-header">
+    <div class="card-title">{{ 'Edit Contact' if contact else 'New Contact' }}</div>
+  </div>
+  <form method="post">
+    <div class="form-grid" style="margin-bottom:16px">
+      <div class="form-group">
+        <label for="first_name">First Name *</label>
+        <input type="text" id="first_name" name="first_name" required
+               value="{{ contact.first_name if contact else '' }}">
+      </div>
+      <div class="form-group">
+        <label for="last_name">Last Name *</label>
+        <input type="text" id="last_name" name="last_name" required
+               value="{{ contact.last_name if contact else '' }}">
+      </div>
+      <div class="form-group">
+        <label for="job_title">Job Title</label>
+        <input type="text" id="job_title" name="job_title"
+               value="{{ contact.job_title if contact else '' }}"
+               placeholder="e.g. Director">
+      </div>
+      <div class="form-group">
+        <label for="contact_type">Contact Type</label>
+        <select id="contact_type" name="contact_type">
+          <option value="">— Select —</option>
+          {% for t in ['Prospective Tenant','Prospective Buyer','Prospect','Client','Landlord','Tenant','Agent','Solicitor','Developer','Investor','Surveyor','Other'] %}
+          <option value="{{ t }}" {{ 'selected' if contact and contact.contact_type == t else '' }}>{{ t }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group span-2">
+        <label for="organisation_id">Organisation</label>
+        <select id="organisation_id" name="organisation_id">
+          <option value="">— No organisation —</option>
+          {% for o in organisations %}
+          <option value="{{ o.id }}" {{ 'selected' if contact and contact.organisation_id == o.id else '' }}>{{ o.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="email">Email</label>
+        <input type="text" id="email" name="email"
+               value="{{ contact.email if contact else '' }}"
+               placeholder="email@example.com">
+      </div>
+      <div class="form-group">
+        <label for="phone">Phone</label>
+        <input type="text" id="phone" name="phone"
+               value="{{ contact.phone if contact else '' }}"
+               placeholder="Direct line">
+      </div>
+      <div class="form-group">
+        <label for="mobile">Mobile</label>
+        <input type="text" id="mobile" name="mobile"
+               value="{{ contact.mobile if contact else '' }}"
+               placeholder="Mobile number">
+      </div>
+      <div class="form-group span-2">
+        <label for="notes">Notes</label>
+        <textarea id="notes" name="notes" rows="3">{{ contact.notes if contact else '' }}</textarea>
+      </div>
+    </div>
+
+    <hr class="divider">
+    <div style="font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#5f6368;margin-bottom:12px">
+      🔍 Applicant Requirements <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#9aa0a6">— used for automatic property matching</span>
+    </div>
+
+    <div class="form-grid" style="margin-bottom:16px">
+      <div class="form-group">
+        <label for="req_category">Category</label>
+        <select id="req_category" name="req_category">
+          <option value="">— Any —</option>
+          <option value="commercial"  {{ 'selected' if contact and contact.req_category == 'commercial' else '' }}>Commercial</option>
+          <option value="residential" {{ 'selected' if contact and contact.req_category == 'residential' else '' }}>Residential</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="req_use_class">Use Class</label>
+        <select id="req_use_class" name="req_use_class">
+          <option value="">— Any —</option>
+          <option value="office"     {{ 'selected' if contact and contact.req_use_class == 'office' else '' }}>Office</option>
+          <option value="retail"     {{ 'selected' if contact and contact.req_use_class == 'retail' else '' }}>Retail</option>
+          <option value="industrial" {{ 'selected' if contact and contact.req_use_class == 'industrial' else '' }}>Industrial</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="req_property_type">Property Type</label>
+        <input type="text" id="req_property_type" name="req_property_type"
+               value="{{ contact.req_property_type if contact and contact.req_property_type else '' }}"
+               placeholder="e.g. Office Suite, Apartment">
+      </div>
+      <div class="form-group">
+        <label for="req_budget_unit">Budget Basis</label>
+        <select id="req_budget_unit" name="req_budget_unit">
+          <option value="pa"   {{ 'selected' if contact and contact.req_budget_unit == 'pa' else '' }}>Per annum (pa)</option>
+          <option value="pcm"  {{ 'selected' if contact and contact.req_budget_unit == 'pcm' else '' }}>Per month (pcm)</option>
+          <option value="sale" {{ 'selected' if contact and contact.req_budget_unit == 'sale' else '' }}>Purchase price</option>
+        </select>
+      </div>
+      <div class="form-group span-2">
+        <label for="req_area">Preferred Area(s) <span style="font-weight:400;color:#9aa0a6">(comma-separated)</span></label>
+        <input type="text" id="req_area" name="req_area"
+               value="{{ contact.req_area if contact and contact.req_area else '' }}"
+               placeholder="e.g. Chelsea, Fulham, SW6">
+      </div>
+      <div class="form-group">
+        <label for="req_size_min">Min Size (sq ft)</label>
+        <input type="number" id="req_size_min" name="req_size_min" min="0"
+               value="{{ contact.req_size_min | int if contact and contact.req_size_min else '' }}">
+      </div>
+      <div class="form-group">
+        <label for="req_size_max">Max Size (sq ft)</label>
+        <input type="number" id="req_size_max" name="req_size_max" min="0"
+               value="{{ contact.req_size_max | int if contact and contact.req_size_max else '' }}">
+      </div>
+      <div class="form-group">
+        <label for="req_budget_min">Min Budget (£)</label>
+        <input type="number" id="req_budget_min" name="req_budget_min" min="0"
+               value="{{ contact.req_budget_min | int if contact and contact.req_budget_min else '' }}">
+      </div>
+      <div class="form-group">
+        <label for="req_budget_max">Max Budget (£)</label>
+        <input type="number" id="req_budget_max" name="req_budget_max" min="0"
+               value="{{ contact.req_budget_max | int if contact and contact.req_budget_max else '' }}">
+      </div>
+      <div class="form-group span-2">
+        <label for="req_notes">Requirement Notes</label>
+        <textarea id="req_notes" name="req_notes" rows="2"
+                  placeholder="Any other specific requirements…">{{ contact.req_notes if contact and contact.req_notes else '' }}</textarea>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">{{ 'Save Changes' if contact else 'Add Contact' }}</button>
+      {% if contact %}
+        <a href="{{ url_for('contact_detail', id=contact.id) }}" class="btn btn-secondary">Cancel</a>
+        <form method="post" action="{{ url_for('contact_delete', id=contact.id) }}" class="confirm-delete" style="margin-left:auto">
+          <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+        </form>
+      {% else %}
+        <a href="{{ url_for('contacts_list') }}" class="btn btn-secondary">Cancel</a>
+      {% endif %}
+    </div>
+  </form>
+</div>
+{% endblock %}

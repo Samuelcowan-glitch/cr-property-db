@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit Project' if project else 'New Project' }}{% endblock %}
+{% block topbar_title %}{{ 'Edit Project' if project else 'New Project / Instruction' }}{% endblock %}
+{% block topbar_actions %}
+  <a href="{{ url_for('projects_list') }}" class="btn btn-outline btn-sm">← Projects</a>
+{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+  <a href="{{ url_for('dashboard') }}">Dashboard</a>
+  <span class="sep">/</span>
+  <a href="{{ url_for('projects_list') }}">Projects</a>
+  <span class="sep">/</span>
+  <span class="current">{{ 'Edit' if project else 'New' }}</span>
+</div>
+
+<div class="card" style="max-width:760px">
+  <div class="card-header">
+    <div class="card-title">{{ 'Edit Project Details' if project else 'New Project / Instruction' }}</div>
+  </div>
+
+  <form method="post">
+    <div class="form-grid" style="margin-bottom:16px">
+
+      <div class="form-group span-2">
+        <label for="name">Project / Instruction Name *</label>
+        <input type="text" id="name" name="name" required
+               value="{{ project.name if project else '' }}"
+               placeholder="e.g. Rent Review — 12 King Street">
+      </div>
+
+      <div class="form-group">
+        <label for="project_ref">Project Reference</label>
+        <input type="text" id="project_ref" name="project_ref"
+               value="{{ project.project_ref if project else '' }}"
+               placeholder="e.g. CR/2026/001">
+      </div>
+
+      <div class="form-group">
+        <label for="status">Status</label>
+        <select id="status" name="status">
+          <option value="Active"   {{ 'selected' if project and project.status == 'Active'   else ('selected' if not project else '') }}>Active</option>
+          <option value="On Hold"  {{ 'selected' if project and project.status == 'On Hold'  else '' }}>On Hold</option>
+          <option value="Complete" {{ 'selected' if project and project.status == 'Complete' else '' }}>Complete</option>
+        </select>
+      </div>
+
+      <div class="form-group span-2">
+        <label for="property_id">Linked Property</label>
+        <select id="property_id" name="property_id">
+          <option value="">— No property linked —</option>
+          {% for p in properties %}
+          <option value="{{ p.id }}"
+            {{ 'selected' if (project and project.property_id == p.id) or (prop_id and prop_id|int == p.id) else '' }}>
+            {{ p.address }}, {{ p.postcode }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="client">Client</label>
+        <input type="text" id="client" name="client"
+               value="{{ project.client if project else '' }}"
+               placeholder="Client name or organisation">
+      </div>
+
+      <div class="form-group">
+        <label for="fee_earner">Fee Earner / Surveyor</label>
+        <input type="text" id="fee_earner" name="fee_earner"
+               value="{{ project.fee_earner if project else '' }}"
+               placeholder="e.g. B. Rutter">
+      </div>
+
+      <div class="form-group">
+        <label for="instruction_date">Instruction Date</label>
+        <input type="date" id="instruction_date" name="instruction_date"
+               value="{{ project.instruction_date.strftime('%Y-%m-%d') if project and project.instruction_date else '' }}">
+      </div>
+
+      <div class="form-group">
+        <label for="instruction_type">Instruction Type</label>
+        <select id="instruction_type" name="instruction_type">
+          <option value="">— Select —</option>
+          {% for t in ['Letting','Sale','Rent Review','Lease Renewal','Valuation','Building Survey','Lease Advisory','Business Rates','Other'] %}
+          <option value="{{ t }}" {{ 'selected' if project and project.instruction_type == t else '' }}>{{ t }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="available_from">Available From</label>
+        <input type="date" id="available_from" name="available_from"
+               value="{{ project.available_from.strftime('%Y-%m-%d') if project and project.available_from else '' }}">
+      </div>
+
+      <div class="form-group">
+        <label for="next_call">Next Call / Action Date</label>
+        <input type="date" id="next_call" name="next_call"
+               value="{{ project.next_call.strftime('%Y-%m-%d') if project and project.next_call else '' }}">
+      </div>
+
+      <div class="form-group">
+        <label for="fee_percent">Fee (%)</label>
+        <input type="number" id="fee_percent" name="fee_percent" step="0.01" min="0"
+               value="{{ project.fee_percent if project and project.fee_percent else '' }}"
+               placeholder="e.g. 10">
+      </div>
+
+      <div class="form-group">
+        <label for="fee_fixed">Fee (£ fixed)</label>
+        <input type="number" id="fee_fixed" name="fee_fixed" step="1" min="0"
+               value="{{ project.fee_fixed | int if project and project.fee_fixed else '' }}"
+               placeholder="e.g. 5000">
+      </div>
+
+      <div style="grid-column:span 2;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#5f6368;padding-top:4px">Client Contact Details</div>
+
+      <div class="form-group">
+        <label for="client_phone">Client Phone</label>
+        <input type="text" id="client_phone" name="client_phone"
+               value="{{ project.client_phone if project else '' }}">
+      </div>
+
+      <div class="form-group">
+        <label for="client_mobile">Client Mobile</label>
+        <input type="text" id="client_mobile" name="client_mobile"
+               value="{{ project.client_mobile if project else '' }}">
+      </div>
+
+      <div class="form-group">
+        <label for="client_email">Client Email</label>
+        <input type="text" id="client_email" name="client_email"
+               value="{{ project.client_email if project else '' }}">
+      </div>
+
+      <div class="form-group">
+        <label for="key_contact">Key Contact</label>
+        <input type="text" id="key_contact" name="key_contact"
+               value="{{ project.key_contact if project else '' }}"
+               placeholder="e.g. Cara Mason">
+      </div>
+
+      <div class="form-group span-2">
+        <label for="notes">Description / Notes</label>
+        <textarea id="notes" name="notes" rows="4"
+                  placeholder="Scope of instruction, key dates, relevant background…">{{ project.notes if project and project.notes else '' }}</textarea>
+      </div>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">{{ 'Save Changes' if project else 'Create Project' }}</button>
+      {% if project %}
+        <a href="{{ url_for('project_detail', id=project.id) }}" class="btn btn-secondary">Cancel</a>
+        <form method="post" action="{{ url_for('project_delete', id=project.id) }}" class="confirm-delete" style="margin-left:auto">
+          <button type="submit" class="btn btn-danger btn-sm">Delete Project</button>
+        </form>
+      {% else %}
+        <a href="{{ url_for('projects_list') }}" class="btn btn-secondary">Cancel</a>
+      {% endif %}
+    </div>
+  </form>
+</div>
+{% endblock %}

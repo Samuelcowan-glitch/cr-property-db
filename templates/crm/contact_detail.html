@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}{{ contact.full_name }}{% endblock %}
+{% block topbar_title %}Contact{% endblock %}
+{% block topbar_actions %}
+  <a href="{{ url_for('contact_edit', id=contact.id) }}" class="btn btn-outline btn-sm">Edit</a>
+  <a href="{{ url_for('enquiry_new') }}" class="btn btn-primary btn-sm">+ New Enquiry</a>
+{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+  <a href="{{ url_for('dashboard') }}">Dashboard</a><span class="sep">/</span>
+  <a href="{{ url_for('contacts_list') }}">Contacts</a><span class="sep">/</span>
+  <span class="current">{{ contact.full_name }}</span>
+</div>
+
+<div style="margin-bottom:20px">
+  <h2 style="font-size:22px;font-weight:700;color:#1a2e4a">{{ contact.full_name }}</h2>
+  <div style="color:#5f6368;font-size:13px;margin-top:4px">
+    {% if contact.job_title %}{{ contact.job_title }}{% endif %}
+    {% if contact.organisation %} &nbsp;·&nbsp; <a href="{{ url_for('organisation_detail', id=contact.organisation.id) }}">{{ contact.organisation.name }}</a>{% endif %}
+    {% if contact.contact_type %} &nbsp;·&nbsp; {{ contact.contact_type }}{% endif %}
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+  <div class="card">
+    <div class="card-header"><div class="card-title">Contact Details</div></div>
+    <table class="detail-table">
+      <tr><td>Name</td><td>{{ contact.full_name }}</td></tr>
+      <tr><td>Job Title</td><td>{{ contact.job_title or '—' }}</td></tr>
+      <tr><td>Type</td><td>{{ contact.contact_type or '—' }}</td></tr>
+      <tr><td>Organisation</td><td>{% if contact.organisation %}<a href="{{ url_for('organisation_detail', id=contact.organisation.id) }}">{{ contact.organisation.name }}</a>{% else %}—{% endif %}</td></tr>
+      <tr><td>Email</td><td>{% if contact.email %}<a href="mailto:{{ contact.email }}">{{ contact.email }}</a>{% else %}—{% endif %}</td></tr>
+      <tr><td>Phone</td><td>{{ contact.phone or '—' }}</td></tr>
+      <tr><td>Mobile</td><td>{{ contact.mobile or '—' }}</td></tr>
+      <tr><td>Notes</td><td>{{ contact.notes or '—' }}</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">Enquiries ({{ contact.enquiries | length }})</div>
+      <a href="{{ url_for('enquiry_new') }}" class="btn btn-sm btn-primary">+ New</a>
+    </div>
+    {% if contact.enquiries %}
+    <table>
+      <thead><tr><th>Subject</th><th>Type</th><th>Status</th></tr></thead>
+      <tbody>
+        {% for e in contact.enquiries %}
+        <tr>
+          <td><a href="{{ url_for('enquiry_edit', id=e.id) }}">{{ e.subject }}</a></td>
+          <td>{{ e.enquiry_type or '—' }}</td>
+          <td><span class="badge {{ 'badge-active' if e.status == 'Open' else 'badge-complete' if e.status == 'Won' else 'badge-hold' }}">{{ e.status }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state" style="padding:16px"><p>No enquiries linked.</p></div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

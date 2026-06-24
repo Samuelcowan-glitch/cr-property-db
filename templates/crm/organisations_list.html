@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Organisations{% endblock %}
+{% block topbar_title %}Organisations{% endblock %}
+{% block topbar_actions %}
+  <a href="{{ url_for('organisation_new') }}" class="btn btn-primary btn-sm">+ Add Organisation</a>
+{% endblock %}
+
+{% block content %}
+<div class="section-header">
+  <h2>Organisations</h2>
+  <form class="search-bar" method="get">
+    <input type="text" name="q" value="{{ q }}" placeholder="Search name or type…">
+    <button class="btn btn-secondary btn-sm" type="submit">Search</button>
+    {% if q %}<a href="{{ url_for('organisations_list') }}" class="btn btn-outline btn-sm">Clear</a>{% endif %}
+  </form>
+</div>
+
+{% if orgs %}
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr><th>Organisation</th><th>Type</th><th>Location</th><th>Email</th><th>Contacts</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for o in orgs %}
+      <tr>
+        <td><a href="{{ url_for('organisation_detail', id=o.id) }}"><strong>{{ o.name }}</strong></a></td>
+        <td>{{ o.org_type or '—' }}</td>
+        <td>{% if o.postcode %}{{ o.postcode }}{% else %}—{% endif %}</td>
+        <td>{% if o.email %}<a href="mailto:{{ o.email }}">{{ o.email }}</a>{% else %}—{% endif %}</td>
+        <td>{{ o.contacts | length }}</td>
+        <td>
+          <div class="td-actions">
+            <a href="{{ url_for('organisation_detail', id=o.id) }}" class="btn btn-sm btn-outline">View</a>
+            <a href="{{ url_for('organisation_edit', id=o.id) }}" class="btn btn-sm btn-outline">Edit</a>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card">
+  <div class="empty-state">
+    <div class="empty-icon">🏛️</div>
+    <p>{% if q %}No organisations match "{{ q }}".{% else %}No organisations yet.{% endif %}</p>
+    {% if not q %}<a href="{{ url_for('organisation_new') }}" class="btn btn-primary" style="margin-top:12px">+ Add Organisation</a>{% endif %}
+  </div>
+</div>
+{% endif %}
+{% endblock %}

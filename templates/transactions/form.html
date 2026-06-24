@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit Transaction' if trans else 'Record Transaction' }}{% endblock %}
+{% block topbar_title %}{{ 'Edit Transaction' if trans else 'Record Transaction' }}{% endblock %}
+{% block topbar_actions %}
+  <a href="{{ url_for('transactions_list') }}" class="btn btn-outline btn-sm">← Transactions</a>
+{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+  <a href="{{ url_for('dashboard') }}">Dashboard</a>
+  <span class="sep">/</span>
+  <a href="{{ url_for('transactions_list') }}">Transactions</a>
+  <span class="sep">/</span>
+  <span class="current">{{ 'Edit' if trans else 'New' }}</span>
+</div>
+
+<div class="card" style="max-width:820px">
+  <div class="card-header">
+    <div class="card-title">{{ 'Edit Transaction Record' if trans else 'New Transaction Record' }}</div>
+    <div style="font-size:12px;color:#5f6368">Creating a leasehold transaction will also create a tenure record on the property.</div>
+  </div>
+
+  <form method="post">
+
+    <!-- Property + Type -->
+    <div class="form-grid" style="margin-bottom:20px">
+      <div class="form-group span-2">
+        <label for="property_id">Property *</label>
+        <select id="property_id" name="property_id" required>
+          <option value="">— Select property —</option>
+          {% for p in properties %}
+          <option value="{{ p.id }}"
+            {{ 'selected' if (trans and trans.property_id == p.id) or (prop_id and prop_id|int == p.id) else '' }}>
+            {{ p.address }}, {{ p.postcode }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="form-group span-2">
+        <label>Transaction Type *</label>
+        <div class="type-toggle">
+          <label>
+            <input type="radio" name="transaction_type" value="Capital"
+              {{ 'checked' if trans and trans.transaction_type == 'Capital' else ('checked' if not trans else '') }}>
+            Capital (Sale / Purchase)
+          </label>
+          <label>
+            <input type="radio" name="transaction_type" value="Leasehold"
+              {{ 'checked' if trans and trans.transaction_type == 'Leasehold' else '' }}>
+            Leasehold (Letting / Renewal)
+          </label>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="tenure_type">Tenure Type</label>
+        <select id="tenure_type" name="tenure_type">
+          <option value="">— Select —</option>
+          {% for tt in ['Freehold','Long Leasehold','Leasehold','Sub-Lease','Virtual Freehold','Heritable'] %}
+          <option value="{{ tt }}" {{ 'selected' if trans and trans.tenure_type == tt else '' }}>{{ tt }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="transaction_date">Transaction Date</label>
+        <input type="date" id="transaction_date" name="transaction_date"
+               value="{{ trans.transaction_date.strftime('%Y-%m-%d') if trans and trans.transaction_date else '' }}">
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <!-- Capital fields -->
+    <div class="capital-only">
+      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#5f6368;margin-bottom:12px">Capital Transaction Details</div>
+      <div class="form-grid" style="margin-bottom:20px">
+        <div class="form-group">
+          <label for="value">Sale Price (£)</label>
+          <input type="number" id="value" name="value" step="1" min="0"
+                 value="{{ trans.value | int if trans and trans.value else '' }}"
+                 placeholder="e.g. 1250000">
+        </div>
+        <div class="form-group"></div>
+        <div class="form-group">
+          <label for="vendor">Vendor</label>
+          <input type="text" id="vendor" name="vendor"
+                 value="{{ trans.vendor or '' }}" placeholder="Vendor name">
+        </div>
+        <div class="form-group">
+          <label for="purchaser">Purchaser</label>
+          <input type="text" id="purchaser" name="purchaser"
+                 value="{{ trans.purchaser or '' }}" placeholder="Purchaser name">
+        </div>
+      </div>
+    </div>
+
+    <!-- Leasehold fields -->
+    <div class="lease-only">
+      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#5f6368;margin-bottom:12px">Leasehold / Tenure Details</div>
+      <div class="form-grid" style="margin-bottom:20px">
+        <div class="form-group">
+          <label for="landlord">Landlord</label>
+          <input type="text" id="landlord" name="landlord"
+                 value="{{ trans.landlord or '' }}" placeholder="Landlord name">
+        </div>
+        <div class="form-group">
+          <label for="tenant">Tenant</label>
+          <input type="text" id="tenant" name="tenant"
+                 value="{{ trans.tenant or '' }}" placeholder="Tenant name">
+        </div>
+        <div class="form-group">
+          <label for="rent_pa">Rent Per Annum (£)</label>
+          <input type="number" id="rent_pa" name="rent_pa" step="1" min="0"
+                 value="{{ trans.rent_pa | int if trans and trans.rent_pa else '' }}"
+                 placeholder="e.g. 85000">
+        </div>
+        <div class="form-group">
+          <label for="break_clause">Break Clause</label>
+          <input type="text" id="break_clause" name="break_clause"
+                 value="{{ trans.break_clause or '' }}" placeholder="e.g. 5-year break">
+        </div>
+        <div class="form-group">
+          <label for="lease_start">Lease Start</label>
+          <input type="date" id="lease_start" name="lease_start"
+                 value="{{ trans.lease_start.strftime('%Y-%m-%d') if trans and trans.lease_start else '' }}">
+        </div>
+        <div class="form-group">
+          <label for="lease_end">Lease Expiry</label>
+          <input type="date" id="lease_end" name="lease_end"
+                 value="{{ trans.lease_end.strftime('%Y-%m-%d') if trans and trans.lease_end else '' }}">
+        </div>
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <div class="form-grid" style="margin-bottom:16px">
+      <div class="form-group span-2">
+        <label for="notes">Notes</label>
+        <textarea id="notes" name="notes" rows="3"
+                  placeholder="Any additional notes, conditions, caveats…">{{ trans.notes or '' }}</textarea>
+      </div>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">{{ 'Save Changes' if trans else 'Record Transaction' }}</button>
+      {% if trans %}
+        <a href="{{ url_for('property_detail', id=trans.property_id) }}" class="btn btn-secondary">Cancel</a>
+        <form method="post" action="{{ url_for('transaction_delete', id=trans.id) }}" class="confirm-delete" style="margin-left:auto">
+          <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+        </form>
+      {% else %}
+        <a href="{{ url_for('transactions_list') }}" class="btn btn-secondary">Cancel</a>
+      {% endif %}
+    </div>
+  </form>
+</div>
+{% endblock %}
