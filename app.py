@@ -271,6 +271,9 @@ class ProjectDocument(db.Model):
     document_name = db.Column(db.String(255), nullable=False)
     notes = db.Column(db.Text)
     uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
+    file_data = db.Column(db.LargeBinary)
+    file_mime = db.Column(db.String(100))
+    file_size = db.Column(db.Integer)
 
 
 class ProjectTask(db.Model):
@@ -701,15 +704,31 @@ def project_delete(id):
 @app.route('/projects/<int:id>/documents/add', methods=['POST'])
 def document_add(id):
     project = Project.query.get_or_404(id)
+    file = request.files.get('file')
+    file_data = file_mime = None
+    file_size = 0
+    doc_name = request.form.get('document_name', '').strip()
+    if file and file.filename:
+        file_data = file.read()
+        file_mime = file.content_type or 'application/octet-stream'
+        file_size = len(file_data)
+        if not doc_name:
+            doc_name = file.filename
+    if not doc_name:
+        flash('Please provide a document name or upload a file.', 'warning')
+        return redirect(url_for('project_detail', id=id))
     doc = ProjectDocument(
         project_id=id,
         folder=request.form['folder'],
-        document_name=request.form['document_name'],
+        document_name=doc_name,
         notes=request.form.get('notes'),
+        file_data=file_data,
+        file_mime=file_mime,
+        file_size=file_size,
     )
     db.session.add(doc)
     db.session.commit()
-    flash('Document entry added.', 'success')
+    flash('Document added.', 'success')
     return redirect(url_for('project_detail', id=id))
 
 
@@ -721,6 +740,22 @@ def document_delete(id):
     db.session.commit()
     flash('Document removed.', 'info')
     return redirect(url_for('project_detail', id=project_id))
+
+
+@app.route('/documents/<int:id>/download')
+def document_download(id):
+    from flask import send_file
+    import io
+    doc = ProjectDocument.query.get_or_404(id)
+    if not doc.file_data:
+        flash('No file attached to this document.', 'warning')
+        return redirect(url_for('project_detail', id=doc.project_id))
+    return send_file(
+        io.BytesIO(doc.file_data),
+        mimetype=doc.file_mime or 'application/octet-stream',
+        as_attachment=True,
+        download_name=doc.document_name,
+    )
 
 
 # ── Organisations ────────────────────────────────────────────────────────────
@@ -1346,9 +1381,23 @@ def _migrate_listing_columns():
             conn.commit()
 
 
+def _migrate_document_columns():
+    from sqlalchemy import text, inspect
+    with app.app_context():
+        insp = inspect(db.engine)
+        existing = {col['name'] for col in insp.get_columns('project_documents')}
+        new_cols = [('file_data', 'BYTEA'), ('file_mime', 'TEXT'), ('file_size', 'INTEGER')]
+        with db.engine.connect() as conn:
+            for col_name, col_def in new_cols:
+                if col_name not in existing:
+                    conn.execute(text(f'ALTER TABLE project_documents ADD COLUMN {col_name} {col_def}'))
+            conn.commit()
+
+
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
         _migrate_project_columns()
         _migrate_listing_columns()
+        _migrate_document_columns()
     app.run(debug=False, host='127.0.0.1', port=8080)
