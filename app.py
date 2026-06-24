@@ -2,6 +2,8 @@ import os
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
+from flask_login import LoginManager, UserMixin, login_user, logout_user, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, date
 
 app = Flask(__name__)
@@ -14,6 +16,11 @@ app.config['SQLALCHEMY_DATABASE_URI'] = _db_url
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'cowan-rutter-property-db-2026')
 db = SQLAlchemy(app)
 CORS(app, resources={r'/api/*': {'origins': '*'}})
+
+login_manager = LoginManager(app)
+login_manager.login_view = 'login'
+login_manager.login_message = 'Please log in to access the database.'
+login_manager.login_message_category = 'warning'
 
 
 # ── Models ─────────────────────────────────────────────────────────────────
@@ -400,6 +407,59 @@ class ProjectPhoto(db.Model):
     project = db.relationship('Project', backref=db.backref('photos', lazy=True, cascade='all, delete-orphan'))
 
 
+# ── Auth ───────────────────────────────────────────────────────────────────
+
+class User(UserMixin, db.Model):
+    __tablename__ = 'users'
+    id            = db.Column(db.Integer, primary_key=True)
+    username      = db.Column(db.String(80), unique=True, nullable=False)
+    password_hash = db.Column(db.String(255), nullable=False)
+
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+
+
+@login_manager.user_loader
+def load_user(user_id):
+    return User.query.get(int(user_id))
+
+
+# Public endpoints: website API + login page itself
+_PUBLIC_ENDPOINTS = {'login', 'logout', 'static', 'api_enquiry', 'api_listings'}
+
+
+@app.before_request
+def require_login():
+    if request.endpoint in _PUBLIC_ENDPOINTS:
+        return
+    if not current_user.is_authenticated:
+        return redirect(url_for('login', next=request.url))
+
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if current_user.is_authenticated:
+        return redirect(url_for('dashboard'))
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip().lower()
+        password = request.form.get('password', '')
+        user = User.query.filter_by(username=username).first()
+        if user and user.check_password(password):
+            login_user(user, remember=True)
+            next_page = request.args.get('next', '')
+            if next_page and next_page.startswith('/'):
+                return redirect(next_page)
+            return redirect(url_for('dashboard'))
+        flash('Incorrect username or password.', 'danger')
+    return render_template('login.html')
+
+
+@app.route('/logout', methods=['POST'])
+def logout():
+    logout_user()
+    return redirect(url_for('login'))
+
+
 # ── Properties ─────────────────────────────────────────────────────────────
 
 @app.route('/')
@@ -430,8 +490,7 @@ def dashboard():
         e.next_follow_up or today
     ))
 
-    # Follow-ups due today or overdue
-    due_today = [e for e in open_enquiries if e.next_follow_up and e.next_follow_up <= today]
+    due_today = []  # follow-up banner removed from dashboard
 
     recent_transactions = Transaction.query.order_by(Transaction.created_at.desc()).limit(10).all()
     enq_count = Enquiry.query.filter(Enquiry.status == 'Open').count()
@@ -1638,6 +1697,16 @@ def api_listings():
     return jsonify(result)
 
 
+def _ensure_default_user():
+    with app.app_context():
+        if not User.query.first():
+            pw = os.environ.get('APP_PASSWORD', 'changeme')
+            db.session.add(User(username='admin', password_hash=generate_password_hash(pw)))
+            db.session.commit()
+            if pw == 'changeme':
+                print("WARNING: No APP_PASSWORD env var set. Default password is 'changeme' — change it.")
+
+
 def _migrate_project_columns():
     from sqlalchemy import text, inspect
     with app.app_context():
@@ -1801,5 +1870,6 @@ if __name__ == '__main__':
         _migrate_listing_columns()
         _migrate_document_columns()
         _migrate_enquiry_columns()
+        _ensure_default_user()
         _seed_listings_from_properties()
     app.run(debug=False, host='127.0.0.1', port=8080)
