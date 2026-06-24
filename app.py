@@ -317,6 +317,41 @@ class Project(db.Model):
         return [d for d in self.documents if d.folder == folder]
 
 
+class Listing(db.Model):
+    """Website-facing unit listing within a Property (building)."""
+    __tablename__ = 'listings'
+    id               = db.Column(db.Integer, primary_key=True)
+    property_id      = db.Column(db.Integer, db.ForeignKey('properties.id'), nullable=False)
+    unit_name        = db.Column(db.String(100))   # e.g. "Unit 202-203" — blank = whole building
+    website_listed   = db.Column(db.Boolean, default=True)
+    listing_status   = db.Column(db.String(20), default='available')
+    featured         = db.Column(db.Boolean, default=False)
+    website_category = db.Column(db.String(20))
+    use_class        = db.Column(db.String(30))
+    area             = db.Column(db.String(100))
+    listing_price    = db.Column(db.Float)
+    listing_price_unit = db.Column(db.String(10))
+    price_display    = db.Column(db.String(100))
+    size             = db.Column(db.Float)
+    measurement_type = db.Column(db.String(10))
+    beds             = db.Column(db.Integer)
+    baths            = db.Column(db.Integer)
+    lat              = db.Column(db.Float)
+    lng              = db.Column(db.Float)
+    photo_id         = db.Column(db.String(100))
+    blurb            = db.Column(db.Text)
+    created_at       = db.Column(db.DateTime, default=datetime.utcnow)
+
+    prop = db.relationship('Property', backref=db.backref('unit_listings', lazy=True,
+                           cascade='all, delete-orphan'))
+
+    @property
+    def display_title(self):
+        if self.unit_name:
+            return f"{self.unit_name}, {self.prop.address}"
+        return self.prop.address
+
+
 class ProjectDocument(db.Model):
     __tablename__ = 'project_documents'
     id = db.Column(db.Integer, primary_key=True)
@@ -1170,6 +1205,19 @@ def enquiry_edit(id):
                            organisations=organisations, projects=projects)
 
 
+@app.route('/enquiries/<int:id>/log-contact', methods=['POST'])
+def enquiry_log_contact(id):
+    e = Enquiry.query.get_or_404(id)
+    e.last_contact_date = date.today()
+    nf = request.form.get('next_follow_up', '').strip()
+    if nf:
+        try: e.next_follow_up = datetime.strptime(nf, '%Y-%m-%d').date()
+        except: pass
+    db.session.commit()
+    flash(f'Contact logged for "{e.subject}". Follow-up set.', 'success')
+    return redirect(request.referrer or url_for('enquiries_list'))
+
+
 @app.route('/enquiries/<int:id>/delete', methods=['POST'])
 def enquiry_delete(id):
     e = Enquiry.query.get_or_404(id)
@@ -1454,41 +1502,140 @@ def api_enquiry():
     })
 
 
+# ── Listing CRUD (unit-level listings within a Property) ─────────────────────
+
+@app.route('/properties/<int:prop_id>/listings/new', methods=['GET', 'POST'])
+def listing_new(prop_id):
+    prop = Property.query.get_or_404(prop_id)
+    if request.method == 'POST':
+        def pf(v): return float(v.replace(',','')) if v and v.strip() else None
+        l = Listing(
+            property_id=prop_id,
+            unit_name=request.form.get('unit_name','').strip() or None,
+            website_listed=bool(request.form.get('website_listed')),
+            listing_status=request.form.get('listing_status','available'),
+            featured=bool(request.form.get('featured')),
+            website_category=request.form.get('website_category') or None,
+            use_class=request.form.get('use_class') or None,
+            area=request.form.get('area') or None,
+            listing_price=pf(request.form.get('listing_price','')),
+            listing_price_unit=request.form.get('listing_price_unit','poa'),
+            price_display=request.form.get('price_display') or None,
+            size=pf(request.form.get('size','')),
+            measurement_type=request.form.get('measurement_type') or None,
+            beds=int(request.form.get('beds')) if request.form.get('beds','').strip() else None,
+            baths=int(request.form.get('baths')) if request.form.get('baths','').strip() else None,
+            lat=pf(request.form.get('lat','')),
+            lng=pf(request.form.get('lng','')),
+            photo_id=request.form.get('photo_id') or None,
+            blurb=request.form.get('blurb') or None,
+        )
+        db.session.add(l)
+        db.session.commit()
+        flash('Listing added.', 'success')
+        return redirect(url_for('property_detail', id=prop_id))
+    return render_template('properties/listing_form.html', prop=prop, listing=None)
+
+
+@app.route('/listings/<int:id>/edit', methods=['GET', 'POST'])
+def listing_edit(id):
+    l = Listing.query.get_or_404(id)
+    prop = l.prop
+    if request.method == 'POST':
+        def pf(v): return float(v.replace(',','')) if v and v.strip() else None
+        l.unit_name        = request.form.get('unit_name','').strip() or None
+        l.website_listed   = bool(request.form.get('website_listed'))
+        l.listing_status   = request.form.get('listing_status','available')
+        l.featured         = bool(request.form.get('featured'))
+        l.website_category = request.form.get('website_category') or None
+        l.use_class        = request.form.get('use_class') or None
+        l.area             = request.form.get('area') or None
+        l.listing_price    = pf(request.form.get('listing_price',''))
+        l.listing_price_unit = request.form.get('listing_price_unit','poa')
+        l.price_display    = request.form.get('price_display') or None
+        l.size             = pf(request.form.get('size',''))
+        l.measurement_type = request.form.get('measurement_type') or None
+        l.beds  = int(request.form.get('beds'))  if request.form.get('beds','').strip()  else None
+        l.baths = int(request.form.get('baths')) if request.form.get('baths','').strip() else None
+        l.lat   = pf(request.form.get('lat',''))
+        l.lng   = pf(request.form.get('lng',''))
+        l.photo_id = request.form.get('photo_id') or None
+        l.blurb    = request.form.get('blurb') or None
+        db.session.commit()
+        flash('Listing updated.', 'success')
+        return redirect(url_for('property_detail', id=prop.id))
+    return render_template('properties/listing_form.html', prop=prop, listing=l)
+
+
+@app.route('/listings/<int:id>/delete', methods=['POST'])
+def listing_delete(id):
+    l = Listing.query.get_or_404(id)
+    prop_id = l.property_id
+    db.session.delete(l)
+    db.session.commit()
+    flash('Listing removed.', 'info')
+    return redirect(url_for('property_detail', id=prop_id))
+
+
 # ── Public API (consumed by website) ─────────────────────────────────────────
 
 @app.route('/api/listings')
 def api_listings():
-    props = Property.query.filter_by(website_listed=True).all()
-    listings = []
-    for p in props:
-        price = p.listing_price or 0
-        unit  = p.listing_price_unit or 'poa'
-        obj = {
-            'id':            f'cr-db-{p.id}',
-            'featured':      bool(p.featured),
-            'category':      p.website_category or 'commercial',
-            'status':        'sale' if unit == 'sale' else 'let',
-            'listingStatus': p.listing_status or 'available',
-            'type':          p.property_type or 'Property',
-            'use':           p.use_class or 'office',
-            'title':         p.address,
-            'area':          p.area or p.postcode,
-            'postcode':      p.postcode,
-            'address':       p.address,
-            'price':         price,
-            'priceUnit':     unit,
-            'priceDisplay':  p.price_display or None,
-            'sqft':          int(p.size) if p.size else 0,
-            'lat':           p.lat,
-            'lng':           p.lng,
-            'added':         p.created_at.strftime('%Y-%m-%d'),
-            'photo':         p.photo_id or 'photo-1497366216548-37526070297c',
-            'blurb':         p.blurb or p.description or '',
-            'beds':          p.beds,
-            'baths':         p.baths,
-        }
-        listings.append(obj)
-    return jsonify(listings)
+    # Serve from Listing model first; fall back to legacy Property.website_listed
+    result = []
+    listings = Listing.query.filter_by(website_listed=True).all()
+    if listings:
+        for l in listings:
+            p = l.prop
+            title = f"{l.unit_name}, {p.address}" if l.unit_name else p.address
+            price = l.listing_price or 0
+            unit  = l.listing_price_unit or 'poa'
+            result.append({
+                'id':            f'cr-lst-{l.id}',
+                'featured':      bool(l.featured),
+                'category':      l.website_category or 'commercial',
+                'status':        'sale' if unit == 'sale' else 'let',
+                'listingStatus': l.listing_status or 'available',
+                'type':          p.property_type or 'Property',
+                'use':           l.use_class or 'office',
+                'title':         title,
+                'area':          l.area or p.postcode,
+                'postcode':      p.postcode,
+                'address':       p.address,
+                'price':         price,
+                'priceUnit':     unit,
+                'priceDisplay':  l.price_display or None,
+                'sqft':          int(l.size or p.size or 0),
+                'lat':           l.lat or p.lat,
+                'lng':           l.lng or p.lng,
+                'added':         l.created_at.strftime('%Y-%m-%d'),
+                'photo':         l.photo_id or p.photo_id or 'photo-1497366216548-37526070297c',
+                'blurb':         l.blurb or p.blurb or p.description or '',
+                'beds':          l.beds or p.beds,
+                'baths':         l.baths or p.baths,
+            })
+    else:
+        # Legacy fallback
+        for p in Property.query.filter_by(website_listed=True).all():
+            price = p.listing_price or 0
+            unit  = p.listing_price_unit or 'poa'
+            result.append({
+                'id': f'cr-db-{p.id}', 'featured': bool(p.featured),
+                'category': p.website_category or 'commercial',
+                'status': 'sale' if unit == 'sale' else 'let',
+                'listingStatus': p.listing_status or 'available',
+                'type': p.property_type or 'Property', 'use': p.use_class or 'office',
+                'title': p.address, 'area': p.area or p.postcode, 'postcode': p.postcode,
+                'address': p.address, 'price': price, 'priceUnit': unit,
+                'priceDisplay': p.price_display or None,
+                'sqft': int(p.size) if p.size else 0,
+                'lat': p.lat, 'lng': p.lng,
+                'added': p.created_at.strftime('%Y-%m-%d'),
+                'photo': p.photo_id or 'photo-1497366216548-37526070297c',
+                'blurb': p.blurb or p.description or '',
+                'beds': p.beds, 'baths': p.baths,
+            })
+    return jsonify(result)
 
 
 def _migrate_project_columns():
@@ -1625,6 +1772,28 @@ def _migrate_document_columns():
             conn.commit()
 
 
+def _seed_listings_from_properties():
+    """One-time: create Listing records from properties that have website_listed=True."""
+    with app.app_context():
+        if Listing.query.count() > 0:
+            return
+        props = Property.query.filter_by(website_listed=True).all()
+        for p in props:
+            db.session.add(Listing(
+                property_id=p.id, unit_name=None,
+                website_listed=True, listing_status=p.listing_status or 'available',
+                featured=bool(p.featured), website_category=p.website_category,
+                use_class=p.use_class, area=p.area,
+                listing_price=p.listing_price, listing_price_unit=p.listing_price_unit,
+                price_display=p.price_display,
+                size=p.size, measurement_type=p.measurement_type,
+                beds=p.beds, baths=p.baths,
+                lat=p.lat, lng=p.lng,
+                photo_id=p.photo_id, blurb=p.blurb,
+            ))
+        db.session.commit()
+
+
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
@@ -1632,4 +1801,5 @@ if __name__ == '__main__':
         _migrate_listing_columns()
         _migrate_document_columns()
         _migrate_enquiry_columns()
+        _seed_listings_from_properties()
     app.run(debug=False, host='127.0.0.1', port=8080)
