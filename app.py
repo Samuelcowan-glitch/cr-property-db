@@ -1099,21 +1099,6 @@ def photo_delete(id):
     return redirect(url_for('project_detail', id=project_id))
 
 
-# ── One-time listing import ───────────────────────────────────────────────────
-
-@app.route('/api/import-listings', methods=['POST'])
-def api_import_listings():
-    from import_listings import listings as LISTINGS
-    added = 0; skipped = 0
-    for l in LISTINGS:
-        if Property.query.filter_by(address=l['address'], postcode=l['postcode']).first():
-            skipped += 1; continue
-        db.session.add(Property(**l)); added += 1
-    db.session.commit()
-    return jsonify({'ok': True, 'added': added, 'skipped': skipped,
-                    'total': Property.query.count()})
-
-
 # ── Property detail API (used by transaction form JS) ────────────────────────
 
 @app.route('/api/property/<int:id>/meta')
