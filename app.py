@@ -1177,6 +1177,13 @@ def api_enquiry():
             Property.address.ilike(f'%{property_ref[:40]}%')
         ).first()
 
+    # Find the active project for that property (if any)
+    proj = None
+    if prop:
+        proj = Project.query.filter_by(
+            property_id=prop.id, status='Active'
+        ).first()
+
     # Map interest → enquiry type label
     etype_map = {
         'Commercial Agency':  'Agency — Letting',
@@ -1195,6 +1202,7 @@ def api_enquiry():
         status='Open',
         contact_id=contact.id if contact else None,
         property_id=prop.id if prop else None,
+        project_id=proj.id if proj else None,
         notes=message or None,
         received_date=date.today(),
     )
