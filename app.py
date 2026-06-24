@@ -46,8 +46,17 @@ class Property(db.Model):
     baths             = db.Column(db.Integer)
     lat               = db.Column(db.Float)
     lng               = db.Column(db.Float)
-    photo_id          = db.Column(db.String(100))  # Unsplash photo ID
-    blurb             = db.Column(db.Text)          # website marketing description
+    photo_id          = db.Column(db.String(100))
+    blurb             = db.Column(db.Text)
+    listing_size      = db.Column(db.Float)
+    listing_size_unit = db.Column(db.String(20))
+    # ── Attachments ──
+    brochure_data     = db.Column(db.LargeBinary)
+    brochure_filename = db.Column(db.String(255))
+    brochure_size     = db.Column(db.Integer)
+    floor_plan_data   = db.Column(db.LargeBinary)
+    floor_plan_filename = db.Column(db.String(255))
+    floor_plan_size   = db.Column(db.Integer)
 
     transactions = db.relationship('Transaction', backref='property', lazy=True, cascade='all, delete-orphan')
     projects = db.relationship('Project', backref='property', lazy=True, cascade='all, delete-orphan')
@@ -204,7 +213,7 @@ class Enquiry(db.Model):
     __tablename__ = 'enquiries'
     id = db.Column(db.Integer, primary_key=True)
     subject = db.Column(db.String(255), nullable=False)
-    enquiry_type = db.Column(db.String(50))   # Valuation, Lease Advisory, Agency, Building Consultancy, Other
+    enquiry_type = db.Column(db.String(50))
     status = db.Column(db.String(20), default='Open')  # Open, Won, Lost, On Hold
     property_id = db.Column(db.Integer, db.ForeignKey('properties.id'), nullable=True)
     contact_id = db.Column(db.Integer, db.ForeignKey('contacts.id'), nullable=True)
@@ -214,11 +223,56 @@ class Enquiry(db.Model):
     received_date = db.Column(db.Date)
     notes = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    # Applicant requirements
+    req_size_min    = db.Column(db.Float)
+    req_size_max    = db.Column(db.Float)
+    req_budget_min  = db.Column(db.Float)
+    req_budget_max  = db.Column(db.Float)
+    req_budget_unit = db.Column(db.String(10))  # pa / pcm / sale
+    req_use_class   = db.Column(db.String(30))
+    req_category    = db.Column(db.String(20))  # commercial / residential
+    # Follow-up tracking
+    last_contact_date = db.Column(db.Date)
+    next_follow_up    = db.Column(db.Date)
 
-    property = db.relationship('Property', backref='enquiries')
+    linked_property = db.relationship('Property', backref='enquiries')
     contact = db.relationship('Contact', backref='enquiries')
     organisation = db.relationship('Organisation', backref='enquiries')
-    project = db.relationship('Project', backref='enquiries')
+    linked_project = db.relationship('Project', backref='enquiries')
+
+    @property
+    def traffic_light(self):
+        today = date.today()
+        if self.status != 'Open':
+            return 'grey'
+        ref = self.last_contact_date or self.received_date or self.created_at.date()
+        days = (today - ref).days
+        if self.next_follow_up and today > self.next_follow_up:
+            return 'red'
+        if days >= 7:
+            return 'red'
+        if days >= 3:
+            return 'amber'
+        return 'green'
+
+    @property
+    def traffic_emoji(self):
+        return {'red': '🔴', 'amber': '🟡', 'green': '🟢', 'grey': '⚪'}.get(self.traffic_light, '⚪')
+
+
+class EnquiryNote(db.Model):
+    __tablename__ = 'enquiry_notes'
+    id = db.Column(db.Integer, primary_key=True)
+    enquiry_id = db.Column(db.Integer, db.ForeignKey('enquiries.id'), nullable=False)
+    direction  = db.Column(db.String(20))  # inbound / outbound / note
+    subject    = db.Column(db.String(255))
+    body       = db.Column(db.Text, nullable=False)
+    author     = db.Column(db.String(100))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    enquiry = db.relationship('Enquiry', backref=db.backref('notes_chain', lazy=True,
+                              cascade='all, delete-orphan',
+                              order_by='EnquiryNote.created_at'))
 
 
 FOLDER_LABELS = {
@@ -329,7 +383,21 @@ def dashboard():
         active_listings = Property.query.order_by(Property.created_at.desc()).limit(20).all()
 
     contacts = Contact.query.order_by(Contact.created_at.desc()).limit(20).all()
-    open_enquiries = Enquiry.query.filter(Enquiry.status == 'Open').order_by(Enquiry.created_at.desc()).limit(20).all()
+    today = date.today()
+
+    # All open enquiries sorted by priority (overdue first, then by follow-up date)
+    open_enquiries = Enquiry.query.filter(Enquiry.status == 'Open').all()
+    open_enquiries.sort(key=lambda e: (
+        0 if (e.next_follow_up and e.next_follow_up <= today) else
+        1 if (e.last_contact_date and (today - e.last_contact_date).days >= 7) else
+        1 if (not e.last_contact_date and e.received_date and (today - e.received_date).days >= 7) else
+        2,
+        e.next_follow_up or today
+    ))
+
+    # Follow-ups due today or overdue
+    due_today = [e for e in open_enquiries if e.next_follow_up and e.next_follow_up <= today]
+
     recent_transactions = Transaction.query.order_by(Transaction.created_at.desc()).limit(10).all()
     enq_count = Enquiry.query.filter(Enquiry.status == 'Open').count()
     contact_count = Contact.query.count()
@@ -343,7 +411,9 @@ def dashboard():
                            active_listings=active_listings,
                            contacts=contacts,
                            open_enquiries=open_enquiries,
-                           recent_transactions=recent_transactions)
+                           due_today=due_today,
+                           recent_transactions=recent_transactions,
+                           today=today)
 
 
 @app.route('/properties')
@@ -432,6 +502,9 @@ def property_edit(id):
         prop.photo_id           = request.form.get('photo_id') or None
         prop.blurb              = request.form.get('blurb') or None
         prop.residential_use    = request.form.get('residential_use') or None
+        ls = request.form.get('listing_size', '').strip()
+        prop.listing_size       = float(ls) if ls else None
+        prop.listing_size_unit  = request.form.get('listing_size_unit') or None
         db.session.commit()
         flash('Property updated.', 'success')
         return redirect(url_for('property_detail', id=prop.id))
@@ -445,6 +518,78 @@ def property_delete(id):
     db.session.commit()
     flash('Property deleted.', 'info')
     return redirect(url_for('properties_list'))
+
+
+@app.route('/properties/<int:id>/brochure/upload', methods=['POST'])
+def brochure_upload(id):
+    prop = Property.query.get_or_404(id)
+    f = request.files.get('brochure')
+    if f and f.filename:
+        prop.brochure_data     = f.read()
+        prop.brochure_filename = f.filename
+        prop.brochure_size     = len(prop.brochure_data)
+        db.session.commit()
+        flash('Brochure uploaded.', 'success')
+    return redirect(url_for('property_edit', id=id))
+
+
+@app.route('/properties/<int:id>/brochure/download')
+def brochure_download(id):
+    from flask import send_file
+    import io
+    prop = Property.query.get_or_404(id)
+    if not prop.brochure_data:
+        flash('No brochure attached.', 'warning')
+        return redirect(url_for('property_detail', id=id))
+    return send_file(io.BytesIO(prop.brochure_data),
+                     mimetype='application/pdf',
+                     as_attachment=True,
+                     download_name=prop.brochure_filename or 'brochure.pdf')
+
+
+@app.route('/properties/<int:id>/brochure/delete', methods=['POST'])
+def brochure_delete(id):
+    prop = Property.query.get_or_404(id)
+    prop.brochure_data = prop.brochure_filename = prop.brochure_size = None
+    db.session.commit()
+    flash('Brochure removed.', 'info')
+    return redirect(url_for('property_edit', id=id))
+
+
+@app.route('/properties/<int:id>/floorplan/upload', methods=['POST'])
+def floorplan_upload(id):
+    prop = Property.query.get_or_404(id)
+    f = request.files.get('floor_plan')
+    if f and f.filename:
+        prop.floor_plan_data     = f.read()
+        prop.floor_plan_filename = f.filename
+        prop.floor_plan_size     = len(prop.floor_plan_data)
+        db.session.commit()
+        flash('Floor plan uploaded.', 'success')
+    return redirect(url_for('property_edit', id=id))
+
+
+@app.route('/properties/<int:id>/floorplan/download')
+def floorplan_download(id):
+    from flask import send_file
+    import io
+    prop = Property.query.get_or_404(id)
+    if not prop.floor_plan_data:
+        flash('No floor plan attached.', 'warning')
+        return redirect(url_for('property_detail', id=id))
+    return send_file(io.BytesIO(prop.floor_plan_data),
+                     mimetype='application/pdf',
+                     as_attachment=True,
+                     download_name=prop.floor_plan_filename or 'floorplan.pdf')
+
+
+@app.route('/properties/<int:id>/floorplan/delete', methods=['POST'])
+def floorplan_delete(id):
+    prop = Property.query.get_or_404(id)
+    prop.floor_plan_data = prop.floor_plan_filename = prop.floor_plan_size = None
+    db.session.commit()
+    flash('Floor plan removed.', 'info')
+    return redirect(url_for('property_edit', id=id))
 
 
 # ── Transactions ────────────────────────────────────────────────────────────
@@ -937,6 +1082,36 @@ def enquiries_list():
     return render_template('crm/enquiries_list.html', enquiries=enquiries, q=q, status=status)
 
 
+def _parse_enquiry_form(form, e=None):
+    def pd(v): return datetime.strptime(v, '%Y-%m-%d').date() if v else None
+    def pf(v): return float(v.replace(',','')) if v and v.strip() else None
+    def pi(v): return int(v) if v else None
+    fields = dict(
+        subject=form['subject'],
+        enquiry_type=form.get('enquiry_type'),
+        status=form.get('status', 'Open'),
+        property_id=pi(form.get('property_id')),
+        contact_id=pi(form.get('contact_id')),
+        organisation_id=pi(form.get('organisation_id')),
+        project_id=pi(form.get('project_id')),
+        fee_earner=form.get('fee_earner'),
+        received_date=pd(form.get('received_date')),
+        last_contact_date=pd(form.get('last_contact_date')),
+        next_follow_up=pd(form.get('next_follow_up')),
+        notes=form.get('notes'),
+        req_size_min=pf(form.get('req_size_min')),
+        req_size_max=pf(form.get('req_size_max')),
+        req_budget_min=pf(form.get('req_budget_min')),
+        req_budget_max=pf(form.get('req_budget_max')),
+        req_budget_unit=form.get('req_budget_unit') or 'pa',
+        req_use_class=form.get('req_use_class') or None,
+        req_category=form.get('req_category') or None,
+    )
+    if e:
+        for k, v in fields.items(): setattr(e, k, v)
+    return fields
+
+
 @app.route('/enquiries/new', methods=['GET', 'POST'])
 def enquiry_new():
     properties = Property.query.order_by(Property.address).all()
@@ -944,29 +1119,38 @@ def enquiry_new():
     organisations = Organisation.query.order_by(Organisation.name).all()
     projects = Project.query.order_by(Project.name).all()
     if request.method == 'POST':
-        def parse_date(val):
-            return datetime.strptime(val, '%Y-%m-%d').date() if val else None
-        def pick(val):
-            return int(val) if val else None
-        e = Enquiry(
-            subject=request.form['subject'],
-            enquiry_type=request.form.get('enquiry_type'),
-            status=request.form.get('status', 'Open'),
-            property_id=pick(request.form.get('property_id')),
-            contact_id=pick(request.form.get('contact_id')),
-            organisation_id=pick(request.form.get('organisation_id')),
-            project_id=pick(request.form.get('project_id')),
-            fee_earner=request.form.get('fee_earner'),
-            received_date=parse_date(request.form.get('received_date')),
-            notes=request.form.get('notes'),
-        )
+        e = Enquiry(**_parse_enquiry_form(request.form))
         db.session.add(e)
         db.session.commit()
         flash('Enquiry recorded.', 'success')
-        return redirect(url_for('enquiries_list'))
+        return redirect(url_for('enquiry_detail', id=e.id))
     return render_template('crm/enquiry_form.html', enquiry=None,
                            properties=properties, contacts=contacts,
                            organisations=organisations, projects=projects)
+
+
+@app.route('/enquiries/<int:id>')
+def enquiry_detail(id):
+    e = Enquiry.query.get_or_404(id)
+    # Match properties to enquiry requirements
+    matched = []
+    q = Property.query.filter_by(website_listed=True)
+    if e.req_category:
+        q = q.filter_by(website_category=e.req_category)
+    if e.req_use_class:
+        q = q.filter_by(use_class=e.req_use_class)
+    candidates = q.all()
+    for p in candidates:
+        score = 0
+        if e.req_size_min and p.size and p.size >= e.req_size_min: score += 1
+        if e.req_size_max and p.size and p.size <= e.req_size_max: score += 1
+        if e.req_budget_max and p.listing_price and p.listing_price <= e.req_budget_max: score += 2
+        if e.req_budget_min and p.listing_price and p.listing_price >= e.req_budget_min: score += 1
+        if score > 0:
+            matched.append((score, p))
+    matched.sort(key=lambda x: x[0], reverse=True)
+    matched_props = [p for _, p in matched[:6]]
+    return render_template('crm/enquiry_detail.html', e=e, matched_props=matched_props, today=date.today())
 
 
 @app.route('/enquiries/<int:id>/edit', methods=['GET', 'POST'])
@@ -977,23 +1161,10 @@ def enquiry_edit(id):
     organisations = Organisation.query.order_by(Organisation.name).all()
     projects = Project.query.order_by(Project.name).all()
     if request.method == 'POST':
-        def parse_date(val):
-            return datetime.strptime(val, '%Y-%m-%d').date() if val else None
-        def pick(val):
-            return int(val) if val else None
-        e.subject = request.form['subject']
-        e.enquiry_type = request.form.get('enquiry_type')
-        e.status = request.form.get('status', 'Open')
-        e.property_id = pick(request.form.get('property_id'))
-        e.contact_id = pick(request.form.get('contact_id'))
-        e.organisation_id = pick(request.form.get('organisation_id'))
-        e.project_id = pick(request.form.get('project_id'))
-        e.fee_earner = request.form.get('fee_earner')
-        e.received_date = parse_date(request.form.get('received_date'))
-        e.notes = request.form.get('notes')
+        _parse_enquiry_form(request.form, e)
         db.session.commit()
         flash('Enquiry updated.', 'success')
-        return redirect(url_for('enquiries_list'))
+        return redirect(url_for('enquiry_detail', id=e.id))
     return render_template('crm/enquiry_form.html', enquiry=e,
                            properties=properties, contacts=contacts,
                            organisations=organisations, projects=projects)
@@ -1006,6 +1177,38 @@ def enquiry_delete(id):
     db.session.commit()
     flash('Enquiry deleted.', 'info')
     return redirect(url_for('enquiries_list'))
+
+
+@app.route('/enquiries/<int:id>/notes/add', methods=['POST'])
+def enquiry_note_add(id):
+    e = Enquiry.query.get_or_404(id)
+    body = request.form.get('body', '').strip()
+    if body:
+        n = EnquiryNote(
+            enquiry_id=id,
+            direction=request.form.get('direction', 'note'),
+            subject=request.form.get('subject', '').strip() or None,
+            body=body,
+            author=request.form.get('author', '').strip() or 'Unknown',
+        )
+        db.session.add(n)
+        e.last_contact_date = date.today()
+        lf = request.form.get('next_follow_up', '').strip()
+        if lf:
+            try: e.next_follow_up = datetime.strptime(lf, '%Y-%m-%d').date()
+            except: pass
+        db.session.commit()
+        flash('Note added.', 'success')
+    return redirect(url_for('enquiry_detail', id=id))
+
+
+@app.route('/enquiry-notes/<int:id>/delete', methods=['POST'])
+def enquiry_note_delete(id):
+    n = EnquiryNote.query.get_or_404(id)
+    enq_id = n.enquiry_id
+    db.session.delete(n)
+    db.session.commit()
+    return redirect(url_for('enquiry_detail', id=enq_id))
 
 
 # ── Property-Contact Matching ─────────────────────────────────────────────────
@@ -1304,7 +1507,17 @@ def _migrate_project_columns():
         prop_existing  = {col['name'] for col in insp.get_columns('properties')}
         trans_existing = {col['name'] for col in insp.get_columns('transactions')}
 
-        prop_extra = [('residential_use', 'TEXT')]
+        prop_extra = [
+            ('residential_use',       'TEXT'),
+            ('listing_size',          'REAL'),
+            ('listing_size_unit',     'TEXT'),
+            ('brochure_data',         'BLOB'),
+            ('brochure_filename',     'TEXT'),
+            ('brochure_size',         'INTEGER'),
+            ('floor_plan_data',       'BLOB'),
+            ('floor_plan_filename',   'TEXT'),
+            ('floor_plan_size',       'INTEGER'),
+        ]
         trans_cols = [
             ('description',       'TEXT'), ('niy',              'REAL'),
             ('giy',               'REAL'), ('capital_rate_psf', 'REAL'),
@@ -1381,6 +1594,24 @@ def _migrate_listing_columns():
             conn.commit()
 
 
+def _migrate_enquiry_columns():
+    from sqlalchemy import text, inspect
+    with app.app_context():
+        insp = inspect(db.engine)
+        existing = {col['name'] for col in insp.get_columns('enquiries')}
+        new_cols = [
+            ('req_size_min','REAL'),('req_size_max','REAL'),
+            ('req_budget_min','REAL'),('req_budget_max','REAL'),
+            ('req_budget_unit','TEXT'),('req_use_class','TEXT'),('req_category','TEXT'),
+            ('last_contact_date','TEXT'),('next_follow_up','TEXT'),
+        ]
+        with db.engine.connect() as conn:
+            for col_name, col_def in new_cols:
+                if col_name not in existing:
+                    conn.execute(text(f'ALTER TABLE enquiries ADD COLUMN {col_name} {col_def}'))
+            conn.commit()
+
+
 def _migrate_document_columns():
     from sqlalchemy import text, inspect
     with app.app_context():
@@ -1400,4 +1631,5 @@ if __name__ == '__main__':
         _migrate_project_columns()
         _migrate_listing_columns()
         _migrate_document_columns()
+        _migrate_enquiry_columns()
     app.run(debug=False, host='127.0.0.1', port=8080)
