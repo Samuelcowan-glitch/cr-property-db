@@ -112,22 +112,49 @@
 
       <div class="form-group">
         <label>Category</label>
-        <select name="req_category">
+        <select name="req_category" id="req_category" onchange="updateUseClass()">
           <option value="">— Any —</option>
-          <option value="commercial" {{ 'selected' if enquiry and enquiry.req_category == 'commercial' else '' }}>Commercial</option>
+          <option value="commercial"  {{ 'selected' if enquiry and enquiry.req_category == 'commercial'  else '' }}>Commercial</option>
           <option value="residential" {{ 'selected' if enquiry and enquiry.req_category == 'residential' else '' }}>Residential</option>
         </select>
       </div>
 
       <div class="form-group">
-        <label>Use Class</label>
-        <select name="req_use_class">
-          <option value="">— Any —</option>
-          <option value="office" {{ 'selected' if enquiry and enquiry.req_use_class == 'office' else '' }}>Office</option>
-          <option value="retail" {{ 'selected' if enquiry and enquiry.req_use_class == 'retail' else '' }}>Retail</option>
-          <option value="industrial" {{ 'selected' if enquiry and enquiry.req_use_class == 'industrial' else '' }}>Industrial</option>
+        <label id="use-class-label">Property Type</label>
+        <select name="req_use_class" id="req_use_class">
+          <!-- Options populated by JS based on category -->
         </select>
       </div>
+
+      <script>
+      var currentUseClass = "{{ enquiry.req_use_class if enquiry and enquiry.req_use_class else '' }}";
+      var commercialOpts = [
+        ['', '— Any —'],
+        ['office', 'Office'],
+        ['retail', 'Retail'],
+        ['industrial', 'Industrial / Warehouse']
+      ];
+      var residentialOpts = [
+        ['', '— Any —'],
+        ['owner-occupied', 'Owner Occupied'],
+        ['investment', 'Investment / Resi Investment'],
+        ['hmo', 'HMO'],
+        ['vacant', 'Vacant']
+      ];
+      function updateUseClass() {
+        var cat = document.getElementById('req_category').value;
+        var sel = document.getElementById('req_use_class');
+        var opts = cat === 'residential' ? residentialOpts : commercialOpts;
+        sel.innerHTML = '';
+        opts.forEach(function(o) {
+          var opt = document.createElement('option');
+          opt.value = o[0]; opt.textContent = o[1];
+          if (o[0] === currentUseClass) opt.selected = true;
+          sel.appendChild(opt);
+        });
+      }
+      updateUseClass();
+      </script>
 
       <div class="form-group">
         <label>Min Size (sq ft)</label>
