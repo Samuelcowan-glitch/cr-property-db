@@ -107,9 +107,72 @@
         </select>
       </div>
 
+      <hr class="divider" style="grid-column:span 2;margin:8px 0">
+      <div style="grid-column:span 2;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#5f6368;">Applicant Requirements</div>
+
+      <div class="form-group">
+        <label>Category</label>
+        <select name="req_category">
+          <option value="">— Any —</option>
+          <option value="commercial" {{ 'selected' if enquiry and enquiry.req_category == 'commercial' else '' }}>Commercial</option>
+          <option value="residential" {{ 'selected' if enquiry and enquiry.req_category == 'residential' else '' }}>Residential</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Use Class</label>
+        <select name="req_use_class">
+          <option value="">— Any —</option>
+          <option value="office" {{ 'selected' if enquiry and enquiry.req_use_class == 'office' else '' }}>Office</option>
+          <option value="retail" {{ 'selected' if enquiry and enquiry.req_use_class == 'retail' else '' }}>Retail</option>
+          <option value="industrial" {{ 'selected' if enquiry and enquiry.req_use_class == 'industrial' else '' }}>Industrial</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Min Size (sq ft)</label>
+        <input type="number" name="req_size_min" placeholder="e.g. 500"
+               value="{{ enquiry.req_size_min|int if enquiry and enquiry.req_size_min else '' }}">
+      </div>
+
+      <div class="form-group">
+        <label>Max Size (sq ft)</label>
+        <input type="number" name="req_size_max" placeholder="e.g. 2000"
+               value="{{ enquiry.req_size_max|int if enquiry and enquiry.req_size_max else '' }}">
+      </div>
+
+      <div class="form-group">
+        <label>Min Budget (£)</label>
+        <input type="number" name="req_budget_min" placeholder="e.g. 20000"
+               value="{{ enquiry.req_budget_min|int if enquiry and enquiry.req_budget_min else '' }}">
+      </div>
+
+      <div class="form-group">
+        <label>Max Budget (£)</label>
+        <input type="number" name="req_budget_max" placeholder="e.g. 60000"
+               value="{{ enquiry.req_budget_max|int if enquiry and enquiry.req_budget_max else '' }}">
+      </div>
+
+      <div class="form-group">
+        <label>Budget Unit</label>
+        <select name="req_budget_unit">
+          <option value="pa" {{ 'selected' if not enquiry or enquiry.req_budget_unit == 'pa' else '' }}>Per annum</option>
+          <option value="pcm" {{ 'selected' if enquiry and enquiry.req_budget_unit == 'pcm' else '' }}>Per month</option>
+          <option value="sale" {{ 'selected' if enquiry and enquiry.req_budget_unit == 'sale' else '' }}>Purchase price</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Next Follow-up Date</label>
+        <input type="date" name="next_follow_up"
+               value="{{ enquiry.next_follow_up.strftime('%Y-%m-%d') if enquiry and enquiry.next_follow_up else '' }}">
+      </div>
+
+      <hr class="divider" style="grid-column:span 2;margin:8px 0">
+
       <div class="form-group span-2">
         <label for="notes">Notes</label>
-        <textarea id="notes" name="notes" rows="4"
+        <textarea id="notes" name="notes" rows="3"
                   placeholder="Details of the enquiry, source, requirements…">{{ enquiry.notes if enquiry else '' }}</textarea>
       </div>
     </div>
