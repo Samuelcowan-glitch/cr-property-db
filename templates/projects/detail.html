@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% block title %}{{ project.name }}{% endblock %}
-{% block topbar_title %}Project Administration{% endblock %}
+{% block topbar_title %}{{ project.name }}{% endblock %}
 {% block topbar_actions %}
-  <a href="{{ url_for('project_edit', id=project.id) }}" class="btn btn-outline btn-sm">Edit Project</a>
+  <a href="{{ url_for('project_edit', id=project.id) }}" class="btn btn-outline btn-sm">Edit</a>
   {% if project.property %}
   <a href="{{ url_for('property_detail', id=project.property.id) }}" class="btn btn-outline btn-sm">View Property</a>
   {% endif %}
@@ -15,799 +15,576 @@
   <span class="current">{{ project.name }}</span>
 </div>
 
-<!-- ── Project header ── -->
-<div style="margin-bottom:16px;display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap">
+<!-- ── Header strip ── -->
+<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px;padding:14px 16px;background:#fff;border:1px solid #e8eaed;border-radius:8px">
   <div>
-    <h2 style="font-size:20px;font-weight:700;color:#1a2e4a">{{ project.name }}</h2>
-    <div style="color:#5f6368;font-size:12.5px;margin-top:4px;display:flex;gap:14px;flex-wrap:wrap">
+    <div style="font-size:18px;font-weight:700;color:#1a2e4a;margin-bottom:4px">{{ project.name }}</div>
+    <div style="font-size:12px;color:#5f6368;display:flex;gap:16px;flex-wrap:wrap">
       {% if project.project_ref %}<span>Ref: <strong>{{ project.project_ref }}</strong></span>{% endif %}
-      {% if project.client %}<span>Client: <strong>{{ project.client }}</strong></span>{% endif %}
+      {% if project.instruction_type %}<span>{{ project.instruction_type }}</span>{% endif %}
       {% if project.fee_earner %}<span>Fee Earner: <strong>{{ project.fee_earner }}</strong></span>{% endif %}
       {% if project.instruction_date %}<span>Instructed: <strong>{{ project.instruction_date.strftime('%d %b %Y') }}</strong></span>{% endif %}
+      {% if project.available_from %}<span style="color:{% if project.available_from <= today %}#c62828{% else %}#1b7a3f{% endif %}">Available: <strong>{{ project.available_from.strftime('%d %b %Y') }}</strong></span>{% endif %}
     </div>
   </div>
-  <div>
-    {% if project.status == 'Active' %}<span class="badge badge-active" style="font-size:12px;padding:4px 12px">Active</span>
-    {% elif project.status == 'Complete' %}<span class="badge badge-complete" style="font-size:12px;padding:4px 12px">Complete</span>
-    {% else %}<span class="badge badge-hold" style="font-size:12px;padding:4px 12px">On Hold</span>{% endif %}
+  <div style="display:flex;gap:8px;align-items:center">
+    {% if project.status == 'Active' %}<span class="badge badge-active">Active</span>
+    {% elif project.status == 'Complete' %}<span class="badge badge-complete">Complete</span>
+    {% else %}<span class="badge badge-hold">On Hold</span>{% endif %}
+    {% if project.next_call %}
+    <span style="background:{% if project.next_call < today %}#ffebee;color:#c62828{% else %}#e8f5e9;color:#1b7a3f{% endif %};padding:3px 10px;border-radius:10px;font-size:11px;font-weight:600">
+      &#128222; {{ project.next_call.strftime('%d %b') }}{% if project.next_call < today %} OVERDUE{% endif %}
+    </span>
+    {% endif %}
   </div>
 </div>
 
 <!-- ── Tabs ── -->
 <div class="tabs" data-group="proj">
-  <button class="tab-btn active" data-tab="admin">06 Project Administration</button>
-  <button class="tab-btn" data-tab="overview">Project Overview</button>
+  <button class="tab-btn active" data-tab="overview">Project Overview</button>
+  <button class="tab-btn" data-tab="admin">06 Documents &amp; Administration</button>
   {% if project.property %}
-  <button class="tab-btn" data-tab="property">04 Property Overview</button>
+  <button class="tab-btn" data-tab="property">Property Detail</button>
   {% endif %}
 </div>
 
+
 <!-- ══════════════════════════════════════════════════════════════
-     TAB: 06 PROJECT ADMINISTRATION
+     TAB 1: PROJECT OVERVIEW  (default — Reapit-style 3-col)
 ══════════════════════════════════════════════════════════════ -->
-<div class="tab-panel active" data-tab-group="proj" data-tab="admin">
+<div class="tab-panel active" data-tab-group="proj" data-tab="overview">
+<div style="display:grid;grid-template-columns:220px 1fr 310px;gap:12px;align-items:start">
 
-  <!-- Two-column shell: left (folders + photos + description) | right (notes) -->
-  <div style="display:grid;grid-template-columns:1fr 320px;gap:16px;align-items:start">
+  <!-- ════ LEFT: Address / Client / Landlord / Tasks ════ -->
+  <div>
 
-    <!-- ── LEFT COLUMN ── -->
-    <div>
+    <!-- Property block -->
+    <div class="card" style="padding:0;overflow:hidden;margin-bottom:10px">
+      <div style="background:#1a2e4a;color:#fff;padding:7px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">Property</div>
+      <div style="padding:10px 12px">
+        {% if project.property %}
+          <a href="{{ url_for('property_detail', id=project.property.id) }}" style="font-size:13px;font-weight:600;color:#1565c0;display:block;margin-bottom:3px">{{ project.property.address }}</a>
+          <div style="font-size:11.5px;color:#5f6368">{{ project.property.postcode }}</div>
+          {% if project.property.area %}<div style="font-size:11.5px;color:#5f6368">{{ project.property.area }}</div>{% endif %}
+          {% if project.property.property_type %}<div style="font-size:11.5px;color:#5f6368">{{ project.property.property_type }}</div>{% endif %}
+          {% if project.property.display_size != '—' %}<div style="font-size:11.5px;color:#5f6368;margin-top:3px">{{ project.property.display_size }}</div>{% endif %}
+        {% else %}
+          <span style="font-size:12px;color:#9aa0a6">No property linked</span>
+        {% endif %}
+      </div>
+    </div>
 
-      <!-- Folder cards -->
-      <div class="folders-grid" style="margin-bottom:16px">
-        {% for folder_key, folder_label in folder_labels.items() %}
-        {% set docs = project.docs_in_folder(folder_key) %}
-        <div class="folder-card">
-          <div class="folder-card-header">
-            <span class="folder-icon">📂</span>
-            {{ folder_label }}
-            <span style="margin-left:auto;opacity:.6;font-weight:400;font-size:11px">{{ docs | length }}</span>
+    <!-- Client block -->
+    <div class="card" style="padding:0;overflow:hidden;margin-bottom:10px">
+      <div style="background:#1a2e4a;color:#fff;padding:7px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">Client</div>
+      <div style="padding:10px 12px">
+        {% if project.client %}
+        <div style="font-size:13px;font-weight:600;color:#1a2e4a;margin-bottom:6px">{{ project.client }}</div>
+        {% else %}
+        <div style="font-size:12px;color:#9aa0a6;margin-bottom:6px">No client set</div>
+        {% endif %}
+        {% if project.client_phone %}<div style="font-size:12px;color:#4a5568;margin-top:4px">&#128222; {{ project.client_phone }}</div>{% endif %}
+        {% if project.client_mobile %}<div style="font-size:12px;color:#4a5568;margin-top:3px">&#128241; {{ project.client_mobile }}</div>{% endif %}
+        {% if project.client_email %}<div style="font-size:12px;color:#4a5568;margin-top:3px">&#9993; {{ project.client_email }}</div>{% endif %}
+        {% if project.key_contact %}<div style="font-size:11px;color:#9aa0a6;margin-top:5px">Key contact: {{ project.key_contact }}</div>{% endif %}
+      </div>
+    </div>
+
+    <!-- Landlord / Agent block -->
+    <div class="card" style="padding:0;overflow:hidden;margin-bottom:10px">
+      <div style="background:#1a2e4a;color:#fff;padding:7px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">Landlord / Agent</div>
+      <div style="padding:10px 12px">
+        {% macro irow(lbl,val) %}{% if val %}<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #f1f3f4;font-size:11.5px"><span style="color:#5f6368">{{ lbl }}</span><span style="font-weight:500;color:#1a2e4a">{{ val }}</span></div>{% endif %}{% endmacro %}
+        {{ irow('Landlord', project.landlord_name) }}
+        {{ irow('Agent', project.agent_assigned or project.fee_earner) }}
+        {% if not project.landlord_name and not project.agent_assigned %}
+        <p style="font-size:11.5px;color:#9aa0a6;font-style:italic"><a href="{{ url_for('project_edit', id=project.id) }}" style="color:#c8601a">Edit</a> to add landlord &amp; agent.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Next Call -->
+    <div class="card" style="padding:0;overflow:hidden;margin-bottom:10px">
+      <div style="background:#1a2e4a;color:#fff;padding:7px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">Next Call</div>
+      <div style="padding:10px 12px">
+        {% if project.next_call %}
+        <div style="font-size:14px;font-weight:700;color:{% if project.next_call < today %}#c62828{% else %}#1a2e4a{% endif %}">{{ project.next_call.strftime('%d %b %Y') }}</div>
+        {% if project.next_call < today %}<div style="font-size:11px;color:#c62828;margin-top:2px">&#9888; Overdue</div>{% endif %}
+        {% else %}
+        <div style="font-size:12px;color:#9aa0a6">Not set</div>
+        {% endif %}
+        <form method="post" action="{{ url_for('project_edit', id=project.id) }}" style="margin-top:8px">
+          <input type="hidden" name="name" value="{{ project.name }}">
+          <input type="hidden" name="status" value="{{ project.status }}">
+          <input type="hidden" name="project_ref" value="{{ project.project_ref or '' }}">
+          <input type="hidden" name="client" value="{{ project.client or '' }}">
+          <input type="hidden" name="fee_earner" value="{{ project.fee_earner or '' }}">
+          <input type="hidden" name="instruction_date" value="{{ project.instruction_date.strftime('%Y-%m-%d') if project.instruction_date else '' }}">
+          <input type="hidden" name="notes" value="{{ project.notes or '' }}">
+          <input type="hidden" name="location_description" value="{{ project.location_description or '' }}">
+          {% if project.property_id %}<input type="hidden" name="property_id" value="{{ project.property_id }}">{% endif %}
+          <div style="display:flex;gap:5px">
+            <input type="date" name="next_call" value="{{ project.next_call.strftime('%Y-%m-%d') if project.next_call else '' }}" style="flex:1;font-size:11px;padding:4px 6px;border:1px solid #dde0e4;border-radius:4px">
+            <button type="submit" class="btn btn-primary btn-sm" style="font-size:11px;padding:4px 8px">Set</button>
           </div>
-          <div class="folder-card-body">
-            {% if docs %}
-              {% for doc in docs %}
-              <div class="folder-doc-item">
-                <div class="folder-doc-name">
-                  {% if doc.file_data %}
-                    <a href="{{ url_for('document_download', id=doc.id) }}" style="color:#e07b28;text-decoration:none;font-weight:500;">📎 {{ doc.document_name }}</a>
-                    {% if doc.file_size %}<span style="font-size:10px;color:#9aa0a6;margin-left:5px">{{ (doc.file_size / 1024)|round(1) }} KB</span>{% endif %}
-                  {% else %}
-                    📄 {{ doc.document_name }}
-                  {% endif %}
-                  {% if doc.notes %}<div style="font-size:11px;color:#9aa0a6;margin-top:1px">{{ doc.notes }}</div>{% endif %}
-                </div>
-                <div style="display:flex;align-items:center;gap:5px">
-                  <span class="folder-doc-date">{{ doc.uploaded_at.strftime('%d/%m/%Y') }}</span>
-                  <form method="post" action="{{ url_for('document_delete', id=doc.id) }}" class="confirm-delete">
-                    <button type="submit" style="background:none;border:none;cursor:pointer;color:#c62828;font-size:11px;padding:0" title="Remove">✕</button>
-                  </form>
-                </div>
-              </div>
-              {% endfor %}
-            {% else %}
-              <div class="folder-empty">No entries yet</div>
-            {% endif %}
-          </div>
-          <div style="padding:5px 7px;border-top:1px solid #e8eaed">
-            <button class="folder-add-toggle">+ Add document entry</button>
-            <div class="folder-add-form">
-              <form method="post" action="{{ url_for('document_add', id=project.id) }}" enctype="multipart/form-data">
-                <input type="hidden" name="folder" value="{{ folder_key }}">
-                <div style="display:flex;flex-direction:column;gap:5px">
-                  <input type="file" name="file" style="font-size:12px;padding:5px 8px;border:1px solid #e0e0e0;border-radius:4px;">
-                  <input type="text" name="document_name" placeholder="Document name (optional — uses filename if blank)" style="font-size:12px;padding:5px 8px">
-                  <input type="text" name="notes" placeholder="Notes (optional)" style="font-size:12px;padding:5px 8px">
-                  <button type="submit" class="btn btn-primary btn-sm">Upload</button>
-                </div>
-              </form>
+        </form>
+      </div>
+    </div>
+
+    <!-- To-Do -->
+    <div class="card" style="padding:0;overflow:hidden">
+      <div style="background:#1a2e4a;color:#fff;padding:7px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">To-Do</div>
+      <div style="padding:4px 0">
+        {% if project.tasks %}
+          {% for task in project.tasks %}
+          <div style="display:flex;align-items:flex-start;gap:7px;padding:6px 10px;border-bottom:1px solid #f1f3f4;{% if task.completed %}opacity:.5{% endif %}">
+            <form method="post" action="{{ url_for('task_toggle', id=task.id) }}" style="flex-shrink:0;margin-top:1px">
+              <button type="submit" style="background:none;border:2px solid {% if task.completed %}#1b7a3f{% else %}#dde0e4{% endif %};border-radius:3px;width:15px;height:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;font-size:9px;color:{% if task.completed %}#1b7a3f{% else %}transparent{% endif %}">&#10003;</button>
+            </form>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:12px;{% if task.completed %}text-decoration:line-through;color:#9aa0a6{% else %}color:#1a202c{% endif %}">{{ task.title }}</div>
+              {% if task.due_date %}<div style="font-size:10.5px;color:{% if not task.completed and task.due_date < today %}#c62828{% else %}#9aa0a6{% endif %}">{{ task.due_date.strftime('%d %b') }}</div>{% endif %}
             </div>
+            <form method="post" action="{{ url_for('task_delete', id=task.id) }}" class="confirm-delete">
+              <button type="submit" style="background:none;border:none;cursor:pointer;color:#c62828;font-size:10px;padding:2px">&#10005;</button>
+            </form>
+          </div>
+          {% endfor %}
+        {% else %}
+        <div style="padding:8px 12px;font-size:12px;color:#9aa0a6;font-style:italic">No tasks yet.</div>
+        {% endif %}
+      </div>
+      <div style="padding:7px 10px;border-top:1px dashed #e8eaed;background:#fafafa">
+        <button onclick="document.getElementById('task-form-ov').style.display=document.getElementById('task-form-ov').style.display==='none'?'block':'none'" style="background:none;border:none;color:#c8601a;font-size:12px;cursor:pointer;padding:0">+ Add task</button>
+        <div id="task-form-ov" style="display:none;margin-top:6px">
+          <form method="post" action="{{ url_for('task_add', id=project.id) }}">
+            <input type="text" name="title" required placeholder="Task" style="width:100%;font-size:12px;padding:4px 7px;border:1px solid #dde0e4;border-radius:4px;margin-bottom:4px">
+            <div style="display:flex;gap:5px">
+              <input type="date" name="due_date" style="flex:1;font-size:11px;padding:4px 6px;border:1px solid #dde0e4;border-radius:4px">
+              <input type="text" name="created_by" placeholder="Name" style="flex:1;font-size:11px;padding:4px 6px;border:1px solid #dde0e4;border-radius:4px">
+              <button type="submit" class="btn btn-primary btn-sm" style="font-size:11px;padding:4px 8px">Add</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════ MIDDLE: Instruction Detail ════ -->
+  <div>
+
+    <!-- Status / Instruction card -->
+    <div class="card" style="padding:0;overflow:hidden;margin-bottom:12px">
+      <div style="background:#c8601a;color:#fff;padding:9px 14px;font-size:13px;font-weight:700">Instruction Detail</div>
+      <div style="padding:12px 14px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+
+          {% macro dfield(lbl, val) %}
+          <div>
+            <div style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px">{{ lbl }}</div>
+            <div style="font-size:13px;font-weight:600;color:#1a2e4a">{{ val or '&mdash;' }}</div>
+          </div>
+          {% endmacro %}
+
+          {{ dfield('Status', project.status) }}
+          {{ dfield('Instruction Type', project.instruction_type) }}
+          {{ dfield('Available From', project.available_from.strftime('%d %b %Y') if project.available_from else None) }}
+          {{ dfield('Fee Earner', project.fee_earner) }}
+
+          {% if project.property and project.property.listing_price and project.property.listing_price > 0 %}
+          {% set rent_pa = project.property.listing_price * 12 if project.property.listing_price_unit == 'pcm' else project.property.listing_price %}
+          <div>
+            <div style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px">Rent p.a.</div>
+            <div style="font-size:13px;font-weight:600;color:#1a2e4a">&pound;{{ '{:,.0f}'.format(rent_pa) }}</div>
+          </div>
+          {% if project.property.size and project.property.size > 0 %}
+          <div>
+            <div style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px">Rent PSF</div>
+            <div style="font-size:13px;font-weight:600;color:#1a2e4a">&pound;{{ (rent_pa / project.property.size)|round(2) }} psf</div>
+          </div>
+          {% endif %}
+          {% endif %}
+
+          {% if project.fee_percent or project.fee_fixed %}
+          <div>
+            <div style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px">Letting Fee</div>
+            <div style="font-size:13px;font-weight:600;color:#1a2e4a">
+              {% if project.fee_percent %}{{ project.fee_percent }}%{% endif %}
+              {% if project.fee_percent and project.fee_fixed %} + {% endif %}
+              {% if project.fee_fixed %}&pound;{{ '{:,.0f}'.format(project.fee_fixed) }}{% endif %}
+            </div>
+          </div>
+          {% endif %}
+
+        </div>
+      </div>
+    </div>
+
+    <!-- Location Description -->
+    <div class="card" style="padding:0;overflow:hidden;margin-bottom:12px">
+      <div style="background:#1a2e4a;color:#fff;padding:9px 14px;display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:12.5px;font-weight:700">Location</span>
+        <button onclick="toggleLocDesc()" style="background:none;border:none;color:rgba(255,255,255,.75);cursor:pointer;font-size:11px">Edit</button>
+      </div>
+      <div style="padding:12px 14px">
+        <div id="loc-view">
+          {% if project.location_description %}
+          <p style="font-size:12.5px;line-height:1.65;color:#1a202c;white-space:pre-wrap;margin:0">{{ project.location_description }}</p>
+          {% else %}
+          <p style="font-size:12px;color:#9aa0a6;font-style:italic;margin:0">No location description yet. Click Edit to add.</p>
+          {% endif %}
+        </div>
+        <form id="loc-form" method="post" action="{{ url_for('project_edit', id=project.id) }}" style="display:none">
+          <input type="hidden" name="name" value="{{ project.name }}">
+          <input type="hidden" name="status" value="{{ project.status }}">
+          <input type="hidden" name="project_ref" value="{{ project.project_ref or '' }}">
+          <input type="hidden" name="client" value="{{ project.client or '' }}">
+          <input type="hidden" name="fee_earner" value="{{ project.fee_earner or '' }}">
+          <input type="hidden" name="instruction_date" value="{{ project.instruction_date.strftime('%Y-%m-%d') if project.instruction_date else '' }}">
+          <input type="hidden" name="notes" value="{{ project.notes or '' }}">
+          {% if project.property_id %}<input type="hidden" name="property_id" value="{{ project.property_id }}">{% endif %}
+          <textarea name="location_description" rows="5" style="width:100%;font-size:12.5px;padding:7px;border:1px solid #dde0e4;border-radius:5px;font-family:inherit;resize:vertical">{{ project.location_description or '' }}</textarea>
+          <div style="display:flex;gap:6px;margin-top:6px">
+            <button type="submit" class="btn btn-primary btn-sm">Save</button>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="toggleLocDesc()">Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Notes / Description -->
+    <div class="card" style="padding:0;overflow:hidden;margin-bottom:12px">
+      <div style="background:#1a2e4a;color:#fff;padding:9px 14px;display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:12.5px;font-weight:700">Notes / Description</span>
+        <button onclick="toggleNotes()" style="background:none;border:none;color:rgba(255,255,255,.75);cursor:pointer;font-size:11px">Edit</button>
+      </div>
+      <div style="padding:12px 14px">
+        <div id="notes-view">
+          {% if project.notes %}
+          <p style="font-size:12.5px;line-height:1.65;color:#1a202c;white-space:pre-wrap;margin:0">{{ project.notes }}</p>
+          {% else %}
+          <p style="font-size:12px;color:#9aa0a6;font-style:italic;margin:0">No notes yet.</p>
+          {% endif %}
+        </div>
+        <form id="notes-form" method="post" action="{{ url_for('project_edit', id=project.id) }}" style="display:none">
+          <input type="hidden" name="name" value="{{ project.name }}">
+          <input type="hidden" name="status" value="{{ project.status }}">
+          <input type="hidden" name="project_ref" value="{{ project.project_ref or '' }}">
+          <input type="hidden" name="client" value="{{ project.client or '' }}">
+          <input type="hidden" name="fee_earner" value="{{ project.fee_earner or '' }}">
+          <input type="hidden" name="instruction_date" value="{{ project.instruction_date.strftime('%Y-%m-%d') if project.instruction_date else '' }}">
+          <input type="hidden" name="location_description" value="{{ project.location_description or '' }}">
+          {% if project.property_id %}<input type="hidden" name="property_id" value="{{ project.property_id }}">{% endif %}
+          <textarea name="notes" rows="6" style="width:100%;font-size:12.5px;padding:7px;border:1px solid #dde0e4;border-radius:5px;font-family:inherit;resize:vertical">{{ project.notes or '' }}</textarea>
+          <div style="display:flex;gap:6px;margin-top:6px">
+            <button type="submit" class="btn btn-primary btn-sm">Save</button>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="toggleNotes()">Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Applicant Matches -->
+    {% if matches %}
+    <div class="card" style="padding:0;overflow:hidden">
+      <div style="background:#1a2e4a;color:#fff;padding:9px 14px;font-size:12.5px;font-weight:700">
+        Applicant Matches ({{ matches|length }})
+      </div>
+      <div style="max-height:300px;overflow-y:auto">
+        {% for score, reasons, contact in matches %}
+        <div style="padding:9px 14px;border-bottom:1px solid #f1f3f4">
+          <a href="{{ url_for('contact_detail', id=contact.id) }}" style="font-size:13px;font-weight:600;color:#c8601a">{{ contact.full_name }}</a>
+          {% if contact.organisation %}<div style="font-size:11px;color:#5f6368">{{ contact.organisation.name }}</div>{% endif %}
+          {% if contact.phone %}<div style="font-size:11.5px;color:#5f6368">{{ contact.phone }}</div>{% endif %}
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:5px">
+            {% for r in reasons %}<span style="background:#e8f5e9;color:#1b7a3f;font-size:10px;padding:2px 7px;border-radius:10px">{{ r }}</span>{% endfor %}
           </div>
         </div>
         {% endfor %}
       </div>
+    </div>
+    {% endif %}
 
-      <!-- ── Bottom row: Photos | Description ── -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+  </div>
 
-        <!-- Photos -->
-        <div class="card" style="padding:0;overflow:hidden">
-          <div style="background:#1a2e4a;color:#fff;padding:9px 14px;display:flex;align-items:center;justify-content:space-between">
-            <span style="font-size:12.5px;font-weight:700">📷 Photographs</span>
-            <span style="font-size:11px;opacity:.6">{{ project.photos | length }}</span>
+  <!-- ════ RIGHT: Activity Feed ════ -->
+  <div style="position:sticky;top:68px">
+    <div class="card" style="padding:0;overflow:hidden">
+      <div style="background:#c8601a;color:#fff;padding:9px 14px;display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:13px;font-weight:700">Activity Feed</span>
+        <span style="font-size:11px;opacity:.75">{{ activity|length }} entries</span>
+      </div>
+
+      <!-- Add note -->
+      <div style="padding:10px 12px;border-bottom:1px solid #e8eaed;background:#fafafa">
+        <form method="post" action="{{ url_for('note_add', id=project.id) }}">
+          <textarea name="content" rows="2" required placeholder="Add a note to the activity feed..." style="width:100%;font-size:12px;padding:6px 8px;border:1px solid #dde0e4;border-radius:4px;resize:none;font-family:inherit"></textarea>
+          <div style="display:flex;gap:6px;margin-top:5px;align-items:center">
+            <input type="text" name="author" placeholder="Your name" style="flex:1;font-size:12px;padding:5px 8px;border:1px solid #dde0e4;border-radius:4px">
+            <button type="submit" class="btn btn-primary btn-sm">Add Note</button>
           </div>
-          <div style="padding:10px">
-            {% if project.photos %}
-            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:6px;margin-bottom:10px">
-              {% for photo in project.photos %}
-              <div style="position:relative;border-radius:5px;overflow:hidden;background:#f1f3f4;aspect-ratio:4/3">
-                {% if photo.url %}
-                <img src="{{ photo.url }}" alt="{{ photo.caption or 'Photo' }}"
-                     style="width:100%;height:100%;object-fit:cover"
-                     onerror="this.parentElement.innerHTML='<div style=\'display:flex;align-items:center;justify-content:center;height:100%;font-size:22px\'>🖼️</div>'">
-                {% else %}
-                <div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:22px">🖼️</div>
-                {% endif %}
-                <form method="post" action="{{ url_for('photo_delete', id=photo.id) }}" class="confirm-delete"
-                      style="position:absolute;top:3px;right:3px">
-                  <button type="submit" style="background:rgba(0,0,0,.5);border:none;color:#fff;border-radius:3px;width:18px;height:18px;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0">✕</button>
-                </form>
-                {% if photo.caption %}
-                <div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.5);color:#fff;font-size:10px;padding:2px 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ photo.caption }}</div>
-                {% endif %}
-              </div>
-              {% endfor %}
+        </form>
+      </div>
+
+      <!-- Feed entries -->
+      <div style="max-height:580px;overflow-y:auto">
+        {% if activity %}
+          {% for entry in activity %}
+          <div style="padding:10px 12px;border-bottom:1px solid #f1f3f4;display:flex;gap:9px">
+            <div style="flex-shrink:0;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;background:{% if entry.type=='enquiry' %}#e3f2fd{% else %}#fce8d5{% endif %};color:{% if entry.type=='enquiry' %}#1565c0{% else %}#c8601a{% endif %}">
+              {% if entry.type == 'enquiry' %}&#9993;{% else %}&#9998;{% endif %}
             </div>
-            {% else %}
-            <div style="text-align:center;padding:16px;color:#9aa0a6;font-size:12px">No photos yet</div>
-            {% endif %}
-
-            <!-- Add photo form -->
-            <div style="border-top:1px dashed #e8eaed;padding-top:8px;margin-top:4px">
-              <button class="folder-add-toggle" id="photo-toggle" onclick="togglePhotoForm()">+ Add photo</button>
-              <div id="photo-form" style="display:none;margin-top:6px">
-                <form method="post" action="{{ url_for('photo_add', id=project.id) }}">
-                  <div style="display:flex;flex-direction:column;gap:5px">
-                    <input type="text" name="url" placeholder="Image URL (https://…)" style="font-size:12px;padding:5px 8px" required>
-                    <input type="text" name="caption" placeholder="Caption (optional)" style="font-size:12px;padding:5px 8px">
-                    <button type="submit" class="btn btn-primary btn-sm">Add Photo</button>
-                  </div>
-                </form>
+            <div style="flex:1;min-width:0">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px">
+                <span style="font-size:11.5px;font-weight:600;color:#1a2e4a">{{ entry.author }}</span>
+                <span style="font-size:10.5px;color:#9aa0a6;white-space:nowrap">{{ entry.date.strftime('%d %b %y %H:%M') }}</span>
               </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Description / Project Summary -->
-        <div class="card" style="padding:0;overflow:hidden">
-          <div style="background:#1a2e4a;color:#fff;padding:9px 14px;display:flex;align-items:center;justify-content:space-between">
-            <span style="font-size:12.5px;font-weight:700">📝 Description</span>
-            <button onclick="toggleDesc()" style="background:none;border:none;color:rgba(255,255,255,.7);font-size:11px;cursor:pointer" id="desc-edit-btn">Edit</button>
-          </div>
-          <div style="padding:12px">
-            <div id="desc-view">
-              {% if project.notes %}
-              <p style="font-size:12.5px;line-height:1.6;color:#1a202c;white-space:pre-wrap">{{ project.notes }}</p>
-              {% else %}
-              <p style="font-size:12px;color:#9aa0a6;font-style:italic">No description yet. Click Edit to add one.</p>
+              <div style="font-size:12px;color:#4a5568;margin-top:2px">{{ entry.body }}</div>
+              {% if entry.get('notes') %}<div style="font-size:11.5px;color:#5f6368;margin-top:3px;white-space:pre-wrap">{{ entry.notes }}</div>{% endif %}
+              {% if entry.type == 'enquiry' %}
+              <a href="{{ url_for('enquiry_detail', id=entry['obj'].id) if 'obj' in entry else '#' }}" style="font-size:10.5px;color:#c8601a;margin-top:3px;display:inline-block">View enquiry &rarr;</a>
+              {% endif %}
+              {% if entry.type == 'note' and 'obj' in entry %}
+              <form method="post" action="{{ url_for('note_delete', id=entry['obj'].id) }}" class="confirm-delete" style="display:inline;margin-left:6px">
+                <button type="submit" style="background:none;border:none;color:#9aa0a6;cursor:pointer;font-size:10px">remove</button>
+              </form>
               {% endif %}
             </div>
-            <form id="desc-form" method="post" action="{{ url_for('project_edit', id=project.id) }}" style="display:none">
-              <!-- We post all required fields silently -->
-              <input type="hidden" name="name"             value="{{ project.name }}">
-              <input type="hidden" name="status"           value="{{ project.status }}">
-              <input type="hidden" name="project_ref"      value="{{ project.project_ref or '' }}">
-              <input type="hidden" name="client"           value="{{ project.client or '' }}">
-              <input type="hidden" name="fee_earner"       value="{{ project.fee_earner or '' }}">
-              <input type="hidden" name="instruction_date" value="{{ project.instruction_date.strftime('%Y-%m-%d') if project.instruction_date else '' }}">
-              {% if project.property_id %}<input type="hidden" name="property_id" value="{{ project.property_id }}">{% endif %}
-              <textarea name="notes" rows="8" style="width:100%;font-size:12.5px;padding:7px;border:1px solid #dde0e4;border-radius:5px;font-family:inherit;resize:vertical">{{ project.notes or '' }}</textarea>
-              <div style="display:flex;gap:6px;margin-top:6px">
-                <button type="submit" class="btn btn-primary btn-sm">Save</button>
-                <button type="button" class="btn btn-secondary btn-sm" onclick="toggleDesc()">Cancel</button>
-              </div>
-            </form>
-          </div>
-        </div>
-
-      </div><!-- end bottom row -->
-    </div><!-- end left column -->
-
-    <!-- ── RIGHT COLUMN: Notes ── -->
-    <div>
-      <div class="card" style="padding:0;overflow:hidden;position:sticky;top:68px">
-        <div style="background:#c8601a;color:#fff;padding:10px 14px;display:flex;align-items:center;justify-content:space-between">
-          <span style="font-size:13px;font-weight:700">🗒️ Notes</span>
-          <span style="font-size:11px;opacity:.75">{{ project.project_notes | length }} note{% if project.project_notes | length != 1 %}s{% endif %}</span>
-        </div>
-
-        <!-- Notes list -->
-        <div style="max-height:480px;overflow-y:auto">
-          {% if project.project_notes %}
-            {% for note in project.project_notes | sort(attribute='created_at', reverse=True) %}
-            <div style="padding:10px 14px;border-bottom:1px solid #f1f3f4">
-              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-                <div style="display:flex;align-items:center;gap:6px">
-                  <div style="width:26px;height:26px;border-radius:50%;background:#1a2e4a;color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0">
-                    {{ note.author[0].upper() if note.author else '?' }}
-                  </div>
-                  <div>
-                    <div style="font-size:12px;font-weight:600;color:#1a202c">{{ note.author }}</div>
-                    <div style="font-size:10.5px;color:#9aa0a6">{{ note.created_at.strftime('%d %b %Y, %H:%M') }}</div>
-                  </div>
-                </div>
-                <form method="post" action="{{ url_for('note_delete', id=note.id) }}" class="confirm-delete">
-                  <button type="submit" style="background:none;border:none;cursor:pointer;color:#c62828;font-size:12px;padding:2px" title="Delete note">✕</button>
-                </form>
-              </div>
-              <p style="font-size:12.5px;line-height:1.55;color:#4a5568;margin-left:32px;white-space:pre-wrap">{{ note.content }}</p>
-            </div>
-            {% endfor %}
-          {% else %}
-          <div style="padding:20px;text-align:center;color:#9aa0a6;font-size:12px">No notes yet.</div>
-          {% endif %}
-        </div>
-
-        <!-- Add note form -->
-        <div style="padding:10px 14px;border-top:1px solid #e8eaed;background:#fafafa">
-          <form method="post" action="{{ url_for('note_add', id=project.id) }}">
-            <input type="text" name="author" placeholder="Your name" required
-                   style="width:100%;font-size:12px;padding:5px 8px;margin-bottom:6px;border:1px solid #dde0e4;border-radius:4px">
-            <textarea name="content" rows="3" required placeholder="Add a note…"
-                      style="width:100%;font-size:12.5px;padding:6px 8px;border:1px solid #dde0e4;border-radius:4px;font-family:inherit;resize:vertical;margin-bottom:6px"></textarea>
-            <button type="submit" class="btn btn-orange btn-sm" style="width:100%">Add Note</button>
-          </form>
-        </div>
-      </div>
-    </div><!-- end right column -->
-
-  </div><!-- end two-col grid -->
-</div>
-
-<!-- ══════════════════════════════════════════════════════════════
-     TAB: PROJECT OVERVIEW  (Reapit-style 3-column layout)
-══════════════════════════════════════════════════════════════ -->
-<div class="tab-panel" data-tab-group="proj" data-tab="overview">
-  <div style="display:grid;grid-template-columns:220px 1fr 300px;gap:14px;align-items:start">
-
-    <!-- ── LEFT: Contact / Address ── -->
-    <div>
-      <!-- Property address block -->
-      <div class="card" style="padding:0;overflow:hidden;margin-bottom:12px">
-        <div style="background:#1a2e4a;color:#fff;padding:8px 12px;font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">Property</div>
-        <div style="padding:10px 12px">
-          {% if project.property %}
-            <a href="{{ url_for('property_detail', id=project.property.id) }}" style="font-size:13px;font-weight:600;color:#1565c0;display:block;margin-bottom:4px">{{ project.property.address }}</a>
-            {% if project.property.property_type %}<div style="font-size:11.5px;color:#5f6368">{{ project.property.property_type }}</div>{% endif %}
-            <div style="font-size:11.5px;color:#5f6368">{{ project.property.postcode }}</div>
-            {% if project.property.area %}<div style="font-size:11.5px;color:#5f6368">{{ project.property.area }}</div>{% endif %}
-            {% if project.property.display_size != '—' %}<div style="font-size:11.5px;color:#5f6368;margin-top:4px">{{ project.property.display_size }}</div>{% endif %}
-          {% else %}
-            <span style="font-size:12px;color:#9aa0a6">No property linked</span>
-          {% endif %}
-        </div>
-      </div>
-
-      <!-- Client / Landlord block -->
-      <div class="card" style="padding:0;overflow:hidden;margin-bottom:12px">
-        <div style="background:#1a2e4a;color:#fff;padding:8px 12px;font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">Client</div>
-        <div style="padding:10px 12px">
-          {% if project.client %}
-          <div style="font-size:13px;font-weight:600;color:#1565c0;margin-bottom:6px">{{ project.client }}</div>
-          {% else %}
-          <div style="font-size:12px;color:#9aa0a6;margin-bottom:6px">No client set</div>
-          {% endif %}
-
-          {% macro contact_row(icon, val) %}
-            {% if val %}<div style="display:flex;align-items:center;gap:6px;margin-top:5px;font-size:12px;color:#4a5568"><span style="font-size:13px;width:16px">{{ icon }}</span>{{ val }}</div>{% endif %}
-          {% endmacro %}
-          {{ contact_row('📞', project.client_phone) }}
-          {{ contact_row('📱', project.client_mobile) }}
-          {{ contact_row('✉️', project.client_email) }}
-        </div>
-      </div>
-
-      <!-- Landlord / Agent block -->
-      <div class="card" style="padding:0;overflow:hidden;margin-bottom:12px">
-        <div style="background:#1a2e4a;color:#fff;padding:8px 12px;font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">Landlord / Agent</div>
-        <div style="padding:10px 12px">
-          {% macro info_row(label, val) %}{% if val %}
-          <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #f1f3f4;font-size:12px">
-            <span style="color:#5f6368;flex-shrink:0;margin-right:8px">{{ label }}</span>
-            <span style="font-weight:500;color:#1a202c;text-align:right">{{ val }}</span>
-          </div>{% endif %}{% endmacro %}
-          {{ info_row('Landlord', project.landlord_name) }}
-          {{ info_row('Agent', project.agent_assigned or project.fee_earner) }}
-          {{ info_row('Key Contact', project.key_contact) }}
-          {% if not project.landlord_name and not project.agent_assigned %}
-          <p style="font-size:12px;color:#9aa0a6;font-style:italic">
-            <a href="{{ url_for('project_edit', id=project.id) }}" style="color:#c8601a">Edit project</a> to add landlord &amp; agent.
-          </p>
-          {% endif %}
-        </div>
-      </div>
-
-      <!-- To-Do List -->
-      <div class="card" style="padding:0;overflow:hidden">
-        <div style="background:#1a2e4a;color:#fff;padding:8px 12px;font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;display:flex;align-items:center;justify-content:space-between">
-          <span>To-Do</span>
-          {% if project.next_call %}
-          <span style="font-size:10.5px;font-weight:400;background:rgba(255,255,255,.15);padding:2px 8px;border-radius:10px">
-            Callback: <strong>{{ project.next_call.strftime('%d %b') }}</strong>
-            {% if project.next_call < today %} ⚠️{% endif %}
-          </span>
-          {% endif %}
-        </div>
-        <div style="padding:6px 0">
-          {% if project.tasks %}
-            {% for task in project.tasks %}
-            <div style="display:flex;align-items:flex-start;gap:8px;padding:7px 12px;border-bottom:1px solid #f1f3f4;{% if task.completed %}opacity:.5{% endif %}">
-              <form method="post" action="{{ url_for('task_toggle', id=task.id) }}" style="flex-shrink:0;margin-top:1px">
-                <button type="submit" style="background:none;border:2px solid {% if task.completed %}#1b7a3f{% else %}#dde0e4{% endif %};border-radius:3px;width:16px;height:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;font-size:10px;color:{% if task.completed %}#1b7a3f{% else %}transparent{% endif %}">✓</button>
-              </form>
-              <div style="flex:1;min-width:0">
-                <div style="font-size:12.5px;{% if task.completed %}text-decoration:line-through;color:#9aa0a6{% else %}color:#1a202c{% endif %}">{{ task.title }}</div>
-                <div style="font-size:10.5px;color:#9aa0a6">
-                  {% if task.due_date %}
-                    <span style="color:{% if not task.completed and task.due_date < today %}#c62828{% else %}#9aa0a6{% endif %}">Due {{ task.due_date.strftime('%d %b %Y') }}</span>
-                    &nbsp;·&nbsp;
-                  {% endif %}
-                  {{ task.created_by }}
-                </div>
-              </div>
-              <form method="post" action="{{ url_for('task_delete', id=task.id) }}" class="confirm-delete" style="flex-shrink:0">
-                <button type="submit" style="background:none;border:none;cursor:pointer;color:#c62828;font-size:11px;padding:2px">✕</button>
-              </form>
-            </div>
-            {% endfor %}
-          {% else %}
-          <div style="padding:10px 12px;font-size:12px;color:#9aa0a6;font-style:italic">No tasks yet.</div>
-          {% endif %}
-        </div>
-        <!-- Add task -->
-        <div style="padding:8px 12px;border-top:1px dashed #e8eaed;background:#fafafa">
-          <button class="folder-add-toggle" id="task-toggle" onclick="toggleTask()">+ Add task</button>
-          <div id="task-form" style="display:none;margin-top:6px">
-            <form method="post" action="{{ url_for('task_add', id=project.id) }}">
-              <input type="text" name="title" required placeholder="Task description" style="width:100%;font-size:12px;padding:5px 8px;border:1px solid #dde0e4;border-radius:4px;margin-bottom:5px">
-              <div style="display:flex;gap:6px;margin-bottom:5px">
-                <input type="date" name="due_date" style="flex:1;font-size:12px;padding:5px 8px;border:1px solid #dde0e4;border-radius:4px">
-                <input type="text" name="created_by" placeholder="Your name" style="flex:1;font-size:12px;padding:5px 8px;border:1px solid #dde0e4;border-radius:4px">
-              </div>
-              <button type="submit" class="btn btn-primary btn-sm" style="width:100%">Add Task</button>
-            </form>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ── MIDDLE: Status / Instruction / Attributes / Description ── -->
-    <div>
-
-      <!-- ── Services ── -->
-      <div class="card" style="padding:0;overflow:hidden;margin-bottom:12px">
-        <div style="background:#c8601a;color:#fff;padding:9px 14px;display:flex;align-items:center;justify-content:space-between">
-          <span style="font-size:12.5px;font-weight:700">Services / Instructions</span>
-          <span style="font-size:11px;opacity:.75">{{ project.services | length }}</span>
-        </div>
-
-        <!-- Existing services -->
-        {% if project.services %}
-        <table style="width:100%;border-collapse:collapse">
-          <thead>
-            <tr style="background:#f8f9fa">
-              <th style="padding:7px 12px;font-size:10.5px;text-align:left;color:#5f6368;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Service</th>
-              <th style="padding:7px 12px;font-size:10.5px;text-align:left;color:#5f6368;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Fee Earner</th>
-              <th style="padding:7px 12px;font-size:10.5px;text-align:left;color:#5f6368;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Fee</th>
-              <th style="padding:7px 12px;font-size:10.5px;text-align:left;color:#5f6368;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Status</th>
-              <th style="padding:7px 4px"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for s in project.services %}
-            <tr style="border-top:1px solid #f1f3f4">
-              <td style="padding:8px 12px;font-size:12.5px;font-weight:600;color:#1a2e4a">{{ s.service_type }}</td>
-              <td style="padding:8px 12px;font-size:12px;color:#5f6368">{{ s.fee_earner or '—' }}</td>
-              <td style="padding:8px 12px;font-size:12px;color:#1a2e4a">
-                {% if s.fee_percent %}{{ s.fee_percent }}%{% endif %}
-                {% if s.fee_percent and s.fee_fixed %} + {% endif %}
-                {% if s.fee_fixed %}£{{ '{:,.0f}'.format(s.fee_fixed) }}{% endif %}
-                {% if not s.fee_percent and not s.fee_fixed %}—{% endif %}
-              </td>
-              <td style="padding:8px 12px">
-                {% if s.status == 'Active' %}<span class="badge badge-active">Active</span>
-                {% elif s.status == 'Complete' %}<span class="badge badge-complete">Complete</span>
-                {% else %}<span class="badge badge-hold">On Hold</span>{% endif %}
-              </td>
-              <td style="padding:8px 4px;white-space:nowrap">
-                <a href="{{ url_for('service_edit', id=s.id) }}" class="btn btn-xs btn-outline">Edit</a>
-                <form method="post" action="{{ url_for('service_delete', id=s.id) }}" class="confirm-delete" style="display:inline">
-                  <button type="submit" class="btn btn-xs btn-danger">✕</button>
-                </form>
-              </td>
-            </tr>
-            {% if s.notes %}
-            <tr style="border-top:none">
-              <td colspan="5" style="padding:0 12px 8px;font-size:11px;color:#9aa0a6">{{ s.notes }}</td>
-            </tr>
-            {% endif %}
-            {% endfor %}
-          </tbody>
-        </table>
-        {% else %}
-        <div style="padding:12px 14px;font-size:12px;color:#9aa0a6;font-style:italic">No services added yet.</div>
-        {% endif %}
-
-        <!-- Add service form -->
-        <div style="padding:10px 14px;border-top:1px dashed #e8eaed;background:#fafafa">
-          <button class="folder-add-toggle" id="svc-toggle" onclick="toggleSvc()">+ Add Service</button>
-          <div id="svc-form" style="display:none;margin-top:8px">
-            <form method="post" action="{{ url_for('service_add', id=project.id) }}">
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
-                <div>
-                  <label style="font-size:11px;color:#5f6368;font-weight:600;display:block;margin-bottom:3px">Service Type *</label>
-                  <select name="service_type" required style="width:100%;font-size:12px;padding:5px 8px;border:1px solid #dde0e4;border-radius:4px">
-                    <option value="">— Select —</option>
-                    {% for t in ['Sale','Letting','Rent Review','Lease Renewal','Valuation','Building Survey','Lease Advisory','Business Rates','Management','Other'] %}
-                    <option value="{{ t }}">{{ t }}</option>
-                    {% endfor %}
-                  </select>
-                </div>
-                <div>
-                  <label style="font-size:11px;color:#5f6368;font-weight:600;display:block;margin-bottom:3px">Status</label>
-                  <select name="status" style="width:100%;font-size:12px;padding:5px 8px;border:1px solid #dde0e4;border-radius:4px">
-                    <option value="Active">Active</option>
-                    <option value="On Hold">On Hold</option>
-                    <option value="Complete">Complete</option>
-                  </select>
-                </div>
-                <div>
-                  <label style="font-size:11px;color:#5f6368;font-weight:600;display:block;margin-bottom:3px">Fee Earner</label>
-                  <input type="text" name="fee_earner" placeholder="{{ project.fee_earner or 'e.g. B. Rutter' }}"
-                         style="width:100%;font-size:12px;padding:5px 8px;border:1px solid #dde0e4;border-radius:4px">
-                </div>
-                <div>
-                  <label style="font-size:11px;color:#5f6368;font-weight:600;display:block;margin-bottom:3px">Fee % / £</label>
-                  <div style="display:flex;gap:4px">
-                    <input type="number" name="fee_percent" step="0.1" placeholder="%" style="flex:1;font-size:12px;padding:5px 8px;border:1px solid #dde0e4;border-radius:4px">
-                    <input type="number" name="fee_fixed" step="1" placeholder="£" style="flex:1;font-size:12px;padding:5px 8px;border:1px solid #dde0e4;border-radius:4px">
-                  </div>
-                </div>
-              </div>
-              <input type="text" name="notes" placeholder="Notes (optional)" style="width:100%;font-size:12px;padding:5px 8px;border:1px solid #dde0e4;border-radius:4px;margin-bottom:6px">
-              <button type="submit" class="btn btn-orange btn-sm" style="width:100%">Add Service</button>
-            </form>
-          </div>
-        </div>
-      </div>
-
-      <!-- Status bar -->
-      <div class="card" style="padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <div style="display:flex;align-items:center;gap:6px">
-          <span style="font-size:11.5px;color:#5f6368;font-weight:600">STATUS</span>
-          {% if project.status == 'Active' %}<span class="badge badge-active" style="font-size:12px">Active</span>
-          {% elif project.status == 'Complete' %}<span class="badge badge-complete" style="font-size:12px">Complete</span>
-          {% else %}<span class="badge badge-hold" style="font-size:12px">On Hold</span>{% endif %}
-        </div>
-        {% if project.instruction_type %}
-        <div style="display:flex;align-items:center;gap:6px">
-          <span style="font-size:11.5px;color:#5f6368;font-weight:600">TYPE</span>
-          <span style="font-size:12.5px;font-weight:600;color:#1a2e4a">{{ project.instruction_type }}</span>
-        </div>
-        {% endif %}
-        <div style="margin-left:auto">
-          <a href="{{ url_for('project_edit', id=project.id) }}" class="btn btn-sm btn-outline">Edit Details</a>
-        </div>
-      </div>
-
-      <!-- Fee details -->
-      {% if project.fee_percent or project.fee_fixed %}
-      <div class="card" style="padding:0;overflow:hidden;margin-bottom:12px">
-        <div style="background:#243547;color:#fff;padding:8px 12px;font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">Fee / Rent Details</div>
-        <div style="padding:10px 14px;display:grid;grid-template-columns:1fr 1fr;gap:10px">
-          {% if project.fee_percent %}
-          <div>
-            <div style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px">Fee %</div>
-            <div style="font-size:18px;font-weight:700;color:#1a2e4a">{{ project.fee_percent }}%</div>
-          </div>
-          {% endif %}
-          {% if project.fee_fixed %}
-          <div>
-            <div style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px">Fixed Fee</div>
-            <div style="font-size:18px;font-weight:700;color:#1a2e4a">£{{ '{:,.0f}'.format(project.fee_fixed) }}</div>
-          </div>
-          {% endif %}
-        </div>
-      </div>
-      {% endif %}
-
-      <!-- Property attributes -->
-      {% if project.property %}
-      {% set prop = project.property %}
-      <div class="card" style="padding:0;overflow:hidden;margin-bottom:12px">
-        <div style="background:#243547;color:#fff;padding:8px 12px;font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">Property Attributes</div>
-        <div style="padding:10px 14px">
-          <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px">
-            {% if prop.property_type %}
-            <div style="background:#e8f0fe;color:#1a73e8;padding:4px 10px;border-radius:14px;font-size:12px;font-weight:500">{{ prop.property_type }}</div>
-            {% endif %}
-            {% if prop.size %}
-            <div style="background:#e6f4ea;color:#1b7a3f;padding:4px 10px;border-radius:14px;font-size:12px;font-weight:500">{{ '{:,.0f}'.format(prop.size) }} sq ft {{ prop.measurement_type or '' }}</div>
-            {% endif %}
-            {% if prop.website_category %}
-            <div style="background:#fff3e0;color:#e65100;padding:4px 10px;border-radius:14px;font-size:12px;font-weight:500">{{ prop.website_category | capitalize }}</div>
-            {% endif %}
-            {% if prop.use_class %}
-            <div style="background:#f3e5f5;color:#6a1b9a;padding:4px 10px;border-radius:14px;font-size:12px;font-weight:500">{{ prop.use_class | capitalize }}</div>
-            {% endif %}
-            {% if prop.beds %}<div style="background:#fce8e6;color:#c62828;padding:4px 10px;border-radius:14px;font-size:12px;font-weight:500">{{ prop.beds }} bed</div>{% endif %}
-            {% if prop.baths %}<div style="background:#e8eaed;color:#5f6368;padding:4px 10px;border-radius:14px;font-size:12px;font-weight:500">{{ prop.baths }} bath</div>{% endif %}
-          </div>
-          {% if prop.listing_price %}
-          <div style="font-size:11.5px;color:#5f6368">
-            Asking:
-            <strong style="color:#1a2e4a">
-              {% if prop.price_display %}{{ prop.price_display }}
-              {% elif prop.listing_price_unit == 'poa' %}Price on application
-              {% else %}£{{ '{:,.0f}'.format(prop.listing_price) }}{% if prop.listing_price_unit == 'pa' %} p.a.{% elif prop.listing_price_unit == 'pcm' %} pcm{% endif %}{% endif %}
-            </strong>
-          </div>
-          {% endif %}
-        </div>
-      </div>
-      {% endif %}
-
-      <!-- Description -->
-      <div class="card" style="padding:0;overflow:hidden">
-        <div style="background:#243547;color:#fff;padding:8px 12px;font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;display:flex;align-items:center;justify-content:space-between">
-          <span>Description</span>
-          <button onclick="toggleDesc()" style="background:none;border:none;color:rgba(255,255,255,.7);font-size:11px;cursor:pointer" id="desc-edit-btn2">Edit</button>
-        </div>
-        <div style="padding:12px 14px">
-          <div id="desc-view2">
-            {% if project.notes %}
-            <p style="font-size:12.5px;line-height:1.65;color:#1a202c;white-space:pre-wrap">{{ project.notes }}</p>
-            {% else %}
-            <p style="font-size:12px;color:#9aa0a6;font-style:italic">No description. Click Edit to add one.</p>
-            {% endif %}
-          </div>
-          <form id="desc-form2" method="post" action="{{ url_for('project_edit', id=project.id) }}" style="display:none">
-            <input type="hidden" name="name"             value="{{ project.name }}">
-            <input type="hidden" name="status"           value="{{ project.status }}">
-            <input type="hidden" name="project_ref"      value="{{ project.project_ref or '' }}">
-            <input type="hidden" name="client"           value="{{ project.client or '' }}">
-            <input type="hidden" name="fee_earner"       value="{{ project.fee_earner or '' }}">
-            <input type="hidden" name="instruction_date" value="{{ project.instruction_date.strftime('%Y-%m-%d') if project.instruction_date else '' }}">
-            {% if project.property_id %}<input type="hidden" name="property_id" value="{{ project.property_id }}">{% endif %}
-            <textarea name="notes" rows="7" style="width:100%;font-size:12.5px;padding:7px;border:1px solid #dde0e4;border-radius:5px;font-family:inherit;resize:vertical">{{ project.notes or '' }}</textarea>
-            <div style="display:flex;gap:6px;margin-top:6px">
-              <button type="submit" class="btn btn-primary btn-sm">Save</button>
-              <button type="button" class="btn btn-secondary btn-sm" onclick="toggleDesc()">Cancel</button>
-            </div>
-          </form>
-        </div>
-      </div>
-      <!-- ── Location Description ── -->
-      <div class="card" style="padding:0;overflow:hidden;margin-bottom:12px">
-        <div style="background:#1a2e4a;color:#fff;padding:9px 14px;display:flex;align-items:center;justify-content:space-between">
-          <span style="font-size:12.5px;font-weight:700">Location Description</span>
-          <button onclick="toggleLocDesc()" style="background:none;border:none;color:rgba(255,255,255,.7);cursor:pointer;font-size:11px">Edit</button>
-        </div>
-        <div style="padding:12px 14px">
-          <div id="loc-view">
-            {% if project.location_description %}
-            <p style="font-size:12.5px;line-height:1.65;color:#1a202c;white-space:pre-wrap">{{ project.location_description }}</p>
-            {% else %}
-            <p style="font-size:12px;color:#9aa0a6;font-style:italic">No location description yet. Click Edit to add one.</p>
-            {% endif %}
-          </div>
-          <form id="loc-form" method="post" action="{{ url_for('project_edit', id=project.id) }}" style="display:none">
-            <input type="hidden" name="name"             value="{{ project.name }}">
-            <input type="hidden" name="status"           value="{{ project.status }}">
-            <input type="hidden" name="project_ref"      value="{{ project.project_ref or '' }}">
-            <input type="hidden" name="client"           value="{{ project.client or '' }}">
-            <input type="hidden" name="fee_earner"       value="{{ project.fee_earner or '' }}">
-            <input type="hidden" name="instruction_date" value="{{ project.instruction_date.strftime('%Y-%m-%d') if project.instruction_date else '' }}">
-            <input type="hidden" name="notes"            value="{{ project.notes or '' }}">
-            {% if project.property_id %}<input type="hidden" name="property_id" value="{{ project.property_id }}">{% endif %}
-            <textarea name="location_description" rows="5" style="width:100%;font-size:12.5px;padding:7px;border:1px solid #dde0e4;border-radius:5px;font-family:inherit;resize:vertical" placeholder="Describe the location, access, nearby amenities...">{{ project.location_description or '' }}</textarea>
-            <div style="display:flex;gap:6px;margin-top:6px">
-              <button type="submit" class="btn btn-primary btn-sm">Save</button>
-              <button type="button" class="btn btn-secondary btn-sm" onclick="toggleLocDesc()">Cancel</button>
-            </div>
-          </form>
-        </div>
-      </div>
-
-      <!-- ── Rent PSF ── -->
-      {% if project.property and project.property.size and project.property.listing_price and project.property.listing_price > 0 %}
-      {% set rent_pa = project.property.listing_price * 12 if project.property.listing_price_unit == 'pcm' else project.property.listing_price %}
-      {% set psf = (rent_pa / project.property.size)|round(2) %}
-      <div class="card" style="padding:0;overflow:hidden;margin-bottom:12px">
-        <div style="background:#1a2e4a;color:#fff;padding:9px 14px;font-size:12.5px;font-weight:700">Rent PSF</div>
-        <div style="padding:12px 14px;display:flex;gap:24px;align-items:center">
-          <div>
-            <div style="font-size:11px;color:#5f6368;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Rent per sq ft</div>
-            <div style="font-size:22px;font-weight:700;color:#1a2e4a">&pound;{{ psf }}</div>
-            <div style="font-size:11px;color:#9aa0a6">per annum</div>
-          </div>
-          <div style="font-size:12px;color:#5f6368;border-left:1px solid #e8eaed;padding-left:20px">
-            <div>&pound;{{ '{:,.0f}'.format(rent_pa) }} pa</div>
-            <div>&divide; {{ '{:,.0f}'.format(project.property.size) }} sq ft</div>
-          </div>
-        </div>
-      </div>
-      {% endif %}
-
-    </div>
-
-    <!-- ── RIGHT: Matches ── -->
-    <div style="position:sticky;top:68px">
-      <div class="card" style="padding:0;overflow:hidden">
-        <div style="background:#c8601a;color:#fff;padding:9px 14px;display:flex;align-items:center;justify-content:space-between">
-          <span style="font-size:13px;font-weight:700">Matches</span>
-          <span style="font-size:11px;opacity:.75">{{ matches | length }} applicant{% if matches|length != 1 %}s{% endif %}</span>
-        </div>
-
-        {% if not project.property %}
-        <div style="padding:20px;text-align:center;color:#9aa0a6;font-size:12px">
-          Link a property to this project to see applicant matches.
-        </div>
-        {% elif not matches %}
-        <div style="padding:20px;text-align:center;font-size:12px;color:#9aa0a6">
-          No matching applicants found.<br>
-          <a href="{{ url_for('contact_new') }}" style="color:#c8601a;margin-top:6px;display:inline-block">+ Add a contact with requirements →</a>
-        </div>
-        {% else %}
-        <!-- Filter -->
-        <div style="padding:7px 10px;border-bottom:1px solid #f1f3f4;background:#fafafa">
-          <input type="text" placeholder="Filter matches…" oninput="filterMatches(this.value)"
-                 style="width:100%;font-size:12px;padding:5px 8px;border:1px solid #dde0e4;border-radius:4px">
-        </div>
-        <div style="max-height:500px;overflow-y:auto" id="matches-list">
-          {% for score, reasons, contact in matches %}
-          <div class="match-entry" style="padding:10px 14px;border-bottom:1px solid #f1f3f4">
-            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
-              <div style="display:flex;align-items:flex-start;gap:8px;flex:1;min-width:0">
-                <!-- Avatar -->
-                <div style="width:30px;height:30px;border-radius:50%;background:#1a2e4a;color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">
-                  {{ contact.first_name[0] }}{{ contact.last_name[0] }}
-                </div>
-                <div style="flex:1;min-width:0">
-                  <a href="{{ url_for('contact_detail', id=contact.id) }}" style="font-size:13px;font-weight:600;color:#c8601a;display:block">{{ contact.full_name }}</a>
-                  {% if contact.organisation %}<div style="font-size:11px;color:#5f6368">{{ contact.organisation.name }}</div>{% endif %}
-                  <!-- Contact info -->
-                  {% if contact.phone or contact.mobile %}
-                  <div style="font-size:11.5px;color:#5f6368;margin-top:3px">
-                    📞 {{ contact.phone or contact.mobile }}
-                  </div>
-                  {% endif %}
-                  {% if contact.email %}
-                  <div style="font-size:11.5px;color:#5f6368">✉️ {{ contact.email }}</div>
-                  {% endif %}
-                  <!-- Requirements summary -->
-                  <div style="margin-top:5px;display:flex;flex-wrap:wrap;gap:4px">
-                    {% if contact.req_area %}<span style="background:#e8f0fe;color:#1565c0;font-size:10.5px;padding:2px 6px;border-radius:10px">{{ contact.req_area }}</span>{% endif %}
-                    {% if contact.req_size_min or contact.req_size_max %}
-                    <span style="background:#e6f4ea;color:#1b7a3f;font-size:10.5px;padding:2px 6px;border-radius:10px">
-                      {{ '{:,.0f}'.format(contact.req_size_min) if contact.req_size_min else '0' }}–{{ '{:,.0f}'.format(contact.req_size_max) if contact.req_size_max else '∞' }} sq ft
-                    </span>
-                    {% endif %}
-                    {% if contact.req_budget_max %}
-                    <span style="background:#fff3e0;color:#e65100;font-size:10.5px;padding:2px 6px;border-radius:10px">
-                      £{{ '{:,.0f}'.format(contact.req_budget_max) }} max {{ contact.req_budget_unit or '' }}
-                    </span>
-                    {% endif %}
-                  </div>
-                  <!-- Match reasons -->
-                  <div style="margin-top:5px;font-size:10.5px;color:#9aa0a6">{{ reasons | join(' · ') }}</div>
-                </div>
-              </div>
-              <!-- Match score + register -->
-              <div style="flex-shrink:0;text-align:center">
-                <div style="width:32px;height:32px;border-radius:50%;background:{% if score >= 8 %}#1b7a3f{% elif score >= 5 %}#c8601a{% else %}#9aa0a6{% endif %};color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700">{{ score }}</div>
-                <div style="font-size:9.5px;color:#9aa0a6;margin-top:2px">score</div>
-              </div>
-            </div>
-            <!-- Register / status -->
-            {% if contact.id in registered_ids %}
-            {% set pa = registered_ids[contact.id] %}
-            <div style="margin-top:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-              <span style="font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:10px;background:#e6f4ea;color:#1b7a3f">&#10003; {{ pa.status }}</span>
-              <form method="post" action="{{ url_for('applicant_status', id=pa.id) }}" style="display:flex;gap:4px;align-items:center">
-                <select name="status" style="font-size:10.5px;padding:2px 4px;border:1px solid #dde0e4;border-radius:4px">
-                  {% for s in ['Active Applicant','Viewing Arranged','Offer Made','Declined','Let/Sold'] %}
-                  <option value="{{ s }}" {{ 'selected' if pa.status == s else '' }}>{{ s }}</option>
-                  {% endfor %}
-                </select>
-                <button type="submit" style="font-size:10.5px;padding:2px 6px;background:#1a2e4a;color:#fff;border:none;border-radius:4px;cursor:pointer">Update</button>
-              </form>
-              <form method="post" action="{{ url_for('applicant_remove', id=pa.id) }}" class="confirm-delete">
-                <button type="submit" style="font-size:10.5px;padding:2px 6px;background:none;border:1px solid #fecaca;color:#c62828;border-radius:4px;cursor:pointer">Remove</button>
-              </form>
-            </div>
-            {% else %}
-            <div style="margin-top:6px">
-              <form method="post" action="{{ url_for('applicant_register', proj_id=project.id, contact_id=contact.id) }}">
-                <button type="submit" class="btn btn-sm" style="width:100%;background:#1a2e4a;color:#fff;border:none;font-size:10.5px">+ Register as Applicant</button>
-              </form>
-            </div>
-            {% endif %}
           </div>
           {% endfor %}
-        </div>
+        {% else %}
+          <div style="padding:30px;text-align:center;color:#9aa0a6;font-size:13px">
+            No activity yet.<br>
+            <span style="font-size:11px">Add a note above or submit an enquiry via the website.</span>
+          </div>
         {% endif %}
-
-        <div style="padding:8px 14px;border-top:1px solid #e8eaed;background:#fafafa;text-align:center">
-          <a href="{{ url_for('contact_new') }}" class="btn btn-orange btn-sm" style="width:100%">+ Add Applicant</a>
-        </div>
       </div>
     </div>
+  </div>
 
-  </div><!-- end 3-col grid -->
+</div>
 </div>
 
+
 <!-- ══════════════════════════════════════════════════════════════
-     TAB: 04 PROPERTY OVERVIEW
+     TAB 2: DOCUMENTS & ADMINISTRATION
 ══════════════════════════════════════════════════════════════ -->
-{% if project.property %}
-<div class="tab-panel" data-tab-group="proj" data-tab="property">
-  {% set prop = project.property %}
-  <div style="margin-bottom:14px">
-    <a href="{{ url_for('property_detail', id=prop.id) }}" class="btn btn-outline btn-sm">Open Full Property Record →</a>
-  </div>
-  <div class="overview-grid">
-    <div class="card">
-      <div class="card-header"><div class="card-title">04.04 General</div></div>
-      <table class="detail-table">
-        <tr><td>Address</td><td>{{ prop.address }}</td></tr>
-        <tr><td>Postcode</td><td>{{ prop.postcode }}</td></tr>
-        <tr><td>Type</td><td>{{ prop.property_type or '—' }}</td></tr>
-        <tr><td>Floor Area</td><td>{{ prop.display_size }}</td></tr>
-        <tr><td>Description</td><td>{{ prop.description or '—' }}</td></tr>
-      </table>
-    </div>
-    <div class="card">
-      <div class="card-header">
-        <div class="card-title">Tenures &amp; Transactions ({{ prop.transactions | length }})</div>
-        <a href="{{ url_for('property_detail', id=prop.id) }}" class="btn btn-sm btn-outline">View All</a>
+<div class="tab-panel" data-tab-group="proj" data-tab="admin">
+<div style="display:grid;grid-template-columns:1fr 280px;gap:16px;align-items:start">
+
+  <!-- LEFT: Document sections -->
+  <div>
+    {% set doc_sections = [
+      ('basis_of_appointment',  'Basis of Appointment'),
+      ('correspondence',        'Correspondence'),
+      ('documentation',         'Documentation'),
+      ('financial_calculations','Financial &amp; Calculations'),
+      ('photographs_images',    'Photographs &amp; Images'),
+      ('reports',               'Reports'),
+      ('key_documents',         'Key Documents'),
+    ] %}
+    {% for folder_key, folder_label in doc_sections %}
+    {% set docs = project.docs_in_folder(folder_key) %}
+    <div class="card" style="padding:0;overflow:hidden;margin-bottom:10px">
+      <div style="background:#1a2e4a;color:#fff;padding:9px 14px;display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:12.5px;font-weight:700">{{ folder_label }}</span>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="font-size:11px;opacity:.6">{{ docs|length }} file{% if docs|length != 1 %}s{% endif %}</span>
+          <label style="background:rgba(255,255,255,.18);color:#fff;font-size:11px;padding:3px 10px;border-radius:4px;cursor:pointer">
+            &#8593; Upload
+            <input type="file" style="display:none" onchange="quickUpload(this,'{{ folder_key }}','{{ project.id }}')">
+          </label>
+        </div>
       </div>
-      {% if prop.transactions %}
-      <table>
-        <thead><tr><th>Type</th><th>Date</th><th>Value / Rent</th><th>Parties</th></tr></thead>
+      {% if docs %}
+      <table style="width:100%;border-collapse:collapse">
         <tbody>
-          {% for t in prop.transactions[:5] %}
-          <tr>
-            <td>{% if t.transaction_type == 'Capital' %}<span class="badge badge-capital">Capital</span>{% else %}<span class="badge badge-leasehold">Leasehold</span>{% endif %}</td>
-            <td>{{ t.transaction_date.strftime('%d %b %Y') if t.transaction_date else '—' }}</td>
-            <td>{% if t.transaction_type == 'Capital' %}{{ t.display_value }}{% else %}{{ t.display_rent }}{% endif %}</td>
-            <td style="font-size:11.5px">{{ t.parties }}</td>
+          {% for doc in docs %}
+          <tr style="border-bottom:1px solid #f1f3f4" onmouseover="this.style.background='#fafafa'" onmouseout="this.style.background=''">
+            <td style="padding:9px 14px;width:28px">
+              {% set ext = doc.document_name.rsplit('.',1)[-1].lower() if '.' in doc.document_name else '' %}
+              <span style="font-size:16px">{% if ext in ['pdf'] %}&#128196;{% elif ext in ['doc','docx'] %}&#128209;{% elif ext in ['xls','xlsx'] %}&#128200;{% elif ext in ['jpg','jpeg','png','gif'] %}&#128247;{% else %}&#128196;{% endif %}</span>
+            </td>
+            <td style="padding:9px 0">
+              {% if doc.file_data %}
+              <a href="{{ url_for('document_download', id=doc.id) }}" style="font-size:13px;font-weight:500;color:#1565c0;text-decoration:none">{{ doc.document_name }}</a>
+              {% else %}
+              <span style="font-size:13px;color:#1a2e4a">{{ doc.document_name }}</span>
+              {% endif %}
+              {% if doc.notes %}<div style="font-size:11px;color:#9aa0a6;margin-top:1px">{{ doc.notes }}</div>{% endif %}
+            </td>
+            <td style="padding:9px 14px;font-size:11.5px;color:#9aa0a6;white-space:nowrap">{{ doc.uploaded_at.strftime('%d %b %Y') }}</td>
+            {% if doc.file_size %}
+            <td style="padding:9px 14px;font-size:11.5px;color:#9aa0a6;white-space:nowrap">{{ (doc.file_size/1024)|round(0)|int }} KB</td>
+            {% else %}<td></td>{% endif %}
+            <td style="padding:9px 14px;white-space:nowrap">
+              {% if doc.file_data %}
+              <a href="{{ url_for('document_download', id=doc.id) }}" class="btn btn-xs btn-outline" style="font-size:11px">&#8595; Download</a>
+              {% endif %}
+              <form method="post" action="{{ url_for('document_delete', id=doc.id) }}" class="confirm-delete" style="display:inline;margin-left:4px">
+                <button type="submit" class="btn btn-xs btn-danger" style="font-size:11px">Remove</button>
+              </form>
+            </td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
       {% else %}
-      <div class="empty-state" style="padding:16px"><p>No transactions recorded.</p></div>
+      <div style="padding:14px;font-size:12px;color:#9aa0a6;font-style:italic;text-align:center">No files in this section. Use the Upload button above.</div>
       {% endif %}
+
+      <!-- Manual entry form -->
+      <div style="padding:8px 14px;border-top:1px dashed #e8eaed;background:#fafafa">
+        <button onclick="toggleManual('manual-{{ folder_key }}')" style="background:none;border:none;color:#5f6368;font-size:11.5px;cursor:pointer">+ Add reference entry (no file)</button>
+        <div id="manual-{{ folder_key }}" style="display:none;margin-top:6px">
+          <form method="post" action="{{ url_for('document_add', id=project.id) }}" enctype="multipart/form-data">
+            <input type="hidden" name="folder" value="{{ folder_key }}">
+            <div style="display:flex;gap:6px">
+              <input type="text" name="document_name" required placeholder="Reference / document name" style="flex:1;font-size:12px;padding:5px 8px;border:1px solid #dde0e4;border-radius:4px">
+              <input type="text" name="notes" placeholder="Notes" style="width:160px;font-size:12px;padding:5px 8px;border:1px solid #dde0e4;border-radius:4px">
+              <button type="submit" class="btn btn-primary btn-sm">Add</button>
+            </div>
+          </form>
+        </div>
+      </div>
     </div>
+    {% endfor %}
+  </div>
+
+  <!-- RIGHT: Photos + Description -->
+  <div style="position:sticky;top:68px">
+    <div class="card" style="padding:0;overflow:hidden;margin-bottom:12px">
+      <div style="background:#1a2e4a;color:#fff;padding:9px 14px;font-size:12.5px;font-weight:700;display:flex;align-items:center;justify-content:space-between">
+        <span>&#128247; Photographs</span>
+        <span style="font-size:11px;opacity:.6">{{ project.photos|length }}</span>
+      </div>
+      <div style="padding:10px">
+        {% if project.photos %}
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:6px;margin-bottom:8px">
+          {% for photo in project.photos %}
+          <div style="position:relative;border-radius:4px;overflow:hidden;background:#f1f3f4;aspect-ratio:4/3">
+            {% if photo.url %}<img src="{{ photo.url }}" alt="{{ photo.caption or '' }}" style="width:100%;height:100%;object-fit:cover">{% endif %}
+            <form method="post" action="{{ url_for('photo_delete', id=photo.id) }}" class="confirm-delete" style="position:absolute;top:2px;right:2px">
+              <button type="submit" style="background:rgba(0,0,0,.5);border:none;color:#fff;border-radius:3px;width:16px;height:16px;font-size:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0">&#10005;</button>
+            </form>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+        <form method="post" action="{{ url_for('photo_add', id=project.id) }}" style="display:flex;gap:5px">
+          <input type="text" name="url" placeholder="Photo URL" style="flex:1;font-size:12px;padding:5px 7px;border:1px solid #dde0e4;border-radius:4px">
+          <button type="submit" class="btn btn-primary btn-sm">Add</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="card" style="padding:0;overflow:hidden">
+      <div style="background:#1a2e4a;color:#fff;padding:9px 14px;font-size:12.5px;font-weight:700">Description</div>
+      <div style="padding:12px 14px">
+        {% if project.notes %}
+        <p style="font-size:12.5px;line-height:1.65;color:#1a202c;white-space:pre-wrap;margin:0">{{ project.notes }}</p>
+        {% else %}
+        <p style="font-size:12px;color:#9aa0a6;font-style:italic;margin:0">No description. <a href="{{ url_for('project_edit', id=project.id) }}" style="color:#c8601a">Edit project</a> to add.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+</div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════
+     TAB 3: PROPERTY DETAIL
+══════════════════════════════════════════════════════════════ -->
+{% if project.property %}
+<div class="tab-panel" data-tab-group="proj" data-tab="property">
+  {% set prop = project.property %}
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+    <div class="card" style="padding:0;overflow:hidden">
+      <div style="background:#1a2e4a;color:#fff;padding:9px 14px;font-size:12.5px;font-weight:700">Property Information</div>
+      <div style="padding:12px 14px">
+        {% macro prow(lbl,val) %}{% if val %}<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f1f3f4;font-size:12.5px"><span style="color:#5f6368">{{ lbl }}</span><span style="font-weight:500;color:#1a2e4a">{{ val }}</span></div>{% endif %}{% endmacro %}
+        {{ prow('Address', prop.address) }}
+        {{ prow('Postcode', prop.postcode) }}
+        {{ prow('Type', prop.property_type) }}
+        {{ prow('Size', prop.display_size) }}
+        {{ prow('Area', prop.area) }}
+        {{ prow('Description', prop.description) }}
+      </div>
+    </div>
+    <div class="card" style="padding:0;overflow:hidden">
+      <div style="background:#1a2e4a;color:#fff;padding:9px 14px;font-size:12.5px;font-weight:700">Listing</div>
+      <div style="padding:12px 14px">
+        {% macro lrow(lbl,val) %}{% if val %}<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f1f3f4;font-size:12.5px"><span style="color:#5f6368">{{ lbl }}</span><span style="font-weight:500;color:#1a2e4a">{{ val }}</span></div>{% endif %}{% endmacro %}
+        {{ lrow('Category', prop.website_category|title if prop.website_category else None) }}
+        {{ lrow('Use Class', prop.use_class|title if prop.use_class else None) }}
+        {{ lrow('Status', prop.listing_status|title if prop.listing_status else None) }}
+        {% if prop.listing_price and prop.listing_price > 0 %}
+        {% set rpa = prop.listing_price * 12 if prop.listing_price_unit == 'pcm' else prop.listing_price %}
+        {{ lrow('Rent p.a.', '£{:,.0f}'.format(rpa)) }}
+        {% if prop.size and prop.size > 0 %}{{ lrow('Rent PSF', '£' ~ (rpa / prop.size)|round(2)|string ~ ' psf') }}{% endif %}
+        {% endif %}
+        {{ lrow('On Website', 'Yes ✓' if prop.website_listed else 'No') }}
+      </div>
+    </div>
+  </div>
+  <div style="margin-top:10px;text-align:right">
+    <a href="{{ url_for('property_detail', id=prop.id) }}" class="btn btn-outline btn-sm">Open Full Property Record &rarr;</a>
   </div>
 </div>
 {% endif %}
 
+
+<!-- ════ Hidden upload form for quick upload ════ -->
+<form id="quick-upload-form" method="post" action="{{ url_for('document_add', id=project.id) }}" enctype="multipart/form-data" style="display:none">
+  <input type="hidden" id="qu-folder" name="folder" value="">
+  <input type="file" id="qu-file" name="file">
+</form>
+
 <script>
-function togglePhotoForm() {
-  var f = document.getElementById('photo-form');
-  var b = document.getElementById('photo-toggle');
-  if (f.style.display === 'none') { f.style.display = 'block'; b.textContent = '− Cancel'; }
-  else { f.style.display = 'none'; b.textContent = '+ Add photo'; }
+function quickUpload(input, folder, projectId) {
+  var form = document.getElementById('quick-upload-form');
+  document.getElementById('qu-folder').value = folder;
+  document.getElementById('qu-file').files = input.files;
+  // Re-create form with correct action and submit
+  var f = document.createElement('form');
+  f.method = 'post';
+  f.enctype = 'multipart/form-data';
+  f.action = '/projects/' + projectId + '/documents/add';
+  var ff = document.createElement('input'); ff.type='hidden'; ff.name='folder'; ff.value=folder; f.appendChild(ff);
+  var fn = document.createElement('input'); fn.type='file'; fn.name='file'; f.appendChild(fn);
+  document.body.appendChild(f);
+  // Transfer file
+  var dt = new DataTransfer();
+  dt.items.add(input.files[0]);
+  fn.files = dt.files;
+  f.submit();
 }
-function toggleDesc() {
-  ['','2'].forEach(function(s) {
-    var view = document.getElementById('desc-view'+s);
-    var form = document.getElementById('desc-form'+s);
-    var btn  = document.getElementById('desc-edit-btn'+s);
-    if (!view) return;
-    if (form.style.display === 'none') { form.style.display='block'; view.style.display='none'; if(btn) btn.textContent='Cancel'; }
-    else { form.style.display='none'; view.style.display='block'; if(btn) btn.textContent='Edit'; }
-  });
+function toggleManual(id) {
+  var el = document.getElementById(id);
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
 }
 function toggleLocDesc() {
-  var view = document.getElementById('loc-view');
-  var form = document.getElementById('loc-form');
-  if (!view) return;
-  if (form.style.display === 'none') { form.style.display='block'; view.style.display='none'; }
-  else { form.style.display='none'; view.style.display='block'; }
+  var v = document.getElementById('loc-view');
+  var f = document.getElementById('loc-form');
+  if (!v) return;
+  if (f.style.display === 'none') { f.style.display='block'; v.style.display='none'; }
+  else { f.style.display='none'; v.style.display='block'; }
+}
+function toggleNotes() {
+  var v = document.getElementById('notes-view');
+  var f = document.getElementById('notes-form');
+  if (!v) return;
+  if (f.style.display === 'none') { f.style.display='block'; v.style.display='none'; }
+  else { f.style.display='none'; v.style.display='block'; }
 }
 function filterMatches(q) {
   q = q.toLowerCase();
-  document.querySelectorAll('.match-entry').forEach(function(el) {
+  document.querySelectorAll('#matches-list .match-entry').forEach(function(el) {
     el.style.display = el.textContent.toLowerCase().includes(q) ? '' : 'none';
   });
 }
-function toggleTask() {
-  var f = document.getElementById('task-form');
-  var b = document.getElementById('task-toggle');
-  if (f.style.display === 'none') { f.style.display = 'block'; b.textContent = '− Cancel'; }
-  else { f.style.display = 'none'; b.textContent = '+ Add task'; }
-}
 </script>
+
 {% endblock %}
