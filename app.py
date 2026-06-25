@@ -386,6 +386,23 @@ class ProjectTask(db.Model):
     project = db.relationship('Project', backref=db.backref('tasks', lazy=True, cascade='all, delete-orphan', order_by='ProjectTask.due_date'))
 
 
+class ProjectApplicant(db.Model):
+    __tablename__ = 'project_applicants'
+    id          = db.Column(db.Integer, primary_key=True)
+    project_id  = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=False)
+    contact_id  = db.Column(db.Integer, db.ForeignKey('contacts.id'), nullable=False)
+    status      = db.Column(db.String(30), default='Active Applicant')
+    match_score = db.Column(db.Integer)
+    notes       = db.Column(db.Text)
+    added_at    = db.Column(db.DateTime, default=datetime.utcnow)
+    auto_linked = db.Column(db.Boolean, default=False)
+
+    project = db.relationship('Project', backref=db.backref('applicants', lazy=True, cascade='all, delete-orphan'))
+    contact = db.relationship('Contact', backref=db.backref('project_links', lazy=True))
+
+    __table_args__ = (db.UniqueConstraint('project_id', 'contact_id', name='uq_proj_contact'),)
+
+
 class ProjectService(db.Model):
     __tablename__ = 'project_services'
     id           = db.Column(db.Integer, primary_key=True)
@@ -907,9 +924,10 @@ def project_new():
 def project_detail(id):
     project = Project.query.get_or_404(id)
     matches = match_contacts_to_property(project.property) if project.property else []
+    registered_ids = {pa.contact_id: pa for pa in project.applicants}
     return render_template('projects/detail.html', project=project,
                            folder_labels=FOLDER_LABELS, today=date.today(),
-                           matches=matches)
+                           matches=matches, registered_ids=registered_ids)
 
 
 @app.route('/projects/<int:id>/edit', methods=['GET', 'POST'])
@@ -936,7 +954,8 @@ def project_edit(id):
         project.client_email      = request.form.get('client_email') or None
         project.key_contact       = request.form.get('key_contact') or None
         project.landlord_name     = request.form.get('landlord_name') or None
-        project.agent_assigned    = request.form.get('agent_assigned') or None
+        project.agent_assigned       = request.form.get('agent_assigned') or None
+        project.location_description = request.form.get('location_description') or None
         fp = request.form.get('fee_percent', '').strip()
         ff = request.form.get('fee_fixed', '').strip()
         project.fee_percent       = float(fp) if fp else None
@@ -1334,7 +1353,38 @@ def enquiry_note_delete(id):
     return redirect(url_for('enquiry_detail', id=enq_id))
 
 
-# ── Property-Contact Matching ─────────────────────────────────────────────────
+# ── Property-Contact Matching & Auto-linking ──────────────────────────────────
+
+def auto_link_contact_to_projects(contact):
+    """When a contact enquires, auto-register them on any matching active project."""
+    if not contact.req_category:
+        return []
+    linked = []
+    active_projects = Project.query.filter_by(status='Active').all()
+    for project in active_projects:
+        if not project.property:
+            continue
+        matches = match_contacts_to_property(project.property)
+        for score, reasons, c in matches:
+            if c.id == contact.id and score >= 3:
+                # Check not already linked
+                existing = ProjectApplicant.query.filter_by(
+                    project_id=project.id, contact_id=contact.id).first()
+                if not existing:
+                    pa = ProjectApplicant(
+                        project_id=project.id,
+                        contact_id=contact.id,
+                        status='Active Applicant',
+                        match_score=score,
+                        auto_linked=True,
+                        notes=', '.join(reasons),
+                    )
+                    db.session.add(pa)
+                    linked.append(project)
+    if linked:
+        db.session.commit()
+    return linked
+
 
 def match_contacts_to_property(prop):
     """Return [(score, contact)] sorted best-first for contacts with requirements."""
@@ -1448,6 +1498,36 @@ def service_edit(id):
         flash('Service updated.', 'success')
         return redirect(url_for('project_detail', id=s.project_id))
     return render_template('projects/service_form.html', s=s)
+
+
+@app.route('/projects/<int:proj_id>/applicants/register/<int:contact_id>', methods=['POST'])
+def applicant_register(proj_id, contact_id):
+    existing = ProjectApplicant.query.filter_by(project_id=proj_id, contact_id=contact_id).first()
+    if not existing:
+        pa = ProjectApplicant(project_id=proj_id, contact_id=contact_id,
+                              status='Active Applicant', auto_linked=False)
+        db.session.add(pa)
+        db.session.commit()
+        flash('Applicant registered on this project.', 'success')
+    return redirect(url_for('project_detail', id=proj_id))
+
+
+@app.route('/applicants/<int:id>/status', methods=['POST'])
+def applicant_status(id):
+    pa = ProjectApplicant.query.get_or_404(id)
+    pa.status = request.form.get('status', pa.status)
+    pa.notes  = request.form.get('notes', pa.notes)
+    db.session.commit()
+    return redirect(url_for('project_detail', id=pa.project_id))
+
+
+@app.route('/applicants/<int:id>/remove', methods=['POST'])
+def applicant_remove(id):
+    pa = ProjectApplicant.query.get_or_404(id)
+    project_id = pa.project_id
+    db.session.delete(pa)
+    db.session.commit()
+    return redirect(url_for('project_detail', id=project_id))
 
 
 @app.route('/services/<int:id>/delete', methods=['POST'])
@@ -1617,11 +1697,30 @@ def api_enquiry():
     )
     db.session.add(enq)
     db.session.commit()
+
+    # Auto-link contact to matching active projects
+    linked_projects = []
+    if contact:
+        linked_projects = auto_link_contact_to_projects(contact)
+        # Also directly link to the specific project if known
+        if proj and contact:
+            existing = ProjectApplicant.query.filter_by(
+                project_id=proj.id, contact_id=contact.id).first()
+            if not existing:
+                pa = ProjectApplicant(
+                    project_id=proj.id, contact_id=contact.id,
+                    status='Active Applicant', auto_linked=True,
+                    notes=f'Enquired via website: {subject}',
+                )
+                db.session.add(pa)
+                db.session.commit()
+
     return jsonify({
         'ok': True,
         'enquiry_id': enq.id,
         'contact_id': contact.id if contact else None,
         'contact_type': contact_type,
+        'auto_linked_projects': len(linked_projects),
     })
 
 
@@ -1782,6 +1881,7 @@ def _migrate_project_columns():
             ('client_phone', 'TEXT'),     ('client_mobile', 'TEXT'),
             ('client_email', 'TEXT'),     ('key_contact', 'TEXT'),
             ('landlord_name', 'TEXT'),    ('agent_assigned', 'TEXT'),
+            ('location_description', 'TEXT'),
         ]
         cont_existing  = {col['name'] for col in insp.get_columns('contacts')}
         prop_existing  = {col['name'] for col in insp.get_columns('properties')}
