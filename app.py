@@ -271,11 +271,12 @@ class EnquiryNote(db.Model):
     __tablename__ = 'enquiry_notes'
     id = db.Column(db.Integer, primary_key=True)
     enquiry_id = db.Column(db.Integer, db.ForeignKey('enquiries.id'), nullable=False)
-    direction  = db.Column(db.String(20))  # inbound / outbound / note
-    subject    = db.Column(db.String(255))
-    body       = db.Column(db.Text, nullable=False)
-    author     = db.Column(db.String(100))
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    direction     = db.Column(db.String(20))  # inbound / outbound / note
+    subject       = db.Column(db.String(255))
+    body          = db.Column(db.Text, nullable=False)
+    author        = db.Column(db.String(100))
+    ms_message_id = db.Column(db.String(500), unique=True, nullable=True)
+    created_at    = db.Column(db.DateTime, default=datetime.utcnow)
 
     enquiry = db.relationship('Enquiry', backref=db.backref('notes_chain', lazy=True,
                               cascade='all, delete-orphan',
@@ -326,38 +327,50 @@ class Project(db.Model):
 
 
 class Listing(db.Model):
-    """Website-facing unit listing within a Property (building)."""
+    """Website listing for a unit/floor/whole building — managed via a Project instruction."""
     __tablename__ = 'listings'
-    id               = db.Column(db.Integer, primary_key=True)
-    property_id      = db.Column(db.Integer, db.ForeignKey('properties.id'), nullable=False)
-    unit_name        = db.Column(db.String(100))   # e.g. "Unit 202-203" — blank = whole building
-    website_listed   = db.Column(db.Boolean, default=True)
-    listing_status   = db.Column(db.String(20), default='available')
-    featured         = db.Column(db.Boolean, default=False)
-    website_category = db.Column(db.String(20))
-    use_class        = db.Column(db.String(30))
-    area             = db.Column(db.String(100))
-    listing_price    = db.Column(db.Float)
-    listing_price_unit = db.Column(db.String(10))
-    price_display    = db.Column(db.String(100))
-    size             = db.Column(db.Float)
-    measurement_type = db.Column(db.String(10))
-    beds             = db.Column(db.Integer)
-    baths            = db.Column(db.Integer)
-    lat              = db.Column(db.Float)
-    lng              = db.Column(db.Float)
-    photo_id         = db.Column(db.String(100))
-    blurb            = db.Column(db.Text)
-    created_at       = db.Column(db.DateTime, default=datetime.utcnow)
+    id                 = db.Column(db.Integer, primary_key=True)
+    project_id         = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=True)
+    property_id        = db.Column(db.Integer, db.ForeignKey('properties.id'), nullable=True)
+    unit_name          = db.Column(db.String(100))    # "Unit 3", "Ground Floor", blank=whole building
+    website_listed     = db.Column(db.Boolean, default=True)
+    listing_status     = db.Column(db.String(20), default='available')
+    featured           = db.Column(db.Boolean, default=False)
+    website_category   = db.Column(db.String(20))     # commercial / residential
+    use_class          = db.Column(db.String(30))
+    residential_use    = db.Column(db.String(30))     # Owner Occupied / HMO / Investment / Vacant
+    area               = db.Column(db.String(100))
+    listing_price      = db.Column(db.Float)
+    listing_price_unit = db.Column(db.String(10))     # pa / pcm / sale / poa
+    price_display      = db.Column(db.String(100))
+    size               = db.Column(db.Float)
+    measurement_type   = db.Column(db.String(10))     # NIA / GIA / GEA
+    beds               = db.Column(db.Integer)
+    baths              = db.Column(db.Integer)
+    photo_id           = db.Column(db.String(100))
+    blurb              = db.Column(db.Text)
+    created_at         = db.Column(db.DateTime, default=datetime.utcnow)
 
-    prop = db.relationship('Property', backref=db.backref('unit_listings', lazy=True,
-                           cascade='all, delete-orphan'))
+    project  = db.relationship('Project',  backref=db.backref('project_listings', lazy=True, cascade='all, delete-orphan'))
+    prop     = db.relationship('Property', backref=db.backref('unit_listings', lazy=True))
 
     @property
     def display_title(self):
-        if self.unit_name:
-            return f"{self.unit_name}, {self.prop.address}"
-        return self.prop.address
+        addr = ''
+        if self.project and self.project.property:
+            addr = self.project.property.address
+        elif self.prop:
+            addr = self.prop.address
+        return (self.unit_name + ', ' + addr) if self.unit_name and addr else (addr or self.unit_name or 'Listing')
+
+    @property
+    def display_price(self):
+        if self.price_display: return self.price_display
+        if not self.listing_price or self.listing_price_unit == 'poa': return 'Price on application'
+        n = chr(163) + '{:,.0f}'.format(self.listing_price)
+        if self.listing_price_unit == 'pa':  return n + ' per annum'
+        if self.listing_price_unit == 'pcm': return n + ' pcm'
+        return n
 
 
 class ProjectDocument(db.Model):
@@ -1363,6 +1376,54 @@ def enquiry_note_delete(id):
     return redirect(url_for('enquiry_detail', id=enq_id))
 
 
+# ── Email Integration ──────────────────────────────────────────────────────────
+
+@app.route('/email/sync', methods=['POST'])
+def email_sync_trigger():
+    from email_sync import sync_inbox, check_configured
+    if not check_configured():
+        flash('Email not configured — set MS_TENANT_ID, MS_CLIENT_ID, MS_CLIENT_SECRET in Railway variables.', 'warning')
+        return redirect(request.referrer or url_for('dashboard'))
+    try:
+        count = sync_inbox(db, Contact, Enquiry, EnquiryNote)
+        flash(f'Synced {count} new email(s).', 'success' if count else 'info')
+    except Exception as ex:
+        flash(f'Email sync failed: {ex}', 'danger')
+    return redirect(request.referrer or url_for('enquiries_list'))
+
+
+@app.route('/enquiries/<int:id>/send-email', methods=['POST'])
+def enquiry_send_email(id):
+    from email_sync import send_email, check_configured
+    if not check_configured():
+        flash('Email not configured — set MS variables in Railway.', 'warning')
+        return redirect(url_for('enquiry_detail', id=id))
+    e       = Enquiry.query.get_or_404(id)
+    to_addr = request.form.get('to_address', '').strip()
+    subject = request.form.get('subject', '').strip()
+    body    = request.form.get('body', '').strip()
+    author  = request.form.get('author', 'BC').strip() or 'BC'
+    if not all([to_addr, subject, body]):
+        flash('Please fill in all fields.', 'warning')
+        return redirect(url_for('enquiry_detail', id=id))
+    try:
+        send_email(to_addr, subject, f"<p>{'<br>'.join(body.splitlines())}</p>")
+        db.session.add(EnquiryNote(
+            enquiry_id=id, direction='outbound',
+            subject=subject, body=body, author=author,
+        ))
+        e.last_contact_date = date.today()
+        nf = request.form.get('next_follow_up', '').strip()
+        if nf:
+            try: e.next_follow_up = datetime.strptime(nf, '%Y-%m-%d').date()
+            except: pass
+        db.session.commit()
+        flash(f'Email sent to {to_addr}.', 'success')
+    except Exception as ex:
+        flash(f'Failed to send email: {ex}', 'danger')
+    return redirect(url_for('enquiry_detail', id=id))
+
+
 # ── Property-Contact Matching & Auto-linking ──────────────────────────────────
 
 def auto_link_contact_to_projects(contact):
@@ -1734,79 +1795,84 @@ def api_enquiry():
     })
 
 
-# ── Listing CRUD (unit-level listings within a Property) ─────────────────────
+# ── Listing CRUD (managed from Project page) ─────────────────────────────────
 
-@app.route('/properties/<int:prop_id>/listings/new', methods=['GET', 'POST'])
-def listing_new(prop_id):
-    prop = Property.query.get_or_404(prop_id)
+def _save_listing_from_form(form, l):
+    def pf(v): return float(v.replace(',','')) if v and v.strip() else None
+    l.unit_name          = form.get('unit_name','').strip() or None
+    l.website_listed     = bool(form.get('website_listed'))
+    l.listing_status     = form.get('listing_status','available')
+    l.featured           = bool(form.get('featured'))
+    l.website_category   = form.get('website_category') or None
+    l.use_class          = form.get('use_class') or None
+    l.area               = form.get('area') or None
+    l.listing_price      = pf(form.get('listing_price',''))
+    l.listing_price_unit = form.get('listing_price_unit','poa')
+    l.price_display      = form.get('price_display') or None
+    l.size               = pf(form.get('size',''))
+    l.measurement_type   = form.get('measurement_type') or None
+    l.beds  = int(form.get('beds'))  if form.get('beds','').strip()  else None
+    l.baths = int(form.get('baths')) if form.get('baths','').strip() else None
+    l.lat   = pf(form.get('lat',''))
+    l.lng   = pf(form.get('lng',''))
+    l.photo_id = form.get('photo_id') or None
+    l.blurb    = form.get('blurb') or None
+
+
+@app.route('/projects/<int:proj_id>/listing/new', methods=['GET', 'POST'])
+def listing_new_for_project(proj_id):
+    project = Project.query.get_or_404(proj_id)
+    prop = project.property
     if request.method == 'POST':
-        def pf(v): return float(v.replace(',','')) if v and v.strip() else None
-        l = Listing(
-            property_id=prop_id,
-            unit_name=request.form.get('unit_name','').strip() or None,
-            website_listed=bool(request.form.get('website_listed')),
-            listing_status=request.form.get('listing_status','available'),
-            featured=bool(request.form.get('featured')),
-            website_category=request.form.get('website_category') or None,
-            use_class=request.form.get('use_class') or None,
-            area=request.form.get('area') or None,
-            listing_price=pf(request.form.get('listing_price','')),
-            listing_price_unit=request.form.get('listing_price_unit','poa'),
-            price_display=request.form.get('price_display') or None,
-            size=pf(request.form.get('size','')),
-            measurement_type=request.form.get('measurement_type') or None,
-            beds=int(request.form.get('beds')) if request.form.get('beds','').strip() else None,
-            baths=int(request.form.get('baths')) if request.form.get('baths','').strip() else None,
-            lat=pf(request.form.get('lat','')),
-            lng=pf(request.form.get('lng','')),
-            photo_id=request.form.get('photo_id') or None,
-            blurb=request.form.get('blurb') or None,
-        )
+        l = Listing(project_id=proj_id, property_id=prop.id if prop else None)
+        _save_listing_from_form(request.form, l)
         db.session.add(l)
         db.session.commit()
-        flash('Listing added.', 'success')
-        return redirect(url_for('property_detail', id=prop_id))
-    return render_template('properties/listing_form.html', prop=prop, listing=None)
+        flash('Website listing created.', 'success')
+        return redirect(url_for('project_detail', id=proj_id))
+    return render_template('projects/listing_form.html', project=project, prop=prop, listing=None)
 
 
 @app.route('/listings/<int:id>/edit', methods=['GET', 'POST'])
 def listing_edit(id):
     l = Listing.query.get_or_404(id)
+    project = Project.query.get(l.project_id) if l.project_id else None
     prop = l.prop
     if request.method == 'POST':
-        def pf(v): return float(v.replace(',','')) if v and v.strip() else None
-        l.unit_name        = request.form.get('unit_name','').strip() or None
-        l.website_listed   = bool(request.form.get('website_listed'))
-        l.listing_status   = request.form.get('listing_status','available')
-        l.featured         = bool(request.form.get('featured'))
-        l.website_category = request.form.get('website_category') or None
-        l.use_class        = request.form.get('use_class') or None
-        l.area             = request.form.get('area') or None
-        l.listing_price    = pf(request.form.get('listing_price',''))
-        l.listing_price_unit = request.form.get('listing_price_unit','poa')
-        l.price_display    = request.form.get('price_display') or None
-        l.size             = pf(request.form.get('size',''))
-        l.measurement_type = request.form.get('measurement_type') or None
-        l.beds  = int(request.form.get('beds'))  if request.form.get('beds','').strip()  else None
-        l.baths = int(request.form.get('baths')) if request.form.get('baths','').strip() else None
-        l.lat   = pf(request.form.get('lat',''))
-        l.lng   = pf(request.form.get('lng',''))
-        l.photo_id = request.form.get('photo_id') or None
-        l.blurb    = request.form.get('blurb') or None
+        _save_listing_from_form(request.form, l)
         db.session.commit()
         flash('Listing updated.', 'success')
-        return redirect(url_for('property_detail', id=prop.id))
-    return render_template('properties/listing_form.html', prop=prop, listing=l)
+        if project:
+            return redirect(url_for('project_detail', id=project.id))
+        return redirect(url_for('property_detail', id=prop.id) if prop else url_for('projects_list'))
+    return render_template('projects/listing_form.html', project=project, prop=prop, listing=l)
 
 
 @app.route('/listings/<int:id>/delete', methods=['POST'])
 def listing_delete(id):
     l = Listing.query.get_or_404(id)
+    proj_id = l.project_id
     prop_id = l.property_id
     db.session.delete(l)
     db.session.commit()
     flash('Listing removed.', 'info')
-    return redirect(url_for('property_detail', id=prop_id))
+    if proj_id:
+        return redirect(url_for('project_detail', id=proj_id))
+    return redirect(url_for('property_detail', id=prop_id) if prop_id else url_for('projects_list'))
+
+
+# Legacy route kept for backward compatibility
+@app.route('/properties/<int:prop_id>/listings/new', methods=['GET', 'POST'])
+def listing_new(prop_id):
+    prop = Property.query.get_or_404(prop_id)
+    if request.method == 'POST':
+        l = Listing(property_id=prop_id)
+        _save_listing_from_form(request.form, l)
+        db.session.add(l)
+        db.session.commit()
+        flash('Listing added.', 'success')
+        return redirect(url_for('property_detail', id=prop_id))
+    return render_template('projects/listing_form.html', project=None, prop=prop, listing=None)
 
 
 # ── Public API (consumed by website) ─────────────────────────────────────────
@@ -1868,6 +1934,17 @@ def api_listings():
                 'beds': p.beds, 'baths': p.baths,
             })
     return jsonify(result)
+
+
+def _migrate_email_columns():
+    from sqlalchemy import text, inspect
+    with app.app_context():
+        insp = inspect(db.engine)
+        existing = {col['name'] for col in insp.get_columns('enquiry_notes')}
+        if 'ms_message_id' not in existing:
+            with db.engine.connect() as conn:
+                conn.execute(text('ALTER TABLE enquiry_notes ADD COLUMN ms_message_id TEXT'))
+                conn.commit()
 
 
 def _ensure_default_user():
@@ -2044,6 +2121,7 @@ if __name__ == '__main__':
         _migrate_listing_columns()
         _migrate_document_columns()
         _migrate_enquiry_columns()
+        _migrate_email_columns()
         _ensure_default_user()
         _seed_listings_from_properties()
     app.run(debug=False, host='127.0.0.1', port=8080)
