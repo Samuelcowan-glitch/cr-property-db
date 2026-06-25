@@ -57,7 +57,7 @@
         {% set ptype = (p.property_type or 'other') | lower %}
         <a class="listing-item" href="{{ url_for('property_detail', id=p.id) }}">
           <div class="listing-thumb {{ 'office' if 'office' in ptype else 'retail' if 'retail' in ptype else 'industrial' if 'industrial' in ptype or 'warehouse' in ptype else 'residential' if 'resid' in ptype or 'flat' in ptype or 'house' in ptype else 'land' if 'land' in ptype else '' }}">
-            {{ 'ðŸ¢' if 'office' in ptype else 'ðŸª' if 'retail' in ptype else 'ðŸ­' if 'industrial' in ptype or 'warehouse' in ptype else 'ðŸ ' if 'resid' in ptype else 'ðŸŒ³' if 'land' in ptype else 'ðŸ—ï¸' }}
+            {{ 'Off' if 'office' in ptype else 'Ret' if 'retail' in ptype else 'Ind' if 'industrial' in ptype or 'warehouse' in ptype else 'Res' if 'resid' in ptype or 'flat' in ptype or 'house' in ptype else 'Lnd' if 'land' in ptype else 'Prp' }}
           </div>
           <div class="listing-info">
             <div class="listing-address">{{ p.address }}</div>
@@ -295,4 +295,5 @@ function filterPanel(inputId, listId) {
 </script>
 
 {% endblock %}
+
 
