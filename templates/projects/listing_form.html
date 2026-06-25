@@ -56,9 +56,9 @@
 {% if l %}
   {% set form_action = url_for('listing_edit', id=l.id) %}
 {% elif project %}
-  {% set form_action = url_for('listing_new', proj_id=project.id) %}
+  {% set form_action = url_for('listing_new_for_project', proj_id=project.id) %}
 {% else %}
-  {% set form_action = url_for('prop_listing_new', prop_id=prop.id) %}
+  {% set form_action = url_for('listing_new', prop_id=prop.id) %}
 {% endif %}
 
 <form method="post" action="{{ form_action }}" enctype="multipart/form-data">
