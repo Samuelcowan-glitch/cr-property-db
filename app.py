@@ -2375,6 +2375,40 @@ def _seed_listings_from_properties():
         db.session.commit()
 
 
+def _seed_project_listings():
+    """Ensure every website-listed Property has a Project + project-managed Listing.
+
+    Idempotent: skips any property that already has a Listing, so it is safe to
+    call on every startup. On a fresh database this gives each website property a
+    Project and a project-linked Listing, so the public website is driven by
+    project-managed listings and each listing is editable from its project.
+    Assumes an active app context (provided by serve.py / __main__).
+    """
+    for p in Property.query.filter_by(website_listed=True).all():
+        if Listing.query.filter_by(property_id=p.id).first():
+            continue
+        project = Project.query.filter_by(property_id=p.id).first()
+        if project is None:
+            project = Project(property_id=p.id,
+                              name=p.address or f"Property {p.id}",
+                              status='Active')
+            db.session.add(project)
+            db.session.flush()  # assign project.id before referencing it
+        db.session.add(Listing(
+            project_id=project.id, property_id=p.id, unit_name=None,
+            website_listed=True, listing_status=p.listing_status or 'available',
+            featured=bool(p.featured), website_category=p.website_category,
+            use_class=p.use_class, residential_use=p.residential_use,
+            area=p.area, listing_price=p.listing_price,
+            listing_price_unit=p.listing_price_unit, price_display=p.price_display,
+            size=p.size or p.listing_size, measurement_type=p.measurement_type,
+            beds=p.beds, baths=p.baths, photo_id=p.photo_id,
+            blurb=p.blurb or p.description, lat=p.lat, lng=p.lng,
+            created_at=p.created_at,
+        ))
+    db.session.commit()
+
+
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
@@ -2385,5 +2419,7 @@ if __name__ == '__main__':
         _migrate_enquiry_columns()
         _migrate_email_columns()
         _ensure_default_user()
-        _seed_listings_from_properties()
+        if Property.query.count() == 0:
+            import import_listings  # seeds the 32 website properties
+            _seed_project_listings()
     app.run(debug=False, host='127.0.0.1', port=8080)
