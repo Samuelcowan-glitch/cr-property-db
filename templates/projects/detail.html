@@ -707,6 +707,35 @@
         <button type="submit" class="btn btn-danger btn-sm">Remove Listing</button>
       </form>
     </div>
+
+    <!-- Photo gallery — these appear as the photo gallery on the website.
+         Separate forms (not nested in the edit form above). -->
+    <div class="card" style="padding:0;overflow:hidden;margin-bottom:12px">
+      <div style="background:#1a2e4a;color:#fff;padding:10px 16px;font-size:13px;font-weight:700">&#128247; Photo Gallery</div>
+      <div style="padding:16px">
+        {% if lst.photos %}
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin-bottom:14px">
+          {% for ph in lst.photos %}
+          <div style="position:relative;border-radius:6px;overflow:hidden;background:#f3f4f6;aspect-ratio:4/3">
+            <img src="{{ url_for('listing_photo_image', id=ph.id) }}" style="width:100%;height:100%;object-fit:cover">
+            <form method="post" action="{{ url_for('listing_photo_delete', id=ph.id) }}" style="position:absolute;top:4px;right:4px">
+              <button type="submit" title="Delete photo" style="background:rgba(0,0,0,.6);border:none;color:#fff;border-radius:4px;width:22px;height:22px;cursor:pointer;font-size:12px">&times;</button>
+            </form>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div style="font-size:12.5px;color:#9aa0a6;margin-bottom:14px">No photos yet — upload images below to build the gallery shown on the website.</div>
+        {% endif %}
+        <form method="post" action="{{ url_for('listing_photo_upload', id=lst.id) }}" enctype="multipart/form-data" style="border:2px dashed #d1d5db;border-radius:8px;padding:20px;text-align:center;background:#fafafa">
+          <div style="font-size:22px;margin-bottom:8px">&#128247;</div>
+          <div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Add Photos</div>
+          <div style="font-size:11.5px;color:#9aa0a6;margin-bottom:10px">JPG, PNG or WEBP — you can select multiple files</div>
+          <input type="file" name="photos" multiple accept="image/*" style="margin-bottom:10px">
+          <button type="submit" class="btn btn-primary btn-sm" style="display:block;margin:0 auto">Upload Photos</button>
+        </form>
+      </div>
+    </div>
   </div>
 
   <!-- RIGHT: Live preview info -->
@@ -714,7 +743,9 @@
     <div class="card" style="padding:0;overflow:hidden">
       <div style="background:#1a2e4a;color:#fff;padding:9px 14px;font-size:12.5px;font-weight:700">Live Preview</div>
       <div style="padding:14px">
-        {% if lst.photo_id %}
+        {% if lst.photos %}
+        <img src="{{ url_for('listing_photo_image', id=lst.photos[0].id) }}" style="width:100%;border-radius:5px;margin-bottom:10px" onerror="this.style.display='none'">
+        {% elif lst.photo_id %}
         <img src="https://images.unsplash.com/{{ lst.photo_id }}?auto=format&fit=crop&w=400&q=80" style="width:100%;border-radius:5px;margin-bottom:10px" onerror="this.style.display='none'">
         {% endif %}
         <div style="font-size:16px;font-weight:700;color:#0e1f44">

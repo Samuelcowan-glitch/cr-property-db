@@ -1758,6 +1758,15 @@ def api_property_meta(id):
 
 # ── Listing Photo upload/delete ───────────────────────────────────────────────
 
+def _listing_media_return(listing):
+    """After a media (photo) change, return the user to the place they were
+    managing the listing. Photos are managed from the project's Website
+    Listing tab, so prefer that; fall back to the standalone edit page."""
+    if listing.project_id:
+        return url_for('project_detail', id=listing.project_id) + '#tab-listing'
+    return url_for('listing_edit', id=listing.id) + '#media'
+
+
 @app.route('/listings/<int:id>/photos/upload', methods=['POST'])
 def listing_photo_upload(id):
     listing = Listing.query.get_or_404(id)
@@ -1778,16 +1787,16 @@ def listing_photo_upload(id):
             count += 1
     db.session.commit()
     flash(f'{count} photo(s) uploaded.', 'success')
-    return redirect(url_for('listing_edit', id=id) + '#media')
+    return redirect(_listing_media_return(listing))
 
 
 @app.route('/listing-photos/<int:id>/delete', methods=['POST'])
 def listing_photo_delete(id):
     ph = ListingPhoto.query.get_or_404(id)
-    listing_id = ph.listing_id
+    listing = ph.listing
     db.session.delete(ph)
     db.session.commit()
-    return redirect(url_for('listing_edit', id=listing_id) + '#media')
+    return redirect(_listing_media_return(listing))
 
 
 @app.route('/listing-photos/<int:id>/image')
