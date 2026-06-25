@@ -351,6 +351,70 @@ class Listing(db.Model):
     blurb              = db.Column(db.Text)
     created_at         = db.Column(db.DateTime, default=datetime.utcnow)
 
+    # ── Commercial: Define the Space ──
+    min_size           = db.Column(db.Float)
+    max_size           = db.Column(db.Float)
+    measurement_std    = db.Column(db.String(20))     # NIA / GIA / GEA / IPMS 2 / IPMS 3
+    total_size         = db.Column(db.Float)
+    self_contained     = db.Column(db.Boolean, default=False)
+    add_on_factor      = db.Column(db.Float)          # %
+    build_status       = db.Column(db.String(50))     # Ready / Spec / Shell / Fitted
+
+    # ── Commercial: Lease Information ──
+    set_as_to_let      = db.Column(db.Boolean, default=True)
+    lease_type         = db.Column(db.String(50))     # New / Assignment / Sub-lease
+    rent_qualifier     = db.Column(db.String(30))     # Quoting / Guideline / Asking
+    rent_inclusive     = db.Column(db.String(20))     # Exclusive / Inclusive / N/A
+    rent_from          = db.Column(db.Float)          # £ psf
+    rent_to            = db.Column(db.Float)          # £ psf
+    rent_comment       = db.Column(db.Text)
+    rent_on_application= db.Column(db.Boolean, default=False)
+    possession_now     = db.Column(db.Boolean, default=False)
+    possession_quarter = db.Column(db.String(10))     # Q1 / Q2 / Q3 / Q4
+    possession_year    = db.Column(db.Integer)
+    possession_comment = db.Column(db.Text)
+    lease_length_months= db.Column(db.Integer)
+    lease_length_years = db.Column(db.Integer)
+    lease_length_comment=db.Column(db.Text)
+    inside_1954_act    = db.Column(db.String(20))     # Inside / Outside / Contracted Out
+    repair_insuring    = db.Column(db.String(30))     # FRI / IRI / Internal
+
+    # ── Commercial: Sale Information ──
+    set_as_for_sale    = db.Column(db.Boolean, default=False)
+    sale_price         = db.Column(db.Float)
+    sale_price_display = db.Column(db.String(100))
+
+    # ── Rates & Charges ──
+    service_charge     = db.Column(db.Float)          # £ psf
+    service_charge_na  = db.Column(db.Boolean, default=False)
+    service_charge_comment = db.Column(db.Text)
+    rateable_value     = db.Column(db.Float)
+    rateable_value_na  = db.Column(db.Boolean, default=False)
+    rates_multiplier   = db.Column(db.Float)
+    rates_payable      = db.Column(db.Float)
+    epc_band           = db.Column(db.String(5))      # A-G
+    epc_band_potential = db.Column(db.String(5))
+    vat_comment        = db.Column(db.Text)
+    legal_fees         = db.Column(db.String(30))     # Each Party / Ingoing / N/A
+    parking_ratio      = db.Column(db.String(50))
+    parking_rent       = db.Column(db.Float)
+    parking_rent_na    = db.Column(db.Boolean, default=False)
+    parking_spaces     = db.Column(db.Integer)
+
+    # ── Marketing ──
+    summary_text       = db.Column(db.String(140))    # 140-char public summary
+    key_points         = db.Column(db.Text)            # JSON list of bullet points
+    amenities          = db.Column(db.Text)            # comma-separated tags
+    availability_reason= db.Column(db.String(100))
+
+    # ── Brochure & Floor Plan ──
+    brochure_data      = db.Column(db.LargeBinary)
+    brochure_filename  = db.Column(db.String(255))
+    brochure_size      = db.Column(db.Integer)
+    floor_plan_data    = db.Column(db.LargeBinary)
+    floor_plan_filename= db.Column(db.String(255))
+    floor_plan_size    = db.Column(db.Integer)
+
     project  = db.relationship('Project',  backref=db.backref('project_listings', lazy=True, cascade='all, delete-orphan'))
     prop     = db.relationship('Property', backref=db.backref('unit_listings', lazy=True))
 
@@ -371,6 +435,23 @@ class Listing(db.Model):
         if self.listing_price_unit == 'pa':  return n + ' per annum'
         if self.listing_price_unit == 'pcm': return n + ' pcm'
         return n
+
+
+class ListingPhoto(db.Model):
+    """Individual photo attached to a listing."""
+    __tablename__ = 'listing_photos'
+    id         = db.Column(db.Integer, primary_key=True)
+    listing_id = db.Column(db.Integer, db.ForeignKey('listings.id'), nullable=False)
+    file_data  = db.Column(db.LargeBinary, nullable=False)
+    filename   = db.Column(db.String(255))
+    file_mime  = db.Column(db.String(100))
+    file_size  = db.Column(db.Integer)
+    caption    = db.Column(db.String(255))
+    sort_order = db.Column(db.Integer, default=0)
+    uploaded_at= db.Column(db.DateTime, default=datetime.utcnow)
+
+    listing = db.relationship('Listing', backref=db.backref('photos', lazy=True,
+                              cascade='all, delete-orphan', order_by='ListingPhoto.sort_order'))
 
 
 class ProjectDocument(db.Model):
@@ -1671,6 +1752,104 @@ def api_property_meta(id):
         'size':            p.size or 0,
     })
 
+
+
+# ── Listing Photo upload/delete ───────────────────────────────────────────────
+
+@app.route('/listings/<int:id>/photos/upload', methods=['POST'])
+def listing_photo_upload(id):
+    listing = Listing.query.get_or_404(id)
+    files = request.files.getlist('photos')
+    count = 0
+    for f in files:
+        if f and f.filename:
+            data = f.read()
+            ph = ListingPhoto(
+                listing_id=id,
+                file_data=data,
+                filename=f.filename,
+                file_mime=f.content_type or 'image/jpeg',
+                file_size=len(data),
+                sort_order=len(listing.photos),
+            )
+            db.session.add(ph)
+            count += 1
+    db.session.commit()
+    flash(f'{count} photo(s) uploaded.', 'success')
+    return redirect(url_for('listing_edit', id=id) + '#media')
+
+
+@app.route('/listing-photos/<int:id>/delete', methods=['POST'])
+def listing_photo_delete(id):
+    ph = ListingPhoto.query.get_or_404(id)
+    listing_id = ph.listing_id
+    db.session.delete(ph)
+    db.session.commit()
+    return redirect(url_for('listing_edit', id=listing_id) + '#media')
+
+
+@app.route('/listing-photos/<int:id>/image')
+def listing_photo_image(id):
+    from flask import send_file
+    import io
+    ph = ListingPhoto.query.get_or_404(id)
+    return send_file(io.BytesIO(ph.file_data), mimetype=ph.file_mime or 'image/jpeg')
+
+
+@app.route('/listings/<int:id>/brochure/upload', methods=['POST'])
+def listing_brochure_upload(id):
+    listing = Listing.query.get_or_404(id)
+    f = request.files.get('brochure')
+    if f and f.filename:
+        listing.brochure_data     = f.read()
+        listing.brochure_filename = f.filename
+        listing.brochure_size     = len(listing.brochure_data)
+        db.session.commit()
+        flash('Brochure uploaded.', 'success')
+    return redirect(url_for('listing_edit', id=id) + '#media')
+
+
+@app.route('/listings/<int:id>/brochure/delete', methods=['POST'])
+def listing_brochure_delete(id):
+    listing = Listing.query.get_or_404(id)
+    listing.brochure_data = listing.brochure_filename = listing.brochure_size = None
+    db.session.commit()
+    flash('Brochure removed.', 'info')
+    return redirect(url_for('listing_edit', id=id) + '#media')
+
+
+@app.route('/listings/<int:id>/brochure/download')
+def listing_brochure_download(id):
+    from flask import send_file
+    import io
+    listing = Listing.query.get_or_404(id)
+    if not listing.brochure_data:
+        flash('No brochure uploaded.', 'warning')
+        return redirect(url_for('listing_edit', id=id))
+    return send_file(io.BytesIO(listing.brochure_data),
+                     mimetype='application/pdf', as_attachment=True,
+                     download_name=listing.brochure_filename or 'brochure.pdf')
+
+
+@app.route('/listings/<int:id>/floorplan/upload', methods=['POST'])
+def listing_floorplan_upload(id):
+    listing = Listing.query.get_or_404(id)
+    f = request.files.get('floor_plan')
+    if f and f.filename:
+        listing.floor_plan_data     = f.read()
+        listing.floor_plan_filename = f.filename
+        listing.floor_plan_size     = len(listing.floor_plan_data)
+        db.session.commit()
+        flash('Floor plan uploaded.', 'success')
+    return redirect(url_for('listing_edit', id=id) + '#media')
+
+
+@app.route('/listings/<int:id>/floorplan/delete', methods=['POST'])
+def listing_floorplan_delete(id):
+    listing = Listing.query.get_or_404(id)
+    listing.floor_plan_data = listing.floor_plan_filename = listing.floor_plan_size = None
+    db.session.commit()
+    return redirect(url_for('listing_edit', id=id) + '#media')
 
 # ── Website → DB: inbound enquiry webhook ────────────────────────────────────
 

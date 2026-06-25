@@ -1,177 +1,415 @@
-{% extends "base.html" %}
-{% block title %}{{ 'Edit Listing' if listing else 'Add Listing' }}{% endblock %}
-{% block topbar_title %}{{ 'Edit' if listing else 'Create' }} Website Listing{% endblock %}
+{% set l = listing %}
 {% set prop = prop if prop is defined and prop else (project.property if project and project.property else none) %}
+{% set is_commercial = (l.website_category == 'commercial') if l else true %}
+{% set is_residential = (l.website_category == 'residential') if l else false %}
 
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if l else 'Add' }} Listing{% endblock %}
+{% block topbar_title %}{{ 'Edit' if l else 'Add' }} Website Listing{% endblock %}
 {% block topbar_actions %}
   {% if project %}
   <a href="{{ url_for('project_detail', id=project.id) }}" class="btn btn-outline btn-sm">&larr; {{ project.name }}</a>
   {% elif prop %}
-  <a href="{{ url_for('property_detail', id=prop.id) }}" class="btn btn-outline btn-sm">&larr; {{ prop.address }}</a>
+  <a href="{{ url_for('property_detail', id=prop.id) }}" class="btn btn-outline btn-sm">&larr; Back</a>
   {% endif %}
 {% endblock %}
 
 {% block content %}
-<div class="breadcrumb">
-  <a href="{{ url_for('dashboard') }}">Dashboard</a><span class="sep">/</span>
-  {% if project %}
-  <a href="{{ url_for('projects_list') }}">Projects</a><span class="sep">/</span>
-  <a href="{{ url_for('project_detail', id=project.id) }}">{{ project.name }}</a><span class="sep">/</span>
-  {% elif prop %}
-  <a href="{{ url_for('properties_list') }}">Properties</a><span class="sep">/</span>
-  <a href="{{ url_for('property_detail', id=prop.id) }}">{{ prop.address }}</a><span class="sep">/</span>
-  {% endif %}
-  <span class="current">{{ 'Edit Listing' if listing else 'Add Listing' }}</span>
-</div>
 
-<div class="card" style="max-width:760px">
-  <div class="card-header">
-    <div class="card-title">{{ 'Edit' if listing else 'New' }} Listing{% if prop %} — <span style="color:#5f6368">{{ prop.address }}, {{ prop.postcode }}</span>{% endif %}</div>
-    <div style="font-size:12px;color:#5f6368">A listing represents one lettable or saleable unit — it will appear on the public website when published.</div>
+{% macro field(label, name, type='text', placeholder='', val='', required=false, hint='') %}
+<div style="display:grid;grid-template-columns:200px 1fr;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #f1f3f4">
+  <label style="font-size:13px;color:#374151">{{ label }}{% if required %} <span style="color:#ef4444">*</span>{% endif %}{% if hint %}<div style="font-size:11px;color:#9aa0a6;margin-top:2px">{{ hint }}</div>{% endif %}</label>
+  <div>
+    {% if type == 'textarea' %}
+    <textarea name="{{ name }}" rows="3" placeholder="{{ placeholder }}" style="width:100%;font-size:13px;padding:7px 10px;border:1px solid #d1d5db;border-radius:5px;font-family:inherit;resize:vertical">{{ val }}</textarea>
+    {% else %}
+    <input type="{{ type }}" name="{{ name }}" placeholder="{{ placeholder }}" value="{{ val }}" style="width:100%;font-size:13px;padding:7px 10px;border:1px solid #d1d5db;border-radius:5px" {% if required %}required{% endif %}>
+    {% endif %}
   </div>
-  <form method="post">
-    <div class="form-grid" style="margin-bottom:16px">
-
-      <div class="form-group span-2">
-        <label>Unit Name <span style="color:#9aa0a6;font-weight:400">(leave blank if whole building)</span></label>
-        <input type="text" name="unit_name" placeholder="e.g. Unit 202-203 or Ground Floor"
-               value="{{ listing.unit_name or '' if listing else '' }}">
-      </div>
-
-      <div class="form-group">
-        <label>Category</label>
-        <select name="website_category">
-          <option value="commercial" {{ 'selected' if listing and listing.website_category == 'commercial' else 'selected' if not listing else '' }}>Commercial</option>
-          <option value="residential" {{ 'selected' if listing and listing.website_category == 'residential' else '' }}>Residential</option>
-        </select>
-      </div>
-
-      <div class="form-group">
-        <label>Use Class</label>
-        <select name="use_class">
-          <option value="">— Select —</option>
-          <option value="office" {{ 'selected' if listing and listing.use_class == 'office' else '' }}>Office</option>
-          <option value="retail" {{ 'selected' if listing and listing.use_class == 'retail' else '' }}>Retail</option>
-          <option value="industrial" {{ 'selected' if listing and listing.use_class == 'industrial' else '' }}>Industrial / Warehouse</option>
-        </select>
-      </div>
-
-      <div class="form-group">
-        <label>Status</label>
-        <select name="listing_status">
-          {% for s in ['available','under-offer','let-agreed','sold'] %}
-          <option value="{{ s }}" {{ 'selected' if listing and listing.listing_status == s else ('selected' if not listing and s == 'available' else '') }}>{{ s|replace('-',' ')|title }}</option>
-          {% endfor %}
-        </select>
-      </div>
-
-      <div class="form-group">
-        <label>Area</label>
-        <input type="text" name="area" placeholder="e.g. Chelsea Harbour"
-               value="{{ listing.area or '' if listing else '' }}">
-      </div>
-
-      <div class="form-group">
-        <label>Size</label>
-        <input type="number" name="size" placeholder="e.g. 1665"
-               value="{{ listing.size|int if listing and listing.size else '' }}">
-      </div>
-
-      <div class="form-group">
-        <label>Measurement</label>
-        <select name="measurement_type">
-          {% for m in ['NIA','GIA','GEA','IPMS'] %}
-          <option value="{{ m }}" {{ 'selected' if listing and listing.measurement_type == m else ('selected' if not listing and m == 'NIA' else '') }}>{{ m }}</option>
-          {% endfor %}
-        </select>
-      </div>
-
-      <div class="form-group">
-        <label>Price / Rent (£)</label>
-        <input type="number" name="listing_price" placeholder="e.g. 42120"
-               value="{{ listing.listing_price|int if listing and listing.listing_price else '' }}">
-      </div>
-
-      <div class="form-group">
-        <label>Price Unit</label>
-        <select name="listing_price_unit">
-          {% for u,l in [('pa','Per annum'),('pcm','Per month'),('sale','Sale price'),('poa','Price on application')] %}
-          <option value="{{ u }}" {{ 'selected' if listing and listing.listing_price_unit == u else ('selected' if not listing and u == 'pa' else '') }}>{{ l }}</option>
-          {% endfor %}
-        </select>
-      </div>
-
-      <div class="form-group span-2">
-        <label>Custom Price Display <span style="color:#9aa0a6;font-weight:400">(optional override, e.g. "OIRO £1,300,000")</span></label>
-        <input type="text" name="price_display" placeholder="Leave blank to auto-format"
-               value="{{ listing.price_display or '' if listing else '' }}">
-      </div>
-
-      <div class="form-group">
-        <label>Beds</label>
-        <input type="number" name="beds" placeholder="Residential only"
-               value="{{ listing.beds or '' if listing else '' }}">
-      </div>
-
-      <div class="form-group">
-        <label>Baths</label>
-        <input type="number" name="baths" placeholder="Residential only"
-               value="{{ listing.baths or '' if listing else '' }}">
-      </div>
-
-      <div class="form-group">
-        <label>Latitude</label>
-        <input type="number" step="any" name="lat" placeholder="e.g. 51.4737"
-               value="{{ listing.lat if listing and listing.lat else '' }}">
-      </div>
-
-      <div class="form-group">
-        <label>Longitude</label>
-        <input type="number" step="any" name="lng" placeholder="e.g. -0.1837"
-               value="{{ listing.lng if listing and listing.lng else '' }}">
-      </div>
-
-      <div class="form-group span-2">
-        <label>Unsplash Photo ID</label>
-        <input type="text" name="photo_id" placeholder="e.g. photo-1497366216548-37526070297c"
-               value="{{ listing.photo_id or '' if listing else '' }}">
-      </div>
-
-      <div class="form-group span-2">
-        <label>Marketing Description</label>
-        <textarea name="blurb" rows="3" placeholder="Short description for the website listing…">{{ listing.blurb or '' if listing else '' }}</textarea>
-      </div>
-
-      <div class="form-group">
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-          <input type="checkbox" name="website_listed" value="1" {{ 'checked' if not listing or listing.website_listed else '' }}>
-          Show on website
-        </label>
-      </div>
-
-      <div class="form-group">
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-          <input type="checkbox" name="featured" value="1" {{ 'checked' if listing and listing.featured else '' }}>
-          Featured listing
-        </label>
-      </div>
-
-    </div>
-    <div class="form-actions">
-      <button type="submit" class="btn btn-primary">{{ 'Save Changes' if listing else 'Add Listing' }}</button>
-      {% if project %}
-      <a href="{{ url_for('project_detail', id=project.id) }}" class="btn btn-secondary">Cancel</a>
-      {% elif prop %}
-      <a href="{{ url_for('property_detail', id=prop.id) }}" class="btn btn-secondary">Cancel</a>
-      {% else %}
-      <a href="{{ url_for('properties_list') }}" class="btn btn-secondary">Cancel</a>
-      {% endif %}
-      {% if listing %}
-      <form method="post" action="{{ url_for('listing_delete', id=listing.id) }}" class="confirm-delete" style="margin-left:auto">
-        <button type="submit" class="btn btn-danger btn-sm">Remove Listing</button>
-      </form>
-      {% endif %}
-    </div>
-  </form>
 </div>
+{% endmacro %}
+
+{% macro sel(label, name, options, val='', hint='') %}
+<div style="display:grid;grid-template-columns:200px 1fr;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #f1f3f4">
+  <label style="font-size:13px;color:#374151">{{ label }}{% if hint %}<div style="font-size:11px;color:#9aa0a6;margin-top:2px">{{ hint }}</div>{% endif %}</label>
+  <select name="{{ name }}" style="width:100%;font-size:13px;padding:7px 10px;border:1px solid #d1d5db;border-radius:5px;background:#fff">
+    <option value="">Please select...</option>
+    {% for opt in options %}
+      {% if opt is mapping %}
+      <optgroup label="{{ opt['group'] }}">{% for o in opt['opts'] %}<option value="{{ o }}" {{ 'selected' if val == o else '' }}>{{ o }}</option>{% endfor %}</optgroup>
+      {% else %}
+      <option value="{{ opt }}" {{ 'selected' if val == opt else '' }}>{{ opt }}</option>
+      {% endif %}
+    {% endfor %}
+  </select>
+</div>
+{% endmacro %}
+
+{% macro sec(id, title) %}
+<div id="{{ id }}" style="background:#1a2e4a;color:#fff;padding:10px 16px;border-radius:6px 6px 0 0;margin-top:20px">
+  <span style="font-size:14px;font-weight:700">{{ title }}</span>
+</div>
+<div style="border:1px solid #e5e7eb;border-top:none;border-radius:0 0 6px 6px;padding:0 16px;background:#fff">
+{% endmacro %}
+
+{# ── Determine form action ── #}
+{% if l %}
+  {% set form_action = url_for('listing_edit', id=l.id) %}
+{% elif project %}
+  {% set form_action = url_for('listing_new', proj_id=project.id) %}
+{% else %}
+  {% set form_action = url_for('prop_listing_new', prop_id=prop.id) %}
+{% endif %}
+
+<form method="post" action="{{ form_action }}" enctype="multipart/form-data">
+<div style="display:grid;grid-template-columns:1fr 220px;gap:20px;align-items:start">
+
+<!-- ══ Main form ══ -->
+<div>
+
+<!-- Category + publish bar — INSIDE form -->
+<div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+  <div style="font-size:13px;font-weight:600;color:#374151">Category</div>
+  <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;padding:6px 14px;border-radius:20px;border:2px solid #c8601a;background:#fff8f5" id="lbl-com">
+    <input type="radio" name="website_category" value="commercial" {{ 'checked' if is_commercial else '' }} onchange="switchCat('commercial')" style="accent-color:#c8601a">
+    Commercial
+  </label>
+  <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;padding:6px 14px;border-radius:20px;border:2px solid #d1d5db;background:#fff" id="lbl-res">
+    <input type="radio" name="website_category" value="residential" {{ 'checked' if is_residential else '' }} onchange="switchCat('residential')" style="accent-color:#1565c0">
+    Residential
+  </label>
+  <div style="margin-left:auto;display:flex;align-items:center;gap:14px">
+    <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;font-weight:600;color:#c8601a">
+      <input type="checkbox" name="website_listed" value="1" {{ 'checked' if not l or l.website_listed else '' }} style="accent-color:#c8601a;width:16px;height:16px">
+      Publish on website
+    </label>
+    <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+      <input type="checkbox" name="featured" value="1" {{ 'checked' if l and l.featured else '' }} style="accent-color:#c8601a;width:16px;height:16px">
+      Featured
+    </label>
+  </div>
+</div>
+
+<!-- ══ COMMERCIAL ══ -->
+<div class="cat-com" style="{{ 'display:none' if is_residential else '' }}">
+
+{{ sec('key-attributes', 'Key Attributes') }}
+{{ sel('Availability Status', 'listing_status', ['Available','Under Offer','Let Agreed','Sold','For Sale','Withdrawn'], val=(l.listing_status or 'Available') if l else 'Available') }}
+{{ sel('Property Type', 'property_type_detail', [{'group':'OFFICE','opts':['Office','Serviced Office','Business Park']},{'group':'INDUSTRIAL','opts':['Industrial','Warehouse','Distribution','Light Industrial']},{'group':'RETAIL','opts':['Retail','Showroom','Restaurant','Leisure']},{'group':'OTHER','opts':['Land','Hotel','Mixed Use','Other']}], val='') }}
+{{ sel('Use Class', 'use_class', ['E (Office)','E (Retail)','E (Leisure/Cafe)','B2 (Industrial)','B8 (Storage/Distribution)','C1 (Hotel)','Sui Generis','Mixed'], val=(l.use_class or '') if l else '') }}
+{{ sel('Availability Reason', 'availability_reason', ['Newly Available','Reduced Price','Relocation','New Build','Refurbished','Lease Expiry','Sublease','Assignment'], val=(l.availability_reason or '') if l else '') }}
+</div>
+
+{{ sec('define-space', 'Define the Space') }}
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:0">
+  <div style="padding:10px 12px 10px 0;border-bottom:1px solid #f1f3f4">
+    <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px">Min Size</label>
+    <div style="display:flex;gap:6px">
+      <input type="number" name="min_size" step="1" placeholder="e.g. 500" value="{{ l.min_size|int if l and l.min_size else '' }}" style="flex:2;font-size:13px;padding:6px 8px;border:1px solid #d1d5db;border-radius:5px">
+      <select name="size_unit" style="flex:1;font-size:13px;padding:6px 8px;border:1px solid #d1d5db;border-radius:5px">
+        {% for u in ['sq ft','sq m','acres'] %}<option value="{{ u }}" {{ 'selected' if l and l.size_unit == u else ('selected' if not l and u == 'sq ft' else '') }}>{{ u }}</option>{% endfor %}
+      </select>
+    </div>
+  </div>
+  <div style="padding:10px 0 10px 12px;border-bottom:1px solid #f1f3f4;border-left:1px solid #f1f3f4">
+    <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px">Max Size</label>
+    <input type="number" name="max_size" step="1" placeholder="e.g. 2500" value="{{ l.max_size|int if l and l.max_size else '' }}" style="width:100%;font-size:13px;padding:6px 8px;border:1px solid #d1d5db;border-radius:5px">
+  </div>
+</div>
+{{ sel('Measurement Standard', 'measurement_std', ['NIA — Net Internal Area','GIA — Gross Internal Area','GEA — Gross External Area','IPMS 2','IPMS 3'], val=(l.measurement_std or '') if l else '') }}
+{{ sel('Build Status', 'build_status', ['Ready to Occupy','Cat A','Cat A+','Cat B','Shell & Core','Under Refurbishment','New Build'], val=(l.build_status or '') if l else '') }}
+<div style="padding:10px 0;border-bottom:1px solid #f1f3f4;display:flex;align-items:center;gap:20px">
+  <label style="font-size:13px;color:#374151;width:200px">Self Contained?</label>
+  <label style="font-size:13px;cursor:pointer"><input type="checkbox" name="self_contained" value="1" {{ 'checked' if l and l.self_contained else '' }} style="accent-color:#c8601a"> Yes</label>
+</div>
+</div>
+
+<div class="cat-com" style="{{ 'display:none' if is_residential else '' }}">
+{{ sec('lease-info', 'Lease Information') }}
+<div style="padding:10px 0;border-bottom:1px solid #f1f3f4;display:flex;align-items:center;gap:12px">
+  <label style="font-size:13px;font-weight:600;width:200px">Set as To Let</label>
+  <label style="font-size:13px"><input type="checkbox" name="set_as_to_let" value="1" {{ 'checked' if not l or l.set_as_to_let else '' }} style="accent-color:#c8601a"> Letting</label>
+</div>
+{{ sel('Lease Type', 'lease_type', ['New Lease','Assignment','Sub-lease','Renewal','Licence'], val=(l.lease_type or '') if l else '') }}
+{{ sel('Rent Qualifier', 'rent_qualifier', ['Quoting','Guideline','Asking','Fixed'], val=(l.rent_qualifier or 'Quoting') if l else 'Quoting') }}
+{{ sel('Rent Inclusive/Exclusive', 'rent_inclusive', ['Exclusive','Inclusive','N/A'], val=(l.rent_inclusive or 'Exclusive') if l else 'Exclusive') }}
+<div style="padding:10px 0;border-bottom:1px solid #f1f3f4;display:grid;grid-template-columns:200px 1fr;gap:12px;align-items:center">
+  <label style="font-size:13px;color:#374151">Rent From / To (£ psf)</label>
+  <div style="display:flex;gap:8px;align-items:center">
+    <span>£</span><input type="number" name="rent_from" step="0.01" placeholder="From" value="{{ '%.2f'|format(l.rent_from) if l and l.rent_from else '' }}" style="flex:1;font-size:13px;padding:6px 8px;border:1px solid #d1d5db;border-radius:5px">
+    <span>to £</span><input type="number" name="rent_to" step="0.01" placeholder="To" value="{{ '%.2f'|format(l.rent_to) if l and l.rent_to else '' }}" style="flex:1;font-size:13px;padding:6px 8px;border:1px solid #d1d5db;border-radius:5px">
+    <span style="font-size:11px;color:#9aa0a6">per sq ft</span>
+  </div>
+</div>
+<div style="padding:10px 0;border-bottom:1px solid #f1f3f4;display:grid;grid-template-columns:200px 1fr;gap:12px;align-items:center">
+  <label style="font-size:13px;color:#374151">Rent PA (£)</label>
+  <input type="number" name="listing_price" step="1" placeholder="e.g. 85000" value="{{ l.listing_price|int if l and l.listing_price else '' }}" style="width:100%;font-size:13px;padding:7px 10px;border:1px solid #d1d5db;border-radius:5px">
+</div>
+<div style="padding:10px 0;border-bottom:1px solid #f1f3f4;display:flex;align-items:center;gap:12px">
+  <label style="font-size:13px;width:200px">Rent on Application</label>
+  <label style="font-size:13px"><input type="checkbox" name="rent_on_application" value="1" {{ 'checked' if l and l.rent_on_application else '' }}> Display as "Rent On Application"</label>
+</div>
+<div style="padding:10px 0;border-bottom:1px solid #f1f3f4;display:grid;grid-template-columns:200px 1fr;gap:12px;align-items:start">
+  <label style="font-size:13px;padding-top:4px">Possession</label>
+  <div>
+    <label style="font-size:13px;display:flex;align-items:center;gap:6px;margin-bottom:6px"><input type="checkbox" name="possession_now" value="1" {{ 'checked' if l and l.possession_now else '' }}> Available now</label>
+    <div style="display:flex;gap:8px">
+      <select name="possession_quarter" style="flex:1;font-size:13px;padding:6px 8px;border:1px solid #d1d5db;border-radius:5px">
+        <option value="">Quarter</option>{% for q in ['Q1 (Jan-Mar)','Q2 (Apr-Jun)','Q3 (Jul-Sep)','Q4 (Oct-Dec)'] %}<option value="{{ q }}" {{ 'selected' if l and l.possession_quarter == q else '' }}>{{ q }}</option>{% endfor %}
+      </select>
+      <input type="number" name="possession_year" placeholder="Year" min="2024" max="2040" value="{{ l.possession_year or '' }}" style="flex:1;font-size:13px;padding:6px 8px;border:1px solid #d1d5db;border-radius:5px">
+    </div>
+  </div>
+</div>
+<div style="padding:10px 0;border-bottom:1px solid #f1f3f4;display:grid;grid-template-columns:200px 1fr;gap:12px;align-items:center">
+  <label style="font-size:13px">Lease Length</label>
+  <div style="display:flex;gap:8px">
+    <input type="number" name="lease_length_months" placeholder="Months" min="0" max="11" value="{{ l.lease_length_months or '' }}" style="flex:1;font-size:13px;padding:6px 8px;border:1px solid #d1d5db;border-radius:5px">
+    <input type="number" name="lease_length_years" placeholder="Years" min="0" value="{{ l.lease_length_years or '' }}" style="flex:1;font-size:13px;padding:6px 8px;border:1px solid #d1d5db;border-radius:5px">
+  </div>
+</div>
+{{ sel('Inside 1954 Act', 'inside_1954_act', ['Inside 1954 Act','Outside 1954 Act','Contracted Out'], val=(l.inside_1954_act or '') if l else '') }}
+{{ sel('Repair & Insuring', 'repair_insuring', ['FRI — Full Repairing & Insuring','IRI — Internal Repairing & Insuring','Internal Only','Landlord Insuring'], val=(l.repair_insuring or '') if l else '') }}
+</div>
+
+<div class="cat-com" style="{{ 'display:none' if is_residential else '' }}">
+{{ sec('sale-info', 'Sale Information') }}
+<div style="padding:10px 0;border-bottom:1px solid #f1f3f4;display:flex;align-items:center;gap:12px">
+  <label style="font-size:13px;font-weight:600;width:200px">Set as For Sale</label>
+  <label style="font-size:13px"><input type="checkbox" name="set_as_for_sale" value="1" {{ 'checked' if l and l.set_as_for_sale else '' }}> For Sale</label>
+</div>
+<div style="padding:10px 0;border-bottom:1px solid #f1f3f4;display:grid;grid-template-columns:200px 1fr;gap:12px;align-items:center">
+  <label style="font-size:13px">Sale Price (£)</label>
+  <input type="number" name="sale_price" step="1" placeholder="e.g. 1250000" value="{{ l.sale_price|int if l and l.sale_price else '' }}" style="width:100%;font-size:13px;padding:7px 10px;border:1px solid #d1d5db;border-radius:5px">
+</div>
+{{ field('Custom Price Display', 'sale_price_display', placeholder='e.g. OIRO £1,300,000', val=(l.sale_price_display or '') if l else '') }}
+</div>
+
+<div class="cat-com" style="{{ 'display:none' if is_residential else '' }}">
+{{ sec('rates-charges', 'Rates & Charges') }}
+<div style="padding:10px 0;border-bottom:1px solid #f1f3f4;display:grid;grid-template-columns:200px 1fr;gap:12px;align-items:center">
+  <label style="font-size:13px">Service Charge (£ psf)</label>
+  <div style="display:flex;gap:8px;align-items:center">
+    <label style="font-size:13px"><input type="checkbox" name="service_charge_na" value="1" {{ 'checked' if l and l.service_charge_na else '' }}> N/A</label>
+    <span>£</span><input type="number" name="service_charge" step="0.01" placeholder="per sq ft" value="{{ '%.2f'|format(l.service_charge) if l and l.service_charge else '' }}" style="flex:1;font-size:13px;padding:6px 8px;border:1px solid #d1d5db;border-radius:5px">
+  </div>
+</div>
+<div style="padding:10px 0;border-bottom:1px solid #f1f3f4;display:grid;grid-template-columns:200px 1fr;gap:12px;align-items:center">
+  <label style="font-size:13px">Rateable Value (£)</label>
+  <div style="display:flex;gap:8px;align-items:center">
+    <label style="font-size:13px"><input type="checkbox" name="rateable_value_na" value="1" {{ 'checked' if l and l.rateable_value_na else '' }}> N/A</label>
+    <span>£</span><input type="number" name="rateable_value" step="1" placeholder="Rateable value" value="{{ l.rateable_value|int if l and l.rateable_value else '' }}" style="flex:1;font-size:13px;padding:6px 8px;border:1px solid #d1d5db;border-radius:5px">
+  </div>
+</div>
+{{ sel('EPC Rating', 'epc_band', ['A','B','C','D','E','F','G','Exempt','Not Required'], val=(l.epc_band or '') if l else '') }}
+{{ sel('Legal Fees', 'legal_fees', ['Each Party Pays Own','Ingoing Tenant Pays','Landlord Pays','N/A'], val=(l.legal_fees or '') if l else '') }}
+</div>
+
+<div class="cat-com" style="{{ 'display:none' if is_residential else '' }}">
+{{ sec('parking', 'Parking') }}
+{{ field('Parking Ratio', 'parking_ratio', placeholder='e.g. 1:500 sq ft', val=(l.parking_ratio or '') if l else '') }}
+<div style="padding:10px 0;border-bottom:1px solid #f1f3f4;display:grid;grid-template-columns:200px 1fr;gap:12px;align-items:center">
+  <label style="font-size:13px">Parking Rent</label>
+  <div style="display:flex;gap:8px;align-items:center">
+    <label style="font-size:13px"><input type="checkbox" name="parking_rent_na" value="1" {{ 'checked' if l and l.parking_rent_na else '' }}> N/A</label>
+    <span>£</span><input type="number" name="parking_rent" step="1" placeholder="per space/annum" value="{{ l.parking_rent|int if l and l.parking_rent else '' }}" style="flex:1;font-size:13px;padding:6px 8px;border:1px solid #d1d5db;border-radius:5px">
+  </div>
+</div>
+{{ field('Total Parking Spaces', 'parking_spaces', type='number', placeholder='e.g. 4', val=(l.parking_spaces or '') if l else '') }}
+</div>
+
+<!-- ══ RESIDENTIAL ══ -->
+<div class="cat-res" style="{{ 'display:none' if is_commercial else '' }}">
+{{ sec('resi-key', 'Key Attributes') }}
+{{ sel('Listing Status', 'listing_status', ['Available','Under Offer','Sold STC','Let Agreed','Withdrawn'], val=(l.listing_status or 'Available') if l else 'Available') }}
+{{ sel('Property Type', 'property_type_detail', ['Apartment','Flat','Maisonette','Terraced House','Semi-Detached','Detached','Mews House','Town House','Garden Flat','Studio','Penthouse','HMO'], val='') }}
+{{ sel('Suitable For', 'residential_use', ['Owner Occupied','HMO','Residential Investment','Vacant Possession'], val=(l.residential_use or '') if l else '') }}
+{{ sel('Tenure', 'lease_type', ['Freehold','Leasehold','Share of Freehold','Virtual Freehold'], val=(l.lease_type or '') if l else '') }}
+{{ sec('resi-details', 'Property Details') }}
+<div style="padding:10px 0;border-bottom:1px solid #f1f3f4;display:grid;grid-template-columns:200px 1fr;gap:12px;align-items:center">
+  <label style="font-size:13px">Bedrooms / Bathrooms</label>
+  <div style="display:flex;gap:8px">
+    <div style="flex:1"><label style="font-size:11px;color:#9aa0a6">Beds</label><input type="number" name="beds" min="0" value="{{ l.beds or '' }}" style="width:100%;font-size:13px;padding:6px 8px;border:1px solid #d1d5db;border-radius:5px"></div>
+    <div style="flex:1"><label style="font-size:11px;color:#9aa0a6">Baths</label><input type="number" name="baths" min="0" value="{{ l.baths or '' }}" style="width:100%;font-size:13px;padding:6px 8px;border:1px solid #d1d5db;border-radius:5px"></div>
+  </div>
+</div>
+{{ field('Floor Area (sq ft)', 'size', type='number', placeholder='e.g. 1100', val=(l.size|int if l and l.size else '')) }}
+{{ sel('EPC Rating', 'epc_band', ['A','B','C','D','E','F','G','Exempt'], val=(l.epc_band or '') if l else '') }}
+{{ sec('resi-price', 'Price / Rent') }}
+<div style="padding:10px 0;border-bottom:1px solid #f1f3f4;display:grid;grid-template-columns:200px 1fr;gap:12px;align-items:center">
+  <label style="font-size:13px">Price / Rent (£)</label>
+  <div style="display:flex;gap:8px">
+    <input type="number" name="listing_price" step="1" placeholder="Amount" value="{{ l.listing_price|int if l and l.listing_price else '' }}" style="flex:2;font-size:13px;padding:6px 8px;border:1px solid #d1d5db;border-radius:5px">
+    <select name="listing_price_unit" style="flex:1;font-size:13px;padding:6px 8px;border:1px solid #d1d5db;border-radius:5px">
+      {% for u in ['pcm','pa','sale','poa'] %}<option value="{{ u }}" {{ 'selected' if l and l.listing_price_unit == u else '' }}>{{ u }}</option>{% endfor %}
+    </select>
+  </div>
+</div>
+{{ field('Custom Price Display', 'price_display', placeholder='e.g. Guide price £850,000', val=(l.price_display or '') if l else '') }}
+</div>
+
+<!-- ══ MEDIA — always visible ══ -->
+{{ sec('media', 'Photos, Brochure & Floor Plan') }}
+<div style="padding:14px 0">
+
+  {% if l %}
+  <!-- Existing photos grid -->
+  {% if l.photos %}
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin-bottom:14px">
+    {% for ph in l.photos %}
+    <div style="position:relative;border-radius:6px;overflow:hidden;background:#f3f4f6;aspect-ratio:4/3">
+      <img src="{{ url_for('listing_photo_image', id=ph.id) }}" style="width:100%;height:100%;object-fit:cover">
+      <form method="post" action="{{ url_for('listing_photo_delete', id=ph.id) }}" style="position:absolute;top:4px;right:4px">
+        <button type="submit" style="background:rgba(0,0,0,.6);border:none;color:#fff;border-radius:4px;width:22px;height:22px;cursor:pointer;font-size:12px">✕</button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  <!-- Upload photos — works on existing listing -->
+  <form method="post" action="{{ url_for('listing_photo_upload', id=l.id) }}" enctype="multipart/form-data" style="border:2px dashed #d1d5db;border-radius:8px;padding:20px;text-align:center;background:#fafafa;margin-bottom:14px">
+    <div style="font-size:22px;margin-bottom:8px">📷</div>
+    <div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Add Photos</div>
+    <div style="font-size:11.5px;color:#9aa0a6;margin-bottom:10px">JPG, PNG or WEBP — multiple files allowed</div>
+    <input type="file" name="photos" multiple accept="image/*" style="margin-bottom:10px">
+    <button type="submit" class="btn btn-primary btn-sm" style="display:block;margin:0 auto">Upload Photos</button>
+  </form>
+  <!-- Brochure -->
+  <div style="border:1px solid #e5e7eb;border-radius:6px;padding:12px;margin-bottom:10px">
+    <div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:6px">📄 Brochure (PDF)</div>
+    {% if l.brochure_filename %}
+    <div style="display:flex;align-items:center;gap:8px;background:#f0fdf4;border:1px solid #86efac;border-radius:5px;padding:8px;margin-bottom:8px">
+      <span style="flex:1;font-size:12.5px">{{ l.brochure_filename }}</span>
+      <a href="{{ url_for('listing_brochure_download', id=l.id) }}" class="btn btn-sm btn-outline">Download</a>
+      <form method="post" action="{{ url_for('listing_brochure_delete', id=l.id) }}" class="confirm-delete" style="display:inline">
+        <button type="submit" class="btn btn-sm btn-danger">Remove</button>
+      </form>
+    </div>
+    {% endif %}
+    <form method="post" action="{{ url_for('listing_brochure_upload', id=l.id) }}" enctype="multipart/form-data">
+      <div style="display:flex;gap:8px">
+        <input type="file" name="brochure" accept=".pdf" style="flex:1;font-size:12px">
+        <button type="submit" class="btn btn-primary btn-sm">Upload</button>
+      </div>
+    </form>
+  </div>
+  <!-- Floor plan -->
+  <div style="border:1px solid #e5e7eb;border-radius:6px;padding:12px">
+    <div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:6px">🗺️ Floor Plan</div>
+    {% if l.floor_plan_filename %}
+    <div style="display:flex;align-items:center;gap:8px;background:#f0fdf4;border:1px solid #86efac;border-radius:5px;padding:8px;margin-bottom:8px">
+      <span style="flex:1;font-size:12.5px">{{ l.floor_plan_filename }}</span>
+      <form method="post" action="{{ url_for('listing_floorplan_delete', id=l.id) }}" class="confirm-delete" style="display:inline">
+        <button type="submit" class="btn btn-sm btn-danger">Remove</button>
+      </form>
+    </div>
+    {% endif %}
+    <form method="post" action="{{ url_for('listing_floorplan_upload', id=l.id) }}" enctype="multipart/form-data">
+      <div style="display:flex;gap:8px">
+        <input type="file" name="floor_plan" accept=".pdf,.png,.jpg" style="flex:1;font-size:12px">
+        <button type="submit" class="btn btn-primary btn-sm">Upload</button>
+      </div>
+    </form>
+  </div>
+
+  {% else %}
+  <!-- New listing — explain photos after save -->
+  <div style="border:2px dashed #fed7aa;border-radius:8px;padding:24px;text-align:center;background:#fff7ed">
+    <div style="font-size:28px;margin-bottom:8px">📷</div>
+    <div style="font-size:13px;font-weight:600;color:#c8601a;margin-bottom:4px">Photos, brochure and floor plan</div>
+    <div style="font-size:12px;color:#9a3412">Save the listing first using the button below — you can then upload all media from the edit screen.</div>
+  </div>
+  {% endif %}
+</div>
+</div>
+
+<!-- ══ MARKETING ══ -->
+{{ sec('marketing', 'Marketing') }}
+<div style="padding:10px 0;border-bottom:1px solid #f1f3f4;display:grid;grid-template-columns:200px 1fr;gap:12px;align-items:start">
+  <div><label style="font-size:13px;color:#374151">Summary</label><div style="font-size:11px;color:#9aa0a6;margin-top:2px">Max 140 characters</div></div>
+  <div>
+    <textarea name="summary_text" rows="2" maxlength="140" id="summary-ta" placeholder="One or two sentences for the public..."
+              style="width:100%;font-size:13px;padding:7px 10px;border:1px solid #d1d5db;border-radius:5px;resize:vertical;font-family:inherit">{{ l.summary_text or '' }}</textarea>
+    <div style="font-size:10.5px;color:#9aa0a6;text-align:right" id="summary-count">{{ (l.summary_text or '')|length }} / 140</div>
+  </div>
+</div>
+<div style="padding:10px 0;border-bottom:1px solid #f1f3f4;display:grid;grid-template-columns:200px 1fr;gap:12px;align-items:start">
+  <div><label style="font-size:13px;color:#374151">Key Selling Points</label><div style="font-size:11px;color:#9aa0a6;margin-top:2px">Up to 8 bullet points</div></div>
+  <div>
+    {% set kp_list = (l.key_points.split('||') if l and l.key_points else []) %}
+    {% for i in range(8) %}
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+      <span style="color:#9aa0a6;font-size:12px;width:16px">{{ i+1 }}.</span>
+      <input type="text" name="key_point_{{ i }}" placeholder="e.g. Excellent natural light throughout"
+             value="{{ kp_list[i] if i < kp_list|length else '' }}"
+             style="flex:1;font-size:13px;padding:6px 8px;border:1px solid #d1d5db;border-radius:5px">
+    </div>
+    {% endfor %}
+  </div>
+</div>
+<div style="padding:10px 0;border-bottom:1px solid #f1f3f4;display:grid;grid-template-columns:200px 1fr;gap:12px;align-items:start">
+  <label style="font-size:13px;color:#374151">Full Description</label>
+  <textarea name="blurb" rows="6" placeholder="Full marketing description shown on the website..."
+            style="width:100%;font-size:13px;padding:7px 10px;border:1px solid #d1d5db;border-radius:5px;resize:vertical;font-family:inherit">{{ l.blurb or '' }}</textarea>
+</div>
+<div style="padding:10px 0;display:grid;grid-template-columns:200px 1fr;gap:12px;align-items:center">
+  <label style="font-size:13px;color:#374151">Area / Neighbourhood</label>
+  <input type="text" name="area" placeholder="e.g. Chelsea, Fulham, Knightsbridge" value="{{ l.area or (prop.area if prop and prop.area else '') }}" style="width:100%;font-size:13px;padding:7px 10px;border:1px solid #d1d5db;border-radius:5px">
+</div>
+</div>
+
+<!-- ── Save bar — sticky at bottom ── -->
+<div style="display:flex;gap:10px;margin-top:20px;padding:16px;background:#fff;border:1px solid #e5e7eb;border-radius:8px;position:sticky;bottom:16px;box-shadow:0 -2px 8px rgba(0,0,0,.06)">
+  <button type="submit" class="btn btn-orange" style="min-width:180px;font-size:14px;font-weight:700">
+    {{ 'Save Changes' if l else 'Create Listing' }}
+  </button>
+  {% if project %}
+  <a href="{{ url_for('project_detail', id=project.id) }}" class="btn btn-secondary">Cancel</a>
+  {% endif %}
+  {% if l %}
+  <div style="margin-left:auto">
+    <form method="post" action="{{ url_for('listing_delete', id=l.id) }}" class="confirm-delete">
+      <button type="submit" class="btn btn-danger btn-sm">Remove Listing</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+
+</div>
+
+<!-- ══ Right nav ══ -->
+<div style="position:sticky;top:68px">
+  <div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden">
+    <div style="background:#1a2e4a;color:#fff;padding:10px 14px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">Jump to</div>
+    <div id="nav-com" style="{{ 'display:none' if is_residential else '' }}">
+      {% for anchor, label in [('key-attributes','Key Attributes'),('define-space','Define the Space'),('lease-info','Lease Information'),('sale-info','Sale Information'),('rates-charges','Rates & Charges'),('parking','Parking'),('media','Media'),('marketing','Marketing')] %}
+      <a href="#{{ anchor }}" style="display:flex;align-items:center;justify-content:space-between;padding:9px 14px;font-size:13px;color:#374151;border-bottom:1px solid #f1f3f4;text-decoration:none" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background=''">{{ label }} <span>›</span></a>
+      {% endfor %}
+    </div>
+    <div id="nav-res" style="{{ 'display:none' if is_commercial else '' }}">
+      {% for anchor, label in [('resi-key','Key Attributes'),('resi-details','Property Details'),('resi-price','Price & Rent'),('media','Media'),('marketing','Marketing')] %}
+      <a href="#{{ anchor }}" style="display:flex;align-items:center;justify-content:space-between;padding:9px 14px;font-size:13px;color:#374151;border-bottom:1px solid #f1f3f4;text-decoration:none" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background=''">{{ label }} <span>›</span></a>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+</div>
+</form>
+
+<script>
+function switchCat(cat) {
+  document.querySelectorAll('.cat-com').forEach(function(el){ el.style.display = cat==='commercial' ? '' : 'none'; });
+  document.querySelectorAll('.cat-res').forEach(function(el){ el.style.display = cat==='residential' ? '' : 'none'; });
+  document.getElementById('nav-com').style.display = cat==='commercial' ? '' : 'none';
+  document.getElementById('nav-res').style.display = cat==='residential' ? '' : 'none';
+  document.getElementById('lbl-com').style.borderColor = cat==='commercial' ? '#c8601a' : '#d1d5db';
+  document.getElementById('lbl-com').style.background  = cat==='commercial' ? '#fff8f5' : '#fff';
+  document.getElementById('lbl-res').style.borderColor = cat==='residential' ? '#1565c0' : '#d1d5db';
+  document.getElementById('lbl-res').style.background  = cat==='residential' ? '#f0f7ff' : '#fff';
+}
+var ta = document.getElementById('summary-ta');
+var cnt = document.getElementById('summary-count');
+if (ta && cnt) ta.addEventListener('input', function(){ cnt.textContent = this.value.length + ' / 140'; cnt.style.color = this.value.length >= 130 ? '#ef4444' : '#9aa0a6'; });
+</script>
 {% endblock %}

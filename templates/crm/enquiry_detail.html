@@ -95,8 +95,29 @@
     </div>{% endif %}
 
     <div class="card">
-      <div class="card-header"><div class="card-title">Correspondence &amp; Notes</div></div>
+      <div class="card-header">
+        <div class="card-title">Correspondence &amp; Notes</div>
+        <form method="post" action="{{ url_for('email_sync_trigger') }}" style="margin:0">
+          <button type="submit" class="btn btn-outline btn-sm">&#8635; Sync Emails</button>
+        </form>
+      </div>
       <div style="padding:14px">
+
+        {% if e.contact and e.contact.email %}
+        <div style="background:#e8f4fd;border-radius:6px;padding:12px;margin-bottom:14px">
+          <div style="font-size:12px;font-weight:700;color:#1565c0;margin-bottom:8px">&#9993; Send Email to {{ e.contact.full_name }} &mdash; <span style="font-weight:400">{{ e.contact.email }}</span></div>
+          <form method="post" action="{{ url_for('enquiry_send_email', id=e.id) }}">
+            <input type="hidden" name="to_address" value="{{ e.contact.email }}">
+            <input type="hidden" name="author" value="BC">
+            <input type="text" name="subject" placeholder="Subject" required style="width:100%;font-size:12px;padding:6px 8px;margin-bottom:6px;border:1px solid #c5d8ea;border-radius:4px">
+            <textarea name="body" rows="4" required placeholder="Type your email here..." style="width:100%;font-size:12px;padding:8px;margin-bottom:6px;resize:vertical;border:1px solid #c5d8ea;border-radius:4px"></textarea>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input type="date" name="next_follow_up" title="Set follow-up date" style="font-size:12px;padding:6px 8px;border:1px solid #c5d8ea;border-radius:4px" value="{{ e.next_follow_up.strftime('%Y-%m-%d') if e.next_follow_up else '' }}">
+              <button type="submit" class="btn btn-primary btn-sm" style="margin-left:auto">Send &rarr;</button>
+            </div>
+          </form>
+        </div>
+        {% endif %}
         {% if e.notes_chain %}
           {% for n in e.notes_chain|reverse %}
           <div style="border-left:3px solid {{ '#1565c0' if n.direction=='inbound' else '#e07b28' if n.direction=='outbound' else '#9e9e9e' }};padding:8px 12px;margin-bottom:10px;background:#f8f9fa;border-radius:0 4px 4px 0">
