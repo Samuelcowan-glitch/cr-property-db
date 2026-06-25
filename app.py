@@ -2080,6 +2080,11 @@ def api_listings():
             title = f"{l.unit_name}, {p.address}" if l.unit_name else p.address
             price = l.listing_price or 0
             unit  = l.listing_price_unit or 'poa'
+            # Gallery: absolute URLs to each uploaded photo, served from this
+            # app. Force https so images load on the https website (GitHub
+            # Pages) without mixed-content blocking. Ordered by sort_order.
+            base = request.host_url.replace('http://', 'https://').rstrip('/')
+            photos = [base + url_for('listing_photo_image', id=ph.id) for ph in l.photos]
             result.append({
                 'id':            f'cr-lst-{l.id}',
                 'featured':      bool(l.featured),
@@ -2100,6 +2105,7 @@ def api_listings():
                 'lng':           l.lng or p.lng,
                 'added':         l.created_at.strftime('%Y-%m-%d'),
                 'photo':         l.photo_id or p.photo_id or 'photo-1497366216548-37526070297c',
+                'photos':        photos,
                 'blurb':         l.blurb or p.blurb or p.description or '',
                 'beds':          l.beds or p.beds,
                 'baths':         l.baths or p.baths,
