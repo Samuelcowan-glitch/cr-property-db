@@ -42,7 +42,8 @@
 <!-- ── Tabs ── -->
 <div class="tabs" data-group="proj">
   <button class="tab-btn active" data-tab="overview">Project Overview</button>
-  <button class="tab-btn" data-tab="admin">06 Documents &amp; Administration</button>
+  <button class="tab-btn" data-tab="admin">Project Administration</button>
+  <button class="tab-btn" data-tab="listing">Website Listing</button>
   {% if project.property %}
   <button class="tab-btn" data-tab="property">Property Detail</button>
   {% endif %}
@@ -307,62 +308,113 @@
 
   </div>
 
-  <!-- ════ RIGHT: Activity Feed ════ -->
-  <div style="position:sticky;top:68px">
+  <!-- ════ RIGHT: Enquiries ════ -->
+  <div style="position:sticky;top:68px;display:flex;flex-direction:column;gap:12px">
+
+    <!-- Direct enquiries for this property/project -->
     <div class="card" style="padding:0;overflow:hidden">
       <div style="background:#c8601a;color:#fff;padding:9px 14px;display:flex;align-items:center;justify-content:space-between">
-        <span style="font-size:13px;font-weight:700">Activity Feed</span>
-        <span style="font-size:11px;opacity:.75">{{ activity|length }} entries</span>
+        <span style="font-size:13px;font-weight:700">Direct Enquiries</span>
+        <a href="{{ url_for('enquiry_new') }}" style="color:rgba(255,255,255,.8);font-size:11px">+ Add</a>
       </div>
-
-      <!-- Add note -->
-      <div style="padding:10px 12px;border-bottom:1px solid #e8eaed;background:#fafafa">
-        <form method="post" action="{{ url_for('note_add', id=project.id) }}">
-          <textarea name="content" rows="2" required placeholder="Add a note to the activity feed..." style="width:100%;font-size:12px;padding:6px 8px;border:1px solid #dde0e4;border-radius:4px;resize:none;font-family:inherit"></textarea>
-          <div style="display:flex;gap:6px;margin-top:5px;align-items:center">
-            <input type="text" name="author" placeholder="Your name" style="flex:1;font-size:12px;padding:5px 8px;border:1px solid #dde0e4;border-radius:4px">
-            <button type="submit" class="btn btn-primary btn-sm">Add Note</button>
-          </div>
-        </form>
-      </div>
-
-      <!-- Feed entries -->
-      <div style="max-height:580px;overflow-y:auto">
-        {% if activity %}
-          {% for entry in activity %}
-          <div style="padding:10px 12px;border-bottom:1px solid #f1f3f4;display:flex;gap:9px">
-            <div style="flex-shrink:0;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;background:{% if entry.type=='enquiry' %}#e3f2fd{% else %}#fce8d5{% endif %};color:{% if entry.type=='enquiry' %}#1565c0{% else %}#c8601a{% endif %}">
-              {% if entry.type == 'enquiry' %}&#9993;{% else %}&#9998;{% endif %}
+      <div style="max-height:260px;overflow-y:auto">
+        {% set direct_enqs = [] %}
+        {% if project.property %}
+          {% set direct_enqs = project.property.enquiries %}
+        {% endif %}
+        {% if direct_enqs %}
+          {% for e in direct_enqs | sort(attribute='created_at', reverse=True) %}
+          <div style="padding:10px 12px;border-bottom:1px solid #f1f3f4">
+            {% if e.contact %}
+            <div style="font-size:13px;font-weight:600;color:#c8601a;margin-bottom:3px">
+              <a href="{{ url_for('contact_detail', id=e.contact.id) }}" style="color:#c8601a">{{ e.contact.full_name }}</a>
             </div>
-            <div style="flex:1;min-width:0">
-              <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px">
-                <span style="font-size:11.5px;font-weight:600;color:#1a2e4a">{{ entry.author }}</span>
-                <span style="font-size:10.5px;color:#9aa0a6;white-space:nowrap">{{ entry.date.strftime('%d %b %y %H:%M') }}</span>
-              </div>
-              <div style="font-size:12px;color:#4a5568;margin-top:2px">{{ entry.body }}</div>
-              {% if entry.get('notes') %}<div style="font-size:11.5px;color:#5f6368;margin-top:3px;white-space:pre-wrap">{{ entry.notes }}</div>{% endif %}
-              {% if entry.type == 'enquiry' %}
-              <a href="{{ url_for('enquiry_detail', id=entry['obj'].id) if 'obj' in entry else '#' }}" style="font-size:10.5px;color:#c8601a;margin-top:3px;display:inline-block">View enquiry &rarr;</a>
-              {% endif %}
-              {% if entry.type == 'note' and 'obj' in entry %}
-              <form method="post" action="{{ url_for('note_delete', id=entry['obj'].id) }}" class="confirm-delete" style="display:inline;margin-left:6px">
-                <button type="submit" style="background:none;border:none;color:#9aa0a6;cursor:pointer;font-size:10px">remove</button>
-              </form>
-              {% endif %}
+            {% if e.contact.phone %}
+            <div style="font-size:11.5px;color:#5f6368;margin-bottom:2px">{{ e.contact.phone }}</div>
+            {% endif %}
+            {% if e.contact.email %}
+            <div style="font-size:11.5px;color:#5f6368;margin-bottom:2px">{{ e.contact.email }}</div>
+            {% endif %}
+            {% endif %}
+            <div style="font-size:11px;color:#1a2e4a;font-weight:600;margin-top:3px">{{ e.subject }}</div>
+            <div style="font-size:10.5px;color:#9aa0a6;margin-top:2px;display:flex;gap:8px">
+              <span>{{ e.enquiry_type or 'Enquiry' }}</span>
+              <span>{{ e.received_date.strftime('%d %b %Y') if e.received_date else '' }}</span>
+              <span style="color:{{ '#1b7a3f' if e.status == 'Open' else '#9aa0a6' }};font-weight:600">{{ e.status }}</span>
             </div>
+            {% if e.notes %}
+            <div style="font-size:11px;color:#5f6368;margin-top:4px;background:#f8f9fa;padding:5px 8px;border-radius:4px">{{ e.notes[:120] }}{% if e.notes|length > 120 %}...{% endif %}</div>
+            {% endif %}
           </div>
           {% endfor %}
         {% else %}
-          <div style="padding:30px;text-align:center;color:#9aa0a6;font-size:13px">
-            No activity yet.<br>
-            <span style="font-size:11px">Add a note above or submit an enquiry via the website.</span>
-          </div>
+        <div style="padding:20px;text-align:center;color:#9aa0a6;font-size:12px">
+          No direct enquiries yet.<br>
+          <a href="{{ url_for('enquiry_new') }}" style="color:#c8601a;margin-top:4px;display:inline-block">Record an enquiry</a>
+        </div>
         {% endif %}
       </div>
     </div>
-  </div>
 
-</div>
+    <!-- Matched applicants (similar properties) -->
+    <div class="card" style="padding:0;overflow:hidden">
+      <div style="background:#1a2e4a;color:#fff;padding:9px 14px;display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:13px;font-weight:700">Matched Applicants</span>
+        <span style="font-size:11px;opacity:.75">{{ matches|length if matches else 0 }}</span>
+      </div>
+      <div style="max-height:320px;overflow-y:auto">
+        {% if matches %}
+          {% for score, reasons, contact in matches %}
+          {% set pa = registered_ids.get(contact.id) if registered_ids else None %}
+          <div style="padding:10px 12px;border-bottom:1px solid #f1f3f4">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:6px">
+              <div style="flex:1;min-width:0">
+                <a href="{{ url_for('contact_detail', id=contact.id) }}" style="font-size:12.5px;font-weight:600;color:#c8601a;display:block">{{ contact.full_name }}</a>
+                {% if contact.organisation %}<div style="font-size:11px;color:#5f6368">{{ contact.organisation.name }}</div>{% endif %}
+                {% if contact.phone %}<div style="font-size:11.5px;color:#5f6368;margin-top:2px">{{ contact.phone }}</div>{% endif %}
+                {% if contact.email %}<div style="font-size:11.5px;color:#5f6368">{{ contact.email }}</div>{% endif %}
+                <!-- Requirements chips -->
+                <div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:5px">
+                  {% if contact.req_area %}<span style="background:#e8f0fe;color:#1565c0;font-size:9.5px;padding:1px 6px;border-radius:8px">{{ contact.req_area }}</span>{% endif %}
+                  {% if contact.req_size_max %}<span style="background:#e6f4ea;color:#1b7a3f;font-size:9.5px;padding:1px 6px;border-radius:8px">to {{ '{:,.0f}'.format(contact.req_size_max) }} sq ft</span>{% endif %}
+                  {% if contact.req_budget_max %}<span style="background:#fff3e0;color:#e65100;font-size:9.5px;padding:1px 6px;border-radius:8px">&#163;{{ '{:,.0f}'.format(contact.req_budget_max) }} max</span>{% endif %}
+                </div>
+              </div>
+              <!-- Score badge -->
+              <div style="flex-shrink:0;width:28px;height:28px;border-radius:50%;background:{{ '#1b7a3f' if score >= 8 else '#c8601a' if score >= 5 else '#9aa0a6' }};color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">{{ score }}</div>
+            </div>
+            <!-- Register / status -->
+            {% if pa %}
+            <div style="margin-top:6px;display:flex;align-items:center;gap:6px">
+              <span style="font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:8px;background:#e6f4ea;color:#1b7a3f">&#10003; {{ pa.status }}</span>
+              <form method="post" action="{{ url_for('applicant_status', id=pa.id) }}" style="display:flex;gap:4px;align-items:center">
+                <select name="status" style="font-size:10px;padding:2px 4px;border:1px solid #dde0e4;border-radius:4px">
+                  {% for s in ['Active Applicant','Viewing Arranged','Offer Made','Declined','Let/Sold'] %}
+                  <option value="{{ s }}" {{ 'selected' if pa.status == s else '' }}>{{ s }}</option>
+                  {% endfor %}
+                </select>
+                <button type="submit" style="font-size:10px;padding:2px 6px;background:#1a2e4a;color:#fff;border:none;border-radius:3px;cursor:pointer">&#10003;</button>
+              </form>
+            </div>
+            {% else %}
+            <div style="margin-top:6px">
+              <form method="post" action="{{ url_for('applicant_register', proj_id=project.id, contact_id=contact.id) }}">
+                <button type="submit" style="width:100%;font-size:10.5px;padding:4px;background:#1a2e4a;color:#fff;border:none;border-radius:4px;cursor:pointer">+ Register as Applicant</button>
+              </form>
+            </div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        {% else %}
+        <div style="padding:20px;text-align:center;color:#9aa0a6;font-size:12px">
+          No matching applicants.<br>
+          <a href="{{ url_for('contact_new') }}" style="color:#c8601a;margin-top:4px;display:inline-block">Add a contact with requirements</a>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+  </div></div>
 </div>
 
 
@@ -535,6 +587,160 @@
 </div>
 {% endif %}
 
+
+<!-- ══════════════════════════════════════════════════════════════
+     TAB 3: WEBSITE LISTING
+══════════════════════════════════════════════════════════════ -->
+<div class="tab-panel" data-tab-group="proj" data-tab="listing">
+{% set lst = project.unit_listings[0] if project.unit_listings else None %}
+{% if lst %}
+<!-- Existing listing — edit inline -->
+<div style="display:grid;grid-template-columns:1fr 280px;gap:16px">
+  <div>
+    <div class="card" style="padding:0;overflow:hidden;margin-bottom:12px">
+      <div style="background:{% if lst.website_listed %}#1b7a3f{% else %}#9aa0a6{% endif %};color:#fff;padding:10px 16px;display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:13px;font-weight:700">&#127758; Website Listing — {% if lst.website_listed %}LIVE{% else %}HIDDEN{% endif %}</span>
+        <span style="font-size:11px;opacity:.8">{{ lst.listing_status|replace('-',' ')|title if lst.listing_status else '' }}</span>
+      </div>
+      <form method="post" action="{{ url_for('listing_edit', id=lst.id) }}" style="padding:16px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+
+          <div>
+            <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Unit Name</label>
+            <input type="text" name="unit_name" value="{{ lst.unit_name or '' }}" placeholder="e.g. Ground Floor, Unit 3 (blank = whole building)" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
+          </div>
+
+          <div>
+            <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Category</label>
+            <select name="website_category" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
+              <option value="commercial" {{ 'selected' if lst.website_category == 'commercial' else '' }}>Commercial</option>
+              <option value="residential" {{ 'selected' if lst.website_category == 'residential' else '' }}>Residential</option>
+            </select>
+          </div>
+
+          <div>
+            <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Use Class</label>
+            <select name="use_class" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
+              <option value="">— Select —</option>
+              <option value="office" {{ 'selected' if lst.use_class == 'office' else '' }}>Office</option>
+              <option value="retail" {{ 'selected' if lst.use_class == 'retail' else '' }}>Retail</option>
+              <option value="industrial" {{ 'selected' if lst.use_class == 'industrial' else '' }}>Industrial / Warehouse</option>
+            </select>
+          </div>
+
+          <div>
+            <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Status</label>
+            <select name="listing_status" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
+              {% for s in ['available','under-offer','let-agreed','sold'] %}
+              <option value="{{ s }}" {{ 'selected' if lst.listing_status == s else '' }}>{{ s|replace('-',' ')|title }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div>
+            <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Size (sq ft)</label>
+            <input type="number" name="size" value="{{ lst.size|int if lst.size else '' }}" placeholder="e.g. 1665" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
+          </div>
+
+          <div>
+            <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Measurement</label>
+            <select name="measurement_type" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
+              {% for m in ['NIA','GIA','GEA','IPMS'] %}
+              <option value="{{ m }}" {{ 'selected' if lst.measurement_type == m else '' }}>{{ m }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div>
+            <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Price / Rent (&pound;)</label>
+            <input type="number" name="listing_price" value="{{ lst.listing_price|int if lst.listing_price else '' }}" placeholder="e.g. 42120" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
+          </div>
+
+          <div>
+            <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Price Unit</label>
+            <select name="listing_price_unit" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
+              <option value="pa"  {{ 'selected' if lst.listing_price_unit == 'pa'  else '' }}>Per annum</option>
+              <option value="pcm" {{ 'selected' if lst.listing_price_unit == 'pcm' else '' }}>Per month</option>
+              <option value="sale"{{ 'selected' if lst.listing_price_unit == 'sale'else '' }}>Sale price</option>
+              <option value="poa" {{ 'selected' if lst.listing_price_unit == 'poa' else '' }}>Price on application</option>
+            </select>
+          </div>
+
+          <div style="grid-column:span 2">
+            <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Custom Price Display <span style="font-weight:400">(optional — e.g. "OIRO &pound;1,300,000")</span></label>
+            <input type="text" name="price_display" value="{{ lst.price_display or '' }}" placeholder="Leave blank to auto-format" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
+          </div>
+
+          <div>
+            <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Area</label>
+            <input type="text" name="area" value="{{ lst.area or '' }}" placeholder="e.g. Chelsea Harbour" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
+          </div>
+
+          <div>
+            <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Unsplash Photo ID</label>
+            <input type="text" name="photo_id" value="{{ lst.photo_id or '' }}" placeholder="photo-1497366216548-37526070297c" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
+          </div>
+
+          <div style="grid-column:span 2">
+            <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Marketing Description</label>
+            <textarea name="blurb" rows="4" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px;resize:vertical;font-family:inherit">{{ lst.blurb or '' }}</textarea>
+          </div>
+
+          <div style="display:flex;gap:20px;align-items:center">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+              <input type="checkbox" name="website_listed" value="1" {{ 'checked' if lst.website_listed else '' }}> Show on website
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+              <input type="checkbox" name="featured" value="1" {{ 'checked' if lst.featured else '' }}> Featured
+            </label>
+          </div>
+
+        </div>
+        <div style="display:flex;gap:10px;align-items:center">
+          <button type="submit" class="btn btn-primary">Save Listing</button>
+          <form method="post" action="{{ url_for('listing_delete', id=lst.id) }}" class="confirm-delete" style="margin:0">
+            <button type="submit" class="btn btn-danger btn-sm">Remove Listing</button>
+          </form>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- RIGHT: Live preview info -->
+  <div>
+    <div class="card" style="padding:0;overflow:hidden">
+      <div style="background:#1a2e4a;color:#fff;padding:9px 14px;font-size:12.5px;font-weight:700">Live Preview</div>
+      <div style="padding:14px">
+        {% if lst.photo_id %}
+        <img src="https://images.unsplash.com/{{ lst.photo_id }}?auto=format&fit=crop&w=400&q=80" style="width:100%;border-radius:5px;margin-bottom:10px" onerror="this.style.display='none'">
+        {% endif %}
+        <div style="font-size:16px;font-weight:700;color:#0e1f44">
+          {% if lst.price_display %}{{ lst.price_display }}
+          {% elif lst.listing_price and lst.listing_price > 0 %}&pound;{{ '{:,.0f}'.format(lst.listing_price) }} {{ lst.listing_price_unit or '' }}
+          {% else %}Price on application{% endif %}
+        </div>
+        <div style="font-size:13px;color:#0e1f44;margin-top:4px">{{ lst.unit_name + ', ' if lst.unit_name else '' }}{{ project.property.address if project.property else '' }}</div>
+        <div style="font-size:12px;color:#5b6675;margin-top:2px">{{ project.property.postcode if project.property else '' }}</div>
+        {% if lst.size %}<div style="font-size:12px;color:#5b6675;margin-top:6px">{{ '{:,.0f}'.format(lst.size) }} sq ft &middot; {{ lst.use_class|title if lst.use_class else '' }}</div>{% endif %}
+        {% if lst.blurb %}<div style="font-size:12px;color:#5b6675;margin-top:8px;line-height:1.6">{{ lst.blurb[:150] }}{% if lst.blurb|length > 150 %}...{% endif %}</div>{% endif %}
+        <div style="margin-top:12px">
+          <a href="https://samuelcowan-glitch.github.io/cowan-rutter-website/properties/" target="_blank" class="btn btn-outline btn-sm">View on website &rarr;</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% else %}
+<!-- No listing yet -->
+<div style="text-align:center;padding:60px 20px">
+  <div style="font-size:40px;margin-bottom:16px">&#127758;</div>
+  <h3 style="font-size:18px;color:#1a2e4a;margin-bottom:8px">No website listing for this project</h3>
+  <p style="color:#5f6368;font-size:14px;margin-bottom:24px">Create a listing to show this property on the Cowan &amp; Rutter website.</p>
+  <a href="{{ url_for('listing_new_for_project', proj_id=project.id) }}" class="btn btn-primary">+ Create Website Listing</a>
+</div>
+{% endif %}
+</div>
 
 <!-- ════ Hidden upload form for quick upload ════ -->
 <form id="quick-upload-form" method="post" action="{{ url_for('document_add', id=project.id) }}" enctype="multipart/form-data" style="display:none">
