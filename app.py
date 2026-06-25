@@ -283,13 +283,13 @@ class EnquiryNote(db.Model):
 
 
 FOLDER_LABELS = {
-    'basis_of_appointment':  '06.01 Basis of Appointment',
-    'correspondence':        '06.02 Correspondence',
-    'documentation':         '06.03 Documentation',
-    'financial_calculations':'06.05 Financial & Calculations',
-    'photographs_images':    '06.07 Photographs & Images',
-    'reports':               '06.09 Reports',
-    'key_documents':         '06.11 Project Key Documents',
+    'instructions':          'Instructions / Basis of Appointment',
+    'correspondence':        'Correspondence',
+    'documentation':         'Documentation',
+    'reports':               'Reports',
+    'key_documents':         'Key Documents',
+    'financial_calculations':'Financial & Calculations',
+    'photographs_images':    'Photographs & Images',
 }
 
 
