@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit Listing' if listing else 'Add Listing' }}{% endblock %}
+{% block topbar_title %}{{ 'Edit' if listing else 'Create' }} Website Listing{% endblock %}
+{% block topbar_actions %}
+  {% if project %}
+  <a href="{{ url_for('project_detail', id=project.id) }}" class="btn btn-outline btn-sm">&larr; {{ project.name }}</a>
+  {% elif prop %}
+  <a href="{{ url_for('property_detail', id=prop.id) }}" class="btn btn-outline btn-sm">&larr; {{ prop.address }}</a>
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+{% set prop = prop if prop else (project.property if project and project.property else none) %}
+<div class="breadcrumb">
+  <a href="{{ url_for('dashboard') }}">Dashboard</a><span class="sep">/</span>
+  {% if project %}
+  <a href="{{ url_for('projects_list') }}">Projects</a><span class="sep">/</span>
+  <a href="{{ url_for('project_detail', id=project.id) }}">{{ project.name }}</a><span class="sep">/</span>
+  {% elif prop %}
+  <a href="{{ url_for('properties_list') }}">Properties</a><span class="sep">/</span>
+  <a href="{{ url_for('property_detail', id=prop.id) }}">{{ prop.address }}</a><span class="sep">/</span>
+  {% endif %}
+  <span class="current">{{ 'Edit Listing' if listing else 'Add Listing' }}</span>
+</div>
+
+<div class="card" style="max-width:760px">
+  <div class="card-header">
+    <div class="card-title">{{ 'Edit' if listing else 'New' }} Listing{% if prop %} — <span style="color:#5f6368">{{ prop.address }}, {{ prop.postcode }}</span>{% endif %}</div>
+    <div style="font-size:12px;color:#5f6368">A listing represents one lettable or saleable unit — it will appear on the public website when published.</div>
+  </div>
+  <form method="post">
+    <div class="form-grid" style="margin-bottom:16px">
+
+      <div class="form-group span-2">
+        <label>Unit Name <span style="color:#9aa0a6;font-weight:400">(leave blank if whole building)</span></label>
+        <input type="text" name="unit_name" placeholder="e.g. Unit 202-203 or Ground Floor"
+               value="{{ listing.unit_name or '' if listing else '' }}">
+      </div>
+
+      <div class="form-group">
+        <label>Category</label>
+        <select name="website_category">
+          <option value="commercial" {{ 'selected' if listing and listing.website_category == 'commercial' else 'selected' if not listing else '' }}>Commercial</option>
+          <option value="residential" {{ 'selected' if listing and listing.website_category == 'residential' else '' }}>Residential</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Use Class</label>
+        <select name="use_class">
+          <option value="">— Select —</option>
+          <option value="office" {{ 'selected' if listing and listing.use_class == 'office' else '' }}>Office</option>
+          <option value="retail" {{ 'selected' if listing and listing.use_class == 'retail' else '' }}>Retail</option>
+          <option value="industrial" {{ 'selected' if listing and listing.use_class == 'industrial' else '' }}>Industrial / Warehouse</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Status</label>
+        <select name="listing_status">
+          {% for s in ['available','under-offer','let-agreed','sold'] %}
+          <option value="{{ s }}" {{ 'selected' if listing and listing.listing_status == s else ('selected' if not listing and s == 'available' else '') }}>{{ s|replace('-',' ')|title }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Area</label>
+        <input type="text" name="area" placeholder="e.g. Chelsea Harbour"
+               value="{{ listing.area or '' if listing else '' }}">
+      </div>
+
+      <div class="form-group">
+        <label>Size</label>
+        <input type="number" name="size" placeholder="e.g. 1665"
+               value="{{ listing.size|int if listing and listing.size else '' }}">
+      </div>
+
+      <div class="form-group">
+        <label>Measurement</label>
+        <select name="measurement_type">
+          {% for m in ['NIA','GIA','GEA','IPMS'] %}
+          <option value="{{ m }}" {{ 'selected' if listing and listing.measurement_type == m else ('selected' if not listing and m == 'NIA' else '') }}>{{ m }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Price / Rent (£)</label>
+        <input type="number" name="listing_price" placeholder="e.g. 42120"
+               value="{{ listing.listing_price|int if listing and listing.listing_price else '' }}">
+      </div>
+
+      <div class="form-group">
+        <label>Price Unit</label>
+        <select name="listing_price_unit">
+          {% for u,l in [('pa','Per annum'),('pcm','Per month'),('sale','Sale price'),('poa','Price on application')] %}
+          <option value="{{ u }}" {{ 'selected' if listing and listing.listing_price_unit == u else ('selected' if not listing and u == 'pa' else '') }}>{{ l }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="form-group span-2">
+        <label>Custom Price Display <span style="color:#9aa0a6;font-weight:400">(optional override, e.g. "OIRO £1,300,000")</span></label>
+        <input type="text" name="price_display" placeholder="Leave blank to auto-format"
+               value="{{ listing.price_display or '' if listing else '' }}">
+      </div>
+
+      <div class="form-group">
+        <label>Beds</label>
+        <input type="number" name="beds" placeholder="Residential only"
+               value="{{ listing.beds or '' if listing else '' }}">
+      </div>
+
+      <div class="form-group">
+        <label>Baths</label>
+        <input type="number" name="baths" placeholder="Residential only"
+               value="{{ listing.baths or '' if listing else '' }}">
+      </div>
+
+      <div class="form-group">
+        <label>Latitude</label>
+        <input type="number" step="any" name="lat" placeholder="e.g. 51.4737"
+               value="{{ listing.lat if listing and listing.lat else '' }}">
+      </div>
+
+      <div class="form-group">
+        <label>Longitude</label>
+        <input type="number" step="any" name="lng" placeholder="e.g. -0.1837"
+               value="{{ listing.lng if listing and listing.lng else '' }}">
+      </div>
+
+      <div class="form-group span-2">
+        <label>Unsplash Photo ID</label>
+        <input type="text" name="photo_id" placeholder="e.g. photo-1497366216548-37526070297c"
+               value="{{ listing.photo_id or '' if listing else '' }}">
+      </div>
+
+      <div class="form-group span-2">
+        <label>Marketing Description</label>
+        <textarea name="blurb" rows="3" placeholder="Short description for the website listing…">{{ listing.blurb or '' if listing else '' }}</textarea>
+      </div>
+
+      <div class="form-group">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" name="website_listed" value="1" {{ 'checked' if not listing or listing.website_listed else '' }}>
+          Show on website
+        </label>
+      </div>
+
+      <div class="form-group">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" name="featured" value="1" {{ 'checked' if listing and listing.featured else '' }}>
+          Featured listing
+        </label>
+      </div>
+
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">{{ 'Save Changes' if listing else 'Add Listing' }}</button>
+      <a href="{{ url_for('property_detail', id=prop.id) }}" class="btn btn-secondary">Cancel</a>
+      {% if listing %}
+      <form method="post" action="{{ url_for('listing_delete', id=listing.id) }}" class="confirm-delete" style="margin-left:auto">
+        <button type="submit" class="btn btn-danger btn-sm">Remove Listing</button>
+      </form>
+      {% endif %}
+    </div>
+  </form>
+</div>
+{% endblock %}
