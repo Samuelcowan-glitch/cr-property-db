@@ -64,12 +64,9 @@
   </div>
 </div>
 
-<!-- ── Tabs: Listings / Tenures / Projects ── -->
+<!-- ── Tabs: Tenures / Projects ── -->
 <div class="tabs" data-group="prop">
-  <button class="tab-btn active" data-tab="listings">
-    Website Listings ({{ prop.unit_listings | length }})
-  </button>
-  <button class="tab-btn" data-tab="tenures">
+  <button class="tab-btn active" data-tab="tenures">
     Tenures &amp; Transactions ({{ prop.transactions | length }})
   </button>
   <button class="tab-btn" data-tab="projects">
@@ -77,51 +74,8 @@
   </button>
 </div>
 
-<!-- ── Listings tab ── -->
-<div class="tab-panel active" data-tab-group="prop" data-tab="listings">
-  <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
-    <a href="{{ url_for('listing_new', prop_id=prop.id) }}" class="btn btn-primary btn-sm">+ Add Listing / Unit</a>
-  </div>
-  {% if prop.unit_listings %}
-  <div class="table-wrap">
-    <table class="data-table">
-      <thead><tr>
-        <th>Unit</th><th>Category</th><th>Use</th><th>Size</th><th>Price</th><th>Status</th><th>Website</th><th></th>
-      </tr></thead>
-      <tbody>
-      {% for l in prop.unit_listings %}
-      <tr>
-        <td style="font-weight:600">{{ l.unit_name or '(Whole building)' }}</td>
-        <td>{{ l.website_category|title if l.website_category else '—' }}</td>
-        <td>{{ l.use_class|title if l.use_class else '—' }}</td>
-        <td>{{ '{:,.0f}'.format(l.size) + ' sq ft' if l.size else '—' }}</td>
-        <td>{% if l.price_display %}{{ l.price_display }}{% elif l.listing_price %}£{{ '{:,.0f}'.format(l.listing_price) }} {{ l.listing_price_unit or '' }}{% else %}POA{% endif %}</td>
-        <td>
-          {% if l.listing_status == 'available' %}<span class="badge badge-active">Available</span>
-          {% elif l.listing_status == 'under-offer' %}<span class="badge badge-hold">Under Offer</span>
-          {% elif l.listing_status in ('let-agreed','sold') %}<span class="badge badge-complete">{{ l.listing_status|title }}</span>
-          {% else %}<span>{{ l.listing_status }}</span>{% endif %}
-        </td>
-        <td>{% if l.website_listed %}✅{% else %}—{% endif %}{% if l.featured %} ⭐{% endif %}</td>
-        <td><a href="{{ url_for('listing_edit', id=l.id) }}" class="btn btn-sm btn-outline">Edit</a></td>
-      </tr>
-      {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  {% else %}
-  <div class="card">
-    <div class="empty-state">
-      <div class="empty-icon">🏢</div>
-      <p>No listings yet. Add a unit or whole-building listing to show this property on the website.</p>
-      <a href="{{ url_for('listing_new', prop_id=prop.id) }}" class="btn btn-primary" style="margin-top:12px">+ Add First Listing</a>
-    </div>
-  </div>
-  {% endif %}
-</div>
-
 <!-- ── Tenures tab ── -->
-<div class="tab-panel" data-tab-group="prop" data-tab="tenures">
+<div class="tab-panel active" data-tab-group="prop" data-tab="tenures">
   <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
     <a href="{{ url_for('transaction_new') }}?property_id={{ prop.id }}" class="btn btn-primary btn-sm">+ Record Transaction</a>
   </div>
