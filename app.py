@@ -349,6 +349,8 @@ class Listing(db.Model):
     baths              = db.Column(db.Integer)
     photo_id           = db.Column(db.String(100))
     blurb              = db.Column(db.Text)
+    lat                = db.Column(db.Float)
+    lng                = db.Column(db.Float)
     created_at         = db.Column(db.DateTime, default=datetime.utcnow)
 
     # ── Commercial: Define the Space ──
@@ -2064,6 +2066,8 @@ def api_listings():
     if listings:
         for l in listings:
             p = l.prop
+            if p is None:
+                continue
             title = f"{l.unit_name}, {p.address}" if l.unit_name else p.address
             price = l.listing_price or 0
             unit  = l.listing_price_unit or 'poa'
@@ -2328,10 +2332,12 @@ def _migrate_listings_table_columns():
             ('key_points',           'TEXT'),
             ('amenities',            'TEXT'),
             ('availability_reason',  'TEXT'),
-            ('brochure_data',        'BLOB'),
+            ('lat',                  'REAL'),
+            ('lng',                  'REAL'),
+            ('brochure_data',        'BYTEA'),
             ('brochure_filename',    'TEXT'),
             ('brochure_size',        'INTEGER'),
-            ('floor_plan_data',      'BLOB'),
+            ('floor_plan_data',      'BYTEA'),
             ('floor_plan_filename',  'TEXT'),
             ('floor_plan_size',      'INTEGER'),
         ]
