@@ -19,7 +19,7 @@ with app.app_context():
 
 port = int(os.environ.get('PORT', 8080))
 print("=" * 50)
-print("  Cowan & Rutter Property Database")
+print("  Cowan & Rutter Property Database v2")
 print(f"  Open: http://localhost:{port}")
 print("=" * 50)
 serve(app, host='0.0.0.0', port=port, threads=4)
