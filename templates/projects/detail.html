@@ -592,7 +592,7 @@
      TAB 3: WEBSITE LISTING
 ══════════════════════════════════════════════════════════════ -->
 <div class="tab-panel" data-tab-group="proj" data-tab="listing">
-{% set lst = project.unit_listings[0] if project.unit_listings else None %}
+{% set lst = project.project_listings[0] if project.project_listings else None %}
 {% if lst %}
 <!-- Existing listing — edit inline -->
 <div style="display:grid;grid-template-columns:1fr 280px;gap:16px">
