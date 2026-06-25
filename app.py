@@ -314,9 +314,10 @@ class Project(db.Model):
     client_phone      = db.Column(db.String(50))
     client_mobile     = db.Column(db.String(50))
     client_email      = db.Column(db.String(120))
-    key_contact       = db.Column(db.String(100))
-    landlord_name     = db.Column(db.String(255))
-    agent_assigned    = db.Column(db.String(100))
+    key_contact          = db.Column(db.String(100))
+    landlord_name        = db.Column(db.String(255))
+    agent_assigned       = db.Column(db.String(100))
+    location_description = db.Column(db.Text)
 
     documents = db.relationship('ProjectDocument', backref='project', lazy=True, cascade='all, delete-orphan')
 
@@ -383,6 +384,21 @@ class ProjectTask(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     project = db.relationship('Project', backref=db.backref('tasks', lazy=True, cascade='all, delete-orphan', order_by='ProjectTask.due_date'))
+
+
+class ProjectService(db.Model):
+    __tablename__ = 'project_services'
+    id           = db.Column(db.Integer, primary_key=True)
+    project_id   = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=False)
+    service_type = db.Column(db.String(50), nullable=False)  # Sale, Letting, Rent Review, etc.
+    status       = db.Column(db.String(20), default='Active')
+    fee_earner   = db.Column(db.String(100))
+    fee_percent  = db.Column(db.Float)   # % fee
+    fee_fixed    = db.Column(db.Float)   # £ fixed fee
+    notes        = db.Column(db.Text)
+    created_at   = db.Column(db.DateTime, default=datetime.utcnow)
+
+    project = db.relationship('Project', backref=db.backref('services', lazy=True, cascade='all, delete-orphan'))
 
 
 class ProjectNote(db.Model):
@@ -1395,6 +1411,54 @@ def task_delete(id):
 
 
 # ── Project Notes ────────────────────────────────────────────────────────────
+
+@app.route('/projects/<int:id>/services/add', methods=['POST'])
+def service_add(id):
+    project = Project.query.get_or_404(id)
+    stype = request.form.get('service_type', '').strip()
+    if stype:
+        def pf(v): return float(v.replace(',','')) if v and v.strip() else None
+        s = ProjectService(
+            project_id=id,
+            service_type=stype,
+            status=request.form.get('status', 'Active'),
+            fee_earner=request.form.get('fee_earner') or project.fee_earner,
+            fee_percent=pf(request.form.get('fee_percent','')),
+            fee_fixed=pf(request.form.get('fee_fixed','')),
+            notes=request.form.get('notes') or None,
+        )
+        db.session.add(s)
+        db.session.commit()
+        flash(f'{stype} service added.', 'success')
+    return redirect(url_for('project_detail', id=id))
+
+
+@app.route('/services/<int:id>/edit', methods=['GET', 'POST'])
+def service_edit(id):
+    s = ProjectService.query.get_or_404(id)
+    if request.method == 'POST':
+        def pf(v): return float(v.replace(',','')) if v and v.strip() else None
+        s.service_type = request.form.get('service_type', s.service_type)
+        s.status       = request.form.get('status', 'Active')
+        s.fee_earner   = request.form.get('fee_earner') or None
+        s.fee_percent  = pf(request.form.get('fee_percent',''))
+        s.fee_fixed    = pf(request.form.get('fee_fixed',''))
+        s.notes        = request.form.get('notes') or None
+        db.session.commit()
+        flash('Service updated.', 'success')
+        return redirect(url_for('project_detail', id=s.project_id))
+    return render_template('projects/service_form.html', s=s)
+
+
+@app.route('/services/<int:id>/delete', methods=['POST'])
+def service_delete(id):
+    s = ProjectService.query.get_or_404(id)
+    project_id = s.project_id
+    db.session.delete(s)
+    db.session.commit()
+    flash('Service removed.', 'info')
+    return redirect(url_for('project_detail', id=project_id))
+
 
 @app.route('/projects/<int:id>/notes/add', methods=['POST'])
 def note_add(id):
