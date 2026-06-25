@@ -64,7 +64,12 @@
       </a>
     </div>
 
-    <div class="sidebar-footer">© 2026 Cowan &amp; Rutter</div>
+    <div class="sidebar-footer" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <span style="opacity:0.6;font-size:12px">{{ current_user.username }}</span>
+      <form action="{{ url_for('logout') }}" method="post" style="margin:0">
+        <button type="submit" style="background:none;border:1px solid rgba(255,255,255,0.25);color:inherit;cursor:pointer;padding:3px 10px;border-radius:4px;font-size:11px;opacity:0.7">Log out</button>
+      </form>
+    </div>
   </nav>
 
   <!-- ── Main ── -->

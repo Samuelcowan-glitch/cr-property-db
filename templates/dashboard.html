@@ -1,299 +1,299 @@
-﻿{% extends "base.html" %}
-{% block title %}Organiser{% endblock %}
-{% block topbar_title %}Organiser{% endblock %}
-{% block topbar_actions %}
-  <a href="{{ url_for('property_new') }}" class="btn btn-orange btn-sm">+ Add Property</a>
-  <a href="{{ url_for('transaction_new') }}" class="btn btn-outline btn-sm">+ Transaction</a>
-  <a href="{{ url_for('project_new') }}" class="btn btn-outline btn-sm">+ New Project</a>
-  <a href="{{ url_for('enquiry_new') }}" class="btn btn-outline btn-sm">+ Enquiry</a>
-{% endblock %}
-
-{% block content %}
-
-<!-- ── Stat strip ── -->
-<div class="stat-row">
-  <a class="stat-tile" href="{{ url_for('properties_list') }}">
-    <div class="stat-num">{{ prop_count }}</div>
-    <div class="stat-lbl">Properties</div>
-    <div class="stat-sub">on register</div>
-  </a>
-  <a class="stat-tile" href="{{ url_for('transactions_list') }}">
-    <div class="stat-num">{{ trans_count }}</div>
-    <div class="stat-lbl">Transactions</div>
-    <div class="stat-sub">recorded</div>
-  </a>
-  <a class="stat-tile" href="{{ url_for('projects_list') }}">
-    <div class="stat-num">{{ proj_count }}</div>
-    <div class="stat-lbl">Instructions</div>
-    <div class="stat-sub">all projects</div>
-  </a>
-  <a class="stat-tile" href="{{ url_for('contacts_list') }}">
-    <div class="stat-num">{{ contact_count }}</div>
-    <div class="stat-lbl">Contacts</div>
-    <div class="stat-sub">in CRM</div>
-  </a>
-  <a class="stat-tile" href="{{ url_for('enquiries_list') }}?status=Open">
-    <div class="stat-num">{{ enq_count }}</div>
-    <div class="stat-lbl">Open Enquiries</div>
-    <div class="stat-sub">awaiting action</div>
-  </a>
-</div>
-
-<!-- â”€â”€ Three-panel organiser â”€â”€ -->
-<div class="organiser-grid">
-
-  <!-- LEFT: Active Listings / Instructions -->
-  <div class="panel">
-    <div class="panel-header">
-      <h3>Active Listings &amp; Instructions ({{ active_listings | length }})</h3>
-      <a href="{{ url_for('properties_list') }}">View all</a>
-    </div>
-    <div class="panel-search">
-      <input type="text" id="listing-search" placeholder="Filter listings..." oninput="filterPanel('listing-search','listing-list')">
-    </div>
-    <div class="panel-body" id="listing-list">
-      {% if active_listings %}
-        {% for p in active_listings %}
-        {% set ptype = (p.property_type or 'other') | lower %}
-        <a class="listing-item" href="{{ url_for('property_detail', id=p.id) }}">
-          <div class="listing-thumb {{ 'office' if 'office' in ptype else 'retail' if 'retail' in ptype else 'industrial' if 'industrial' in ptype or 'warehouse' in ptype else 'residential' if 'resid' in ptype or 'flat' in ptype or 'house' in ptype else 'land' if 'land' in ptype else '' }}">
-            {{ 'Off' if 'office' in ptype else 'Ret' if 'retail' in ptype else 'Ind' if 'industrial' in ptype or 'warehouse' in ptype else 'Res' if 'resid' in ptype or 'flat' in ptype or 'house' in ptype else 'Lnd' if 'land' in ptype else 'Prp' }}
-          </div>
-          <div class="listing-info">
-            <div class="listing-address">{{ p.address }}</div>
-            <div class="listing-detail">
-              {{ p.postcode }}
-              {% if p.size %} &nbsp;·&nbsp; {{ '{:,.0f}'.format(p.size) }} sq ft {{ p.measurement_type or '' }}{% endif %}
-            </div>
-            <div class="listing-status">
-              {{ p.property_type or 'Property' }}
-              &nbsp;·&nbsp;
-              {% set active_proj = p.projects | selectattr('status','eq','Active') | list %}
-              {% if active_proj %}
-                <span style="color:#1b7a3f;font-weight:600">{{ active_proj | length }} active project{% if active_proj|length > 1 %}s{% endif %}</span>
-              {% else %}
-                <span style="color:#9aa0a6">No active projects</span>
-              {% endif %}
-            </div>
-          </div>
-        </a>
-        {% endfor %}
-      {% else %}
-        <div class="panel-empty">
-          No properties yet.<br>
-          <a href="{{ url_for('property_new') }}" style="color:var(--orange)">Add your first property â†’</a>
-        </div>
-      {% endif %}
-    </div>
-  </div>
-
-  <!-- MIDDLE: Contacts -->
-  <div class="panel">
-    <div class="panel-header">
-      <h3>My Contacts ({{ contact_count }})</h3>
-      <a href="{{ url_for('contacts_list') }}">View all</a>
-    </div>
-    <div class="panel-search">
-      <input type="text" id="contact-search" placeholder="Filter contacts..." oninput="filterPanel('contact-search','contact-list')">
-    </div>
-    <div class="panel-body" id="contact-list">
-      {% if contacts %}
-        {% for c in contacts %}
-        <a class="contact-item" href="{{ url_for('contact_detail', id=c.id) }}">
-          <div class="contact-name">{{ c.full_name }}</div>
-          {% if c.organisation %}
-          <div class="contact-row">
-            <span class="ci">·</span>
-            <span>{{ c.organisation.name }}</span>
-          </div>
-          {% endif %}
-          {% if c.phone %}
-          <div class="contact-row">
-            <span class="ci" style="font-style:normal;color:#9aa0a6;font-size:10px">T</span>
-            <span>{{ c.phone }}</span>
-          </div>
-          {% endif %}
-          {% if c.mobile and c.mobile != c.phone %}
-          <div class="contact-row">
-            <span class="ci" style="font-style:normal;color:#9aa0a6;font-size:10px">M</span>
-            <span>{{ c.mobile }}</span>
-          </div>
-          {% endif %}
-          {% if c.email %}
-          <div class="contact-row">
-            <span class="ci">·</span>
-            <span>{{ c.email }}</span>
-          </div>
-          {% endif %}
-          {% if c.contact_type %}
-          <div class="contact-row">
-            <span class="ci">·</span>
-            <span>{{ c.contact_type }}</span>
-          </div>
-          {% endif %}
-        </a>
-        {% endfor %}
-      {% else %}
-        <div class="panel-empty">
-          No contacts yet.<br>
-          <a href="{{ url_for('contact_new') }}" style="color:var(--orange)">Add your first contact</a>
-        </div>
-      {% endif %}
-    </div>
-  </div>
-
-  <!-- RIGHT: Open Enquiries -->
-  <div class="panel">
-    <div class="panel-header">
-      <h3>Open Enquiries ({{ enq_count }})</h3>
-      <a href="{{ url_for('enquiries_list') }}">View all</a>
-    </div>
-    <div class="panel-search">
-      <input type="text" id="enquiry-search" placeholder="Filter enquiries..." oninput="filterPanel('enquiry-search','enquiry-list')">
-    </div>
-    <div class="panel-body" id="enquiry-list">
-      {% if open_enquiries %}
-        {% for e in open_enquiries %}
-        {% set tl = e.traffic_light %}
-        <div class="enquiry-item" style="border-left:3px solid {{ '#c62828' if tl == 'red' else '#e65100' if tl == 'amber' else '#1b7a3f' if tl == 'green' else '#9aa0a6' }}">
-          <div style="display:flex;align-items:flex-start;gap:8px">
-            <span style="font-size:14px;flex-shrink:0;margin-top:1px">{{ e.traffic_emoji }}</span>
-            <div style="flex:1;min-width:0">
-              <a href="{{ url_for('enquiry_edit', id=e.id) }}" style="font-size:12.5px;font-weight:600;color:#c8601a;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ e.subject }}</a>
-              <div style="font-size:11px;color:#5f6368;margin-top:2px">
-                {% if e.enquiry_type %}<strong>{{ e.enquiry_type }}</strong>{% endif %}
-                {% if e.fee_earner %} &middot; {{ e.fee_earner }}{% endif %}
-              </div>
-              {% if e.contact %}
-              <div style="font-size:11px;color:#5f6368;margin-top:2px">
-                {{ e.contact.full_name }}{% if e.contact.phone %} &mdash; {{ e.contact.phone }}{% endif %}
-              </div>
-              {% endif %}
-              {% if e.linked_property %}
-              <div style="font-size:11px;color:#9aa0a6;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
-                {{ e.linked_property.address }}
-              </div>
-              {% endif %}
-              <div style="font-size:10.5px;margin-top:4px;display:flex;gap:8px;flex-wrap:wrap">
-                {% if e.last_contact_date %}
-                <span style="color:#5f6368">Last: {{ e.last_contact_date.strftime('%d %b') }}</span>
-                {% endif %}
-                {% if e.next_follow_up %}
-                <span style="color:{{ '#c62828' if e.next_follow_up <= today else '#1b7a3f' }};font-weight:600">
-                  Follow-up: {{ e.next_follow_up.strftime('%d %b %Y') }}
-                </span>
-                {% endif %}
-              </div>
-            </div>
-          </div>
-          <form method="post" action="{{ url_for('enquiry_log_contact', id=e.id) }}"
-                style="display:flex;gap:4px;margin-top:6px;align-items:center">
-            <input type="date" name="next_follow_up"
-                   style="flex:1;font-size:11px;padding:3px 6px;border:1px solid #dde0e4;border-radius:4px"
-                   title="Set next follow-up date">
-            <button type="submit" class="btn btn-xs"
-                    style="background:#1b7a3f;color:#fff;border:none;font-size:10.5px;white-space:nowrap">
-              Log Contact
-            </button>
-          </form>
-        </div>
-        {% endfor %}
-      {% else %}
-        <div class="panel-empty">
-          No open enquiries.<br>
-          <a href="{{ url_for('enquiry_new') }}" style="color:var(--orange)">Record an enquiry</a>
-        </div>
-      {% endif %}
-    </div>
-  </div>
-
-</div>
-
-<!-- â”€â”€ Bottom row â”€â”€ -->
-<div class="bottom-row">
-
-  <!-- Recent Transactions -->
-  <div class="panel-alt">
-    <div class="panel-alt-header">
-      <h3>Recent Transactions</h3>
-      <a href="{{ url_for('transactions_list') }}">View all</a>
-    </div>
-    <div class="panel-alt-body">
-      {% if recent_transactions %}
-        {% for t in recent_transactions %}
-        <div class="trans-item">
-          <div>
-            <div class="trans-addr">
-              <a href="{{ url_for('property_detail', id=t.property.id) }}">{{ t.property.address }}</a>
-            </div>
-            <div class="trans-detail">
-              {{ t.transaction_type }}
-              {% if t.tenure_type %} â€” {{ t.tenure_type }}{% endif %}
-              {% if t.transaction_date %} &nbsp;·&nbsp; {{ t.transaction_date.strftime('%d %b %Y') }}{% endif %}
-            </div>
-            <div class="trans-detail" style="margin-top:1px;color:#9aa0a6">{{ t.parties }}</div>
-          </div>
-          <div class="trans-val">
-            {% if t.transaction_type == 'Capital' %}{{ t.display_value }}
-            {% else %}{{ t.display_rent }}{% endif %}
-          </div>
-        </div>
-        {% endfor %}
-      {% else %}
-        <div class="panel-empty">No transactions recorded yet.</div>
-      {% endif %}
-    </div>
-  </div>
-
-  <!-- Quick Actions -->
-  <div class="panel-alt">
-    <div class="panel-alt-header">
-      <h3>Quick Actions</h3>
-    </div>
-    <div class="panel-alt-body">
-      <div class="quick-links">
-        <a class="quick-link" href="{{ url_for('property_new') }}">
-          ðŸ¢ &nbsp;Add Property <span class="ql-arrow">â†’</span>
-        </a>
-        <a class="quick-link" href="{{ url_for('transaction_new') }}">
-          ðŸ“‹ &nbsp;Record Transaction <span class="ql-arrow">â†’</span>
-        </a>
-        <a class="quick-link" href="{{ url_for('project_new') }}">
-          ðŸ“ &nbsp;New Project / Instruction <span class="ql-arrow">â†’</span>
-        </a>
-        <a class="quick-link" href="{{ url_for('contact_new') }}">
-          ðŸ‘¤ &nbsp;Add Contact <span class="ql-arrow">â†’</span>
-        </a>
-        <a class="quick-link" href="{{ url_for('organisation_new') }}">
-          ðŸ›ï¸ &nbsp;Add Organisation <span class="ql-arrow">â†’</span>
-        </a>
-        <a class="quick-link" href="{{ url_for('enquiry_new') }}">
-          ðŸ“© &nbsp;Record Enquiry <span class="ql-arrow">â†’</span>
-        </a>
-        <a class="quick-link" href="{{ url_for('transactions_list') }}?type=Capital">
-          ðŸ’· &nbsp;Search Capital Transactions <span class="ql-arrow">â†’</span>
-        </a>
-        <a class="quick-link" href="{{ url_for('transactions_list') }}?type=Leasehold">
-          ðŸ”‘ &nbsp;Search Leasehold Transactions <span class="ql-arrow">â†’</span>
-        </a>
-        <a class="quick-link" href="{{ url_for('projects_list') }}?status=Active">
-          âœ… &nbsp;Active Instructions <span class="ql-arrow">â†’</span>
-        </a>
-      </div>
-    </div>
-  </div>
-
-</div>
-
-<script>
-function filterPanel(inputId, listId) {
-  const q = document.getElementById(inputId).value.toLowerCase();
-  document.querySelectorAll(`#${listId} > *`).forEach(el => {
-    el.style.display = el.textContent.toLowerCase().includes(q) ? '' : 'none';
-  });
-}
-</script>
-
-{% endblock %}
-
-
+﻿{% extends "base.html" %}
+{% block title %}Organiser{% endblock %}
+{% block topbar_title %}Organiser{% endblock %}
+{% block topbar_actions %}
+  <a href="{{ url_for('property_new') }}" class="btn btn-orange btn-sm">+ Add Property</a>
+  <a href="{{ url_for('transaction_new') }}" class="btn btn-outline btn-sm">+ Transaction</a>
+  <a href="{{ url_for('project_new') }}" class="btn btn-outline btn-sm">+ New Project</a>
+  <a href="{{ url_for('enquiry_new') }}" class="btn btn-outline btn-sm">+ Enquiry</a>
+{% endblock %}
+
+{% block content %}
+
+<!-- ── Stat strip ── -->
+<div class="stat-row">
+  <a class="stat-tile" href="{{ url_for('properties_list') }}">
+    <div class="stat-num">{{ prop_count }}</div>
+    <div class="stat-lbl">Properties</div>
+    <div class="stat-sub">on register</div>
+  </a>
+  <a class="stat-tile" href="{{ url_for('transactions_list') }}">
+    <div class="stat-num">{{ trans_count }}</div>
+    <div class="stat-lbl">Transactions</div>
+    <div class="stat-sub">recorded</div>
+  </a>
+  <a class="stat-tile" href="{{ url_for('projects_list') }}">
+    <div class="stat-num">{{ proj_count }}</div>
+    <div class="stat-lbl">Instructions</div>
+    <div class="stat-sub">all projects</div>
+  </a>
+  <a class="stat-tile" href="{{ url_for('contacts_list') }}">
+    <div class="stat-num">{{ contact_count }}</div>
+    <div class="stat-lbl">Contacts</div>
+    <div class="stat-sub">in CRM</div>
+  </a>
+  <a class="stat-tile" href="{{ url_for('enquiries_list') }}?status=Open">
+    <div class="stat-num">{{ enq_count }}</div>
+    <div class="stat-lbl">Open Enquiries</div>
+    <div class="stat-sub">awaiting action</div>
+  </a>
+</div>
+
+<!-- â”€â”€ Three-panel organiser â”€â”€ -->
+<div class="organiser-grid">
+
+  <!-- LEFT: Active Listings / Instructions -->
+  <div class="panel">
+    <div class="panel-header">
+      <h3>Active Listings &amp; Instructions ({{ active_listings | length }})</h3>
+      <a href="{{ url_for('properties_list') }}">View all</a>
+    </div>
+    <div class="panel-search">
+      <input type="text" id="listing-search" placeholder="Filter listings..." oninput="filterPanel('listing-search','listing-list')">
+    </div>
+    <div class="panel-body" id="listing-list">
+      {% if active_listings %}
+        {% for p in active_listings %}
+        {% set ptype = (p.property_type or 'other') | lower %}
+        <a class="listing-item" href="{{ url_for('property_detail', id=p.id) }}">
+          <div class="listing-thumb {{ 'office' if 'office' in ptype else 'retail' if 'retail' in ptype else 'industrial' if 'industrial' in ptype or 'warehouse' in ptype else 'residential' if 'resid' in ptype or 'flat' in ptype or 'house' in ptype else 'land' if 'land' in ptype else '' }}">
+            {{ 'Off' if 'office' in ptype else 'Ret' if 'retail' in ptype else 'Ind' if 'industrial' in ptype or 'warehouse' in ptype else 'Res' if 'resid' in ptype or 'flat' in ptype or 'house' in ptype else 'Lnd' if 'land' in ptype else 'Prp' }}
+          </div>
+          <div class="listing-info">
+            <div class="listing-address">{{ p.address }}</div>
+            <div class="listing-detail">
+              {{ p.postcode }}
+              {% if p.size %} &nbsp;·&nbsp; {{ '{:,.0f}'.format(p.size) }} sq ft {{ p.measurement_type or '' }}{% endif %}
+            </div>
+            <div class="listing-status">
+              {{ p.property_type or 'Property' }}
+              &nbsp;·&nbsp;
+              {% set active_proj = p.projects | selectattr('status','eq','Active') | list %}
+              {% if active_proj %}
+                <span style="color:#1b7a3f;font-weight:600">{{ active_proj | length }} active project{% if active_proj|length > 1 %}s{% endif %}</span>
+              {% else %}
+                <span style="color:#9aa0a6">No active projects</span>
+              {% endif %}
+            </div>
+          </div>
+        </a>
+        {% endfor %}
+      {% else %}
+        <div class="panel-empty">
+          No properties yet.<br>
+          <a href="{{ url_for('property_new') }}" style="color:var(--orange)">Add your first property â†’</a>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- MIDDLE: Contacts -->
+  <div class="panel">
+    <div class="panel-header">
+      <h3>My Contacts ({{ contact_count }})</h3>
+      <a href="{{ url_for('contacts_list') }}">View all</a>
+    </div>
+    <div class="panel-search">
+      <input type="text" id="contact-search" placeholder="Filter contacts..." oninput="filterPanel('contact-search','contact-list')">
+    </div>
+    <div class="panel-body" id="contact-list">
+      {% if contacts %}
+        {% for c in contacts %}
+        <a class="contact-item" href="{{ url_for('contact_detail', id=c.id) }}">
+          <div class="contact-name">{{ c.full_name }}</div>
+          {% if c.organisation %}
+          <div class="contact-row">
+            <span class="ci">·</span>
+            <span>{{ c.organisation.name }}</span>
+          </div>
+          {% endif %}
+          {% if c.phone %}
+          <div class="contact-row">
+            <span class="ci" style="font-style:normal;color:#9aa0a6;font-size:10px">T</span>
+            <span>{{ c.phone }}</span>
+          </div>
+          {% endif %}
+          {% if c.mobile and c.mobile != c.phone %}
+          <div class="contact-row">
+            <span class="ci" style="font-style:normal;color:#9aa0a6;font-size:10px">M</span>
+            <span>{{ c.mobile }}</span>
+          </div>
+          {% endif %}
+          {% if c.email %}
+          <div class="contact-row">
+            <span class="ci">·</span>
+            <span>{{ c.email }}</span>
+          </div>
+          {% endif %}
+          {% if c.contact_type %}
+          <div class="contact-row">
+            <span class="ci">·</span>
+            <span>{{ c.contact_type }}</span>
+          </div>
+          {% endif %}
+        </a>
+        {% endfor %}
+      {% else %}
+        <div class="panel-empty">
+          No contacts yet.<br>
+          <a href="{{ url_for('contact_new') }}" style="color:var(--orange)">Add your first contact</a>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- RIGHT: Open Enquiries -->
+  <div class="panel">
+    <div class="panel-header">
+      <h3>Open Enquiries ({{ enq_count }})</h3>
+      <a href="{{ url_for('enquiries_list') }}">View all</a>
+    </div>
+    <div class="panel-search">
+      <input type="text" id="enquiry-search" placeholder="Filter enquiries..." oninput="filterPanel('enquiry-search','enquiry-list')">
+    </div>
+    <div class="panel-body" id="enquiry-list">
+      {% if open_enquiries %}
+        {% for e in open_enquiries %}
+        {% set tl = e.traffic_light %}
+        <div class="enquiry-item" style="border-left:3px solid {{ '#c62828' if tl == 'red' else '#e65100' if tl == 'amber' else '#1b7a3f' if tl == 'green' else '#9aa0a6' }}">
+          <div style="display:flex;align-items:flex-start;gap:8px">
+            <span style="font-size:14px;flex-shrink:0;margin-top:1px">{{ e.traffic_emoji }}</span>
+            <div style="flex:1;min-width:0">
+              <a href="{{ url_for('enquiry_edit', id=e.id) }}" style="font-size:12.5px;font-weight:600;color:#c8601a;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ e.subject }}</a>
+              <div style="font-size:11px;color:#5f6368;margin-top:2px">
+                {% if e.enquiry_type %}<strong>{{ e.enquiry_type }}</strong>{% endif %}
+                {% if e.fee_earner %} &middot; {{ e.fee_earner }}{% endif %}
+              </div>
+              {% if e.contact %}
+              <div style="font-size:11px;color:#5f6368;margin-top:2px">
+                {{ e.contact.full_name }}{% if e.contact.phone %} &mdash; {{ e.contact.phone }}{% endif %}
+              </div>
+              {% endif %}
+              {% if e.linked_property %}
+              <div style="font-size:11px;color:#9aa0a6;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+                {{ e.linked_property.address }}
+              </div>
+              {% endif %}
+              <div style="font-size:10.5px;margin-top:4px;display:flex;gap:8px;flex-wrap:wrap">
+                {% if e.last_contact_date %}
+                <span style="color:#5f6368">Last: {{ e.last_contact_date.strftime('%d %b') }}</span>
+                {% endif %}
+                {% if e.next_follow_up %}
+                <span style="color:{{ '#c62828' if e.next_follow_up <= today else '#1b7a3f' }};font-weight:600">
+                  Follow-up: {{ e.next_follow_up.strftime('%d %b %Y') }}
+                </span>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+          <form method="post" action="{{ url_for('enquiry_log_contact', id=e.id) }}"
+                style="display:flex;gap:4px;margin-top:6px;align-items:center">
+            <input type="date" name="next_follow_up"
+                   style="flex:1;font-size:11px;padding:3px 6px;border:1px solid #dde0e4;border-radius:4px"
+                   title="Set next follow-up date">
+            <button type="submit" class="btn btn-xs"
+                    style="background:#1b7a3f;color:#fff;border:none;font-size:10.5px;white-space:nowrap">
+              Log Contact
+            </button>
+          </form>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div class="panel-empty">
+          No open enquiries.<br>
+          <a href="{{ url_for('enquiry_new') }}" style="color:var(--orange)">Record an enquiry</a>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+
+<!-- â”€â”€ Bottom row â”€â”€ -->
+<div class="bottom-row">
+
+  <!-- Recent Transactions -->
+  <div class="panel-alt">
+    <div class="panel-alt-header">
+      <h3>Recent Transactions</h3>
+      <a href="{{ url_for('transactions_list') }}">View all</a>
+    </div>
+    <div class="panel-alt-body">
+      {% if recent_transactions %}
+        {% for t in recent_transactions %}
+        <div class="trans-item">
+          <div>
+            <div class="trans-addr">
+              <a href="{{ url_for('property_detail', id=t.property.id) }}">{{ t.property.address }}</a>
+            </div>
+            <div class="trans-detail">
+              {{ t.transaction_type }}
+              {% if t.tenure_type %} â€” {{ t.tenure_type }}{% endif %}
+              {% if t.transaction_date %} &nbsp;·&nbsp; {{ t.transaction_date.strftime('%d %b %Y') }}{% endif %}
+            </div>
+            <div class="trans-detail" style="margin-top:1px;color:#9aa0a6">{{ t.parties }}</div>
+          </div>
+          <div class="trans-val">
+            {% if t.transaction_type == 'Capital' %}{{ t.display_value }}
+            {% else %}{{ t.display_rent }}{% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div class="panel-empty">No transactions recorded yet.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Quick Actions -->
+  <div class="panel-alt">
+    <div class="panel-alt-header">
+      <h3>Quick Actions</h3>
+    </div>
+    <div class="panel-alt-body">
+      <div class="quick-links">
+        <a class="quick-link" href="{{ url_for('property_new') }}">
+          ðŸ¢ &nbsp;Add Property <span class="ql-arrow">â†’</span>
+        </a>
+        <a class="quick-link" href="{{ url_for('transaction_new') }}">
+          ðŸ“‹ &nbsp;Record Transaction <span class="ql-arrow">â†’</span>
+        </a>
+        <a class="quick-link" href="{{ url_for('project_new') }}">
+          ðŸ“ &nbsp;New Project / Instruction <span class="ql-arrow">â†’</span>
+        </a>
+        <a class="quick-link" href="{{ url_for('contact_new') }}">
+          ðŸ‘¤ &nbsp;Add Contact <span class="ql-arrow">â†’</span>
+        </a>
+        <a class="quick-link" href="{{ url_for('organisation_new') }}">
+          ðŸ›ï¸ &nbsp;Add Organisation <span class="ql-arrow">â†’</span>
+        </a>
+        <a class="quick-link" href="{{ url_for('enquiry_new') }}">
+          ðŸ“© &nbsp;Record Enquiry <span class="ql-arrow">â†’</span>
+        </a>
+        <a class="quick-link" href="{{ url_for('transactions_list') }}?type=Capital">
+          ðŸ’· &nbsp;Search Capital Transactions <span class="ql-arrow">â†’</span>
+        </a>
+        <a class="quick-link" href="{{ url_for('transactions_list') }}?type=Leasehold">
+          ðŸ”‘ &nbsp;Search Leasehold Transactions <span class="ql-arrow">â†’</span>
+        </a>
+        <a class="quick-link" href="{{ url_for('projects_list') }}?status=Active">
+          âœ… &nbsp;Active Instructions <span class="ql-arrow">â†’</span>
+        </a>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function filterPanel(inputId, listId) {
+  const q = document.getElementById(inputId).value.toLowerCase();
+  document.querySelectorAll(`#${listId} > *`).forEach(el => {
+    el.style.display = el.textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
+}
+</script>
+
+{% endblock %}
+
+
