@@ -278,10 +278,26 @@
     {% endif %}
 
     <script>
+    // Residential website listings must use one of these property types so they
+    // match the website's residential "Property type" search filter exactly.
+    var RESI_TYPES = ['Detached', 'Semi-Detached', 'Terraced', 'Apartment'];
+    var GEN_TYPES  = ['Office', 'Retail', 'Industrial', 'Warehouse', 'Residential', 'Mixed Use', 'Land', 'Hotel', 'Leisure', 'Other'];
+
+    function syncPropertyTypeOptions() {
+      var cat = document.getElementById('website_category').value;
+      var sel = document.getElementById('property_type');
+      var cur = sel.value;
+      var list = cat === 'residential' ? RESI_TYPES : GEN_TYPES;
+      sel.innerHTML = '<option value="">— Select —</option>' + list.map(function (t) {
+        return '<option value="' + t + '"' + (t === cur ? ' selected' : '') + '>' + t + '</option>';
+      }).join('');
+    }
+
     function toggleListingFields() {
       var cat = document.getElementById('website_category').value;
       document.querySelectorAll('.listing-commercial').forEach(function(el){ el.style.display = cat === 'commercial' ? '' : 'none'; });
       document.querySelectorAll('.listing-residential').forEach(function(el){ el.style.display = cat === 'residential' ? '' : 'none'; });
+      syncPropertyTypeOptions();
     }
     toggleListingFields();
     </script>
