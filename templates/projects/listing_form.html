@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% block title %}{{ 'Edit Listing' if listing else 'Add Listing' }}{% endblock %}
 {% block topbar_title %}{{ 'Edit' if listing else 'Create' }} Website Listing{% endblock %}
+{% set prop = prop if prop is defined and prop else (project.property if project and project.property else none) %}
+
 {% block topbar_actions %}
   {% if project %}
   <a href="{{ url_for('project_detail', id=project.id) }}" class="btn btn-outline btn-sm">&larr; {{ project.name }}</a>
@@ -12,15 +14,20 @@
 {% block content %}
 <div class="breadcrumb">
   <a href="{{ url_for('dashboard') }}">Dashboard</a><span class="sep">/</span>
+  {% if project %}
+  <a href="{{ url_for('projects_list') }}">Projects</a><span class="sep">/</span>
+  <a href="{{ url_for('project_detail', id=project.id) }}">{{ project.name }}</a><span class="sep">/</span>
+  {% elif prop %}
   <a href="{{ url_for('properties_list') }}">Properties</a><span class="sep">/</span>
   <a href="{{ url_for('property_detail', id=prop.id) }}">{{ prop.address }}</a><span class="sep">/</span>
+  {% endif %}
   <span class="current">{{ 'Edit Listing' if listing else 'Add Listing' }}</span>
 </div>
 
 <div class="card" style="max-width:760px">
   <div class="card-header">
-    <div class="card-title">{{ 'Edit' if listing else 'New' }} Listing — <span style="color:#5f6368">{{ prop.address }}, {{ prop.postcode }}</span></div>
-    <div style="font-size:12px;color:#5f6368">A listing represents one lettable or saleable unit within this property.</div>
+    <div class="card-title">{{ 'Edit' if listing else 'New' }} Listing{% if prop %} — <span style="color:#5f6368">{{ prop.address }}, {{ prop.postcode }}</span>{% endif %}</div>
+    <div style="font-size:12px;color:#5f6368">A listing represents one lettable or saleable unit — it will appear on the public website when published.</div>
   </div>
   <form method="post">
     <div class="form-grid" style="margin-bottom:16px">
@@ -152,7 +159,13 @@
     </div>
     <div class="form-actions">
       <button type="submit" class="btn btn-primary">{{ 'Save Changes' if listing else 'Add Listing' }}</button>
+      {% if project %}
+      <a href="{{ url_for('project_detail', id=project.id) }}" class="btn btn-secondary">Cancel</a>
+      {% elif prop %}
       <a href="{{ url_for('property_detail', id=prop.id) }}" class="btn btn-secondary">Cancel</a>
+      {% else %}
+      <a href="{{ url_for('properties_list') }}" class="btn btn-secondary">Cancel</a>
+      {% endif %}
       {% if listing %}
       <form method="post" action="{{ url_for('listing_delete', id=listing.id) }}" class="confirm-delete" style="margin-left:auto">
         <button type="submit" class="btn btn-danger btn-sm">Remove Listing</button>
