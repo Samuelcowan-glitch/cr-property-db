@@ -924,10 +924,20 @@ def project_new():
 def project_detail(id):
     project = Project.query.get_or_404(id)
     matches = match_contacts_to_property(project.property) if project.property else []
-    registered_ids = {pa.contact_id: pa for pa in project.applicants}
+    registered_ids = {pa.contact_id: pa for pa in project.applicants} if hasattr(project, 'applicants') else {}
+    enquiries = Enquiry.query.filter_by(project_id=id).order_by(Enquiry.created_at.desc()).all()
+    activity = []
+    for n in (project.project_notes or []):
+        activity.append({'type':'note','date':n.created_at,'author':n.author,'body':n.content})
+    for e in enquiries:
+        activity.append({'type':'enquiry','date':e.created_at,
+                         'author':e.contact.full_name if e.contact else 'Website',
+                         'body':e.subject,'notes':e.notes or ''})
+    activity.sort(key=lambda x: x['date'], reverse=True)
     return render_template('projects/detail.html', project=project,
                            folder_labels=FOLDER_LABELS, today=date.today(),
-                           matches=matches, registered_ids=registered_ids)
+                           matches=matches, registered_ids=registered_ids,
+                           activity=activity, enquiries=enquiries)
 
 
 @app.route('/projects/<int:id>/edit', methods=['GET', 'POST'])
