@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+
+# Local database (production on Railway is the source of truth)
+instance/
+*.db
+
+# Runtime backups
+backups/
+
+# OS
+.DS_Store
