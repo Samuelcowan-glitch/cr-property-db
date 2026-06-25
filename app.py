@@ -2290,6 +2290,7 @@ def _migrate_listings_table_columns():
     new_cols = [
         ('project_id',           'INTEGER'),
         ('unit_name',            'TEXT'),
+        ('residential_use',      'TEXT'),
         ('min_size',             'REAL'),
         ('max_size',             'REAL'),
         ('measurement_std',      'TEXT'),
