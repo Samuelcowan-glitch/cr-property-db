@@ -362,6 +362,104 @@
 
     <!-- ── MIDDLE: Status / Instruction / Attributes / Description ── -->
     <div>
+
+      <!-- ── Services ── -->
+      <div class="card" style="padding:0;overflow:hidden;margin-bottom:12px">
+        <div style="background:#c8601a;color:#fff;padding:9px 14px;display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:12.5px;font-weight:700">Services / Instructions</span>
+          <span style="font-size:11px;opacity:.75">{{ project.services | length }}</span>
+        </div>
+
+        <!-- Existing services -->
+        {% if project.services %}
+        <table style="width:100%;border-collapse:collapse">
+          <thead>
+            <tr style="background:#f8f9fa">
+              <th style="padding:7px 12px;font-size:10.5px;text-align:left;color:#5f6368;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Service</th>
+              <th style="padding:7px 12px;font-size:10.5px;text-align:left;color:#5f6368;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Fee Earner</th>
+              <th style="padding:7px 12px;font-size:10.5px;text-align:left;color:#5f6368;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Fee</th>
+              <th style="padding:7px 12px;font-size:10.5px;text-align:left;color:#5f6368;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Status</th>
+              <th style="padding:7px 4px"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for s in project.services %}
+            <tr style="border-top:1px solid #f1f3f4">
+              <td style="padding:8px 12px;font-size:12.5px;font-weight:600;color:#1a2e4a">{{ s.service_type }}</td>
+              <td style="padding:8px 12px;font-size:12px;color:#5f6368">{{ s.fee_earner or '—' }}</td>
+              <td style="padding:8px 12px;font-size:12px;color:#1a2e4a">
+                {% if s.fee_percent %}{{ s.fee_percent }}%{% endif %}
+                {% if s.fee_percent and s.fee_fixed %} + {% endif %}
+                {% if s.fee_fixed %}£{{ '{:,.0f}'.format(s.fee_fixed) }}{% endif %}
+                {% if not s.fee_percent and not s.fee_fixed %}—{% endif %}
+              </td>
+              <td style="padding:8px 12px">
+                {% if s.status == 'Active' %}<span class="badge badge-active">Active</span>
+                {% elif s.status == 'Complete' %}<span class="badge badge-complete">Complete</span>
+                {% else %}<span class="badge badge-hold">On Hold</span>{% endif %}
+              </td>
+              <td style="padding:8px 4px;white-space:nowrap">
+                <a href="{{ url_for('service_edit', id=s.id) }}" class="btn btn-xs btn-outline">Edit</a>
+                <form method="post" action="{{ url_for('service_delete', id=s.id) }}" class="confirm-delete" style="display:inline">
+                  <button type="submit" class="btn btn-xs btn-danger">✕</button>
+                </form>
+              </td>
+            </tr>
+            {% if s.notes %}
+            <tr style="border-top:none">
+              <td colspan="5" style="padding:0 12px 8px;font-size:11px;color:#9aa0a6">{{ s.notes }}</td>
+            </tr>
+            {% endif %}
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div style="padding:12px 14px;font-size:12px;color:#9aa0a6;font-style:italic">No services added yet.</div>
+        {% endif %}
+
+        <!-- Add service form -->
+        <div style="padding:10px 14px;border-top:1px dashed #e8eaed;background:#fafafa">
+          <button class="folder-add-toggle" id="svc-toggle" onclick="toggleSvc()">+ Add Service</button>
+          <div id="svc-form" style="display:none;margin-top:8px">
+            <form method="post" action="{{ url_for('service_add', id=project.id) }}">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+                <div>
+                  <label style="font-size:11px;color:#5f6368;font-weight:600;display:block;margin-bottom:3px">Service Type *</label>
+                  <select name="service_type" required style="width:100%;font-size:12px;padding:5px 8px;border:1px solid #dde0e4;border-radius:4px">
+                    <option value="">— Select —</option>
+                    {% for t in ['Sale','Letting','Rent Review','Lease Renewal','Valuation','Building Survey','Lease Advisory','Business Rates','Management','Other'] %}
+                    <option value="{{ t }}">{{ t }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div>
+                  <label style="font-size:11px;color:#5f6368;font-weight:600;display:block;margin-bottom:3px">Status</label>
+                  <select name="status" style="width:100%;font-size:12px;padding:5px 8px;border:1px solid #dde0e4;border-radius:4px">
+                    <option value="Active">Active</option>
+                    <option value="On Hold">On Hold</option>
+                    <option value="Complete">Complete</option>
+                  </select>
+                </div>
+                <div>
+                  <label style="font-size:11px;color:#5f6368;font-weight:600;display:block;margin-bottom:3px">Fee Earner</label>
+                  <input type="text" name="fee_earner" placeholder="{{ project.fee_earner or 'e.g. B. Rutter' }}"
+                         style="width:100%;font-size:12px;padding:5px 8px;border:1px solid #dde0e4;border-radius:4px">
+                </div>
+                <div>
+                  <label style="font-size:11px;color:#5f6368;font-weight:600;display:block;margin-bottom:3px">Fee % / £</label>
+                  <div style="display:flex;gap:4px">
+                    <input type="number" name="fee_percent" step="0.1" placeholder="%" style="flex:1;font-size:12px;padding:5px 8px;border:1px solid #dde0e4;border-radius:4px">
+                    <input type="number" name="fee_fixed" step="1" placeholder="£" style="flex:1;font-size:12px;padding:5px 8px;border:1px solid #dde0e4;border-radius:4px">
+                  </div>
+                </div>
+              </div>
+              <input type="text" name="notes" placeholder="Notes (optional)" style="width:100%;font-size:12px;padding:5px 8px;border:1px solid #dde0e4;border-radius:4px;margin-bottom:6px">
+              <button type="submit" class="btn btn-orange btn-sm" style="width:100%">Add Service</button>
+            </form>
+          </div>
+        </div>
+      </div>
+
       <!-- Status bar -->
       <div class="card" style="padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <div style="display:flex;align-items:center;gap:6px">
@@ -468,6 +566,58 @@
           </form>
         </div>
       </div>
+      <!-- ── Location Description ── -->
+      <div class="card" style="padding:0;overflow:hidden;margin-bottom:12px">
+        <div style="background:#1a2e4a;color:#fff;padding:9px 14px;display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:12.5px;font-weight:700">Location Description</span>
+          <button onclick="toggleLocDesc()" style="background:none;border:none;color:rgba(255,255,255,.7);cursor:pointer;font-size:11px">Edit</button>
+        </div>
+        <div style="padding:12px 14px">
+          <div id="loc-view">
+            {% if project.location_description %}
+            <p style="font-size:12.5px;line-height:1.65;color:#1a202c;white-space:pre-wrap">{{ project.location_description }}</p>
+            {% else %}
+            <p style="font-size:12px;color:#9aa0a6;font-style:italic">No location description yet. Click Edit to add one.</p>
+            {% endif %}
+          </div>
+          <form id="loc-form" method="post" action="{{ url_for('project_edit', id=project.id) }}" style="display:none">
+            <input type="hidden" name="name"             value="{{ project.name }}">
+            <input type="hidden" name="status"           value="{{ project.status }}">
+            <input type="hidden" name="project_ref"      value="{{ project.project_ref or '' }}">
+            <input type="hidden" name="client"           value="{{ project.client or '' }}">
+            <input type="hidden" name="fee_earner"       value="{{ project.fee_earner or '' }}">
+            <input type="hidden" name="instruction_date" value="{{ project.instruction_date.strftime('%Y-%m-%d') if project.instruction_date else '' }}">
+            <input type="hidden" name="notes"            value="{{ project.notes or '' }}">
+            {% if project.property_id %}<input type="hidden" name="property_id" value="{{ project.property_id }}">{% endif %}
+            <textarea name="location_description" rows="5" style="width:100%;font-size:12.5px;padding:7px;border:1px solid #dde0e4;border-radius:5px;font-family:inherit;resize:vertical" placeholder="Describe the location, access, nearby amenities...">{{ project.location_description or '' }}</textarea>
+            <div style="display:flex;gap:6px;margin-top:6px">
+              <button type="submit" class="btn btn-primary btn-sm">Save</button>
+              <button type="button" class="btn btn-secondary btn-sm" onclick="toggleLocDesc()">Cancel</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- ── Rent PSF ── -->
+      {% if project.property and project.property.size and project.property.listing_price and project.property.listing_price > 0 %}
+      {% set rent_pa = project.property.listing_price * 12 if project.property.listing_price_unit == 'pcm' else project.property.listing_price %}
+      {% set psf = (rent_pa / project.property.size)|round(2) %}
+      <div class="card" style="padding:0;overflow:hidden;margin-bottom:12px">
+        <div style="background:#1a2e4a;color:#fff;padding:9px 14px;font-size:12.5px;font-weight:700">Rent PSF</div>
+        <div style="padding:12px 14px;display:flex;gap:24px;align-items:center">
+          <div>
+            <div style="font-size:11px;color:#5f6368;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Rent per sq ft</div>
+            <div style="font-size:22px;font-weight:700;color:#1a2e4a">&pound;{{ psf }}</div>
+            <div style="font-size:11px;color:#9aa0a6">per annum</div>
+          </div>
+          <div style="font-size:12px;color:#5f6368;border-left:1px solid #e8eaed;padding-left:20px">
+            <div>&pound;{{ '{:,.0f}'.format(rent_pa) }} pa</div>
+            <div>&divide; {{ '{:,.0f}'.format(project.property.size) }} sq ft</div>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
     </div>
 
     <!-- ── RIGHT: Matches ── -->
@@ -532,12 +682,36 @@
                   <div style="margin-top:5px;font-size:10.5px;color:#9aa0a6">{{ reasons | join(' · ') }}</div>
                 </div>
               </div>
-              <!-- Match score -->
+              <!-- Match score + register -->
               <div style="flex-shrink:0;text-align:center">
                 <div style="width:32px;height:32px;border-radius:50%;background:{% if score >= 8 %}#1b7a3f{% elif score >= 5 %}#c8601a{% else %}#9aa0a6{% endif %};color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700">{{ score }}</div>
                 <div style="font-size:9.5px;color:#9aa0a6;margin-top:2px">score</div>
               </div>
             </div>
+            <!-- Register / status -->
+            {% if contact.id in registered_ids %}
+            {% set pa = registered_ids[contact.id] %}
+            <div style="margin-top:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+              <span style="font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:10px;background:#e6f4ea;color:#1b7a3f">&#10003; {{ pa.status }}</span>
+              <form method="post" action="{{ url_for('applicant_status', id=pa.id) }}" style="display:flex;gap:4px;align-items:center">
+                <select name="status" style="font-size:10.5px;padding:2px 4px;border:1px solid #dde0e4;border-radius:4px">
+                  {% for s in ['Active Applicant','Viewing Arranged','Offer Made','Declined','Let/Sold'] %}
+                  <option value="{{ s }}" {{ 'selected' if pa.status == s else '' }}>{{ s }}</option>
+                  {% endfor %}
+                </select>
+                <button type="submit" style="font-size:10.5px;padding:2px 6px;background:#1a2e4a;color:#fff;border:none;border-radius:4px;cursor:pointer">Update</button>
+              </form>
+              <form method="post" action="{{ url_for('applicant_remove', id=pa.id) }}" class="confirm-delete">
+                <button type="submit" style="font-size:10.5px;padding:2px 6px;background:none;border:1px solid #fecaca;color:#c62828;border-radius:4px;cursor:pointer">Remove</button>
+              </form>
+            </div>
+            {% else %}
+            <div style="margin-top:6px">
+              <form method="post" action="{{ url_for('applicant_register', proj_id=project.id, contact_id=contact.id) }}">
+                <button type="submit" class="btn btn-sm" style="width:100%;background:#1a2e4a;color:#fff;border:none;font-size:10.5px">+ Register as Applicant</button>
+              </form>
+            </div>
+            {% endif %}
           </div>
           {% endfor %}
         </div>
@@ -615,6 +789,13 @@ function toggleDesc() {
     if (form.style.display === 'none') { form.style.display='block'; view.style.display='none'; if(btn) btn.textContent='Cancel'; }
     else { form.style.display='none'; view.style.display='block'; if(btn) btn.textContent='Edit'; }
   });
+}
+function toggleLocDesc() {
+  var view = document.getElementById('loc-view');
+  var form = document.getElementById('loc-form');
+  if (!view) return;
+  if (form.style.display === 'none') { form.style.display='block'; view.style.display='none'; }
+  else { form.style.display='none'; view.style.display='block'; }
 }
 function filterMatches(q) {
   q = q.toLowerCase();
