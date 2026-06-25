@@ -2126,6 +2126,97 @@ def api_listings():
     return resp
 
 
+@app.route('/admin/cleanup-keep-two', methods=['GET', 'POST'])
+def admin_cleanup_keep_two():
+    """One-click cleanup: keep ONE commercial + ONE residential website
+    listing (and their parent projects) and delete every other project and
+    listing. Properties, transactions, contacts and enquiries are left intact
+    (enquiries are simply unlinked from any deleted project). GET shows a
+    confirmation preview; POST performs the deletion."""
+
+    def pick(cat):
+        q = (Listing.query.filter_by(website_category=cat, website_listed=True)
+                          .order_by(Listing.id).first())
+        if not q:
+            q = Listing.query.filter_by(website_category=cat).order_by(Listing.id).first()
+        return q
+
+    keepers = [l for l in (pick('commercial'), pick('residential')) if l]
+    keep_listing_ids = {l.id for l in keepers}
+    keep_project_ids = {l.project_id for l in keepers if l.project_id}
+
+    def _title(l):
+        try:
+            return l.display_title
+        except Exception:
+            return f'Listing #{l.id}'
+
+    if request.method == 'POST':
+        del_projects = [p for p in Project.query.all() if p.id not in keep_project_ids]
+        del_project_ids = {p.id for p in del_projects}
+
+        # Unlink enquiries from projects we're about to delete (FK is nullable
+        # but has no cascade, so the DB would otherwise block the delete).
+        if del_project_ids:
+            Enquiry.query.filter(Enquiry.project_id.in_(del_project_ids)).update(
+                {'project_id': None}, synchronize_session=False)
+
+        # Delete listings that are not kept and would not already be removed by
+        # the project cascade (orphans, or listings under a kept project).
+        removed_listings = 0
+        for l in Listing.query.all():
+            if l.id not in keep_listing_ids and (l.project_id is None or l.project_id in keep_project_ids):
+                db.session.delete(l)
+                removed_listings += 1
+
+        # Delete the non-kept projects (cascades their own listings, photos,
+        # documents, tasks, applicants, services and notes).
+        for p in del_projects:
+            db.session.delete(p)
+
+        db.session.commit()
+
+        kept_html = ''.join(f'<li>{_title(l)} <span style="color:#6b7280">({l.website_category})</span></li>' for l in keepers)
+        return f'''<!doctype html><meta charset=utf-8>
+<body style="font-family:system-ui,Arial;max-width:640px;margin:60px auto;padding:0 20px;color:#111">
+<h2 style="color:#1b7a3f">Done — database cleaned up</h2>
+<p>Deleted <b>{len(del_projects)}</b> project(s) and a total of <b>{removed_listings}</b> stand-alone listing(s) (plus any listings under the deleted projects).</p>
+<p>Kept these listings:</p>
+<ul>{kept_html or '<li>(none found to keep)</li>'}</ul>
+<p style="color:#6b7280;font-size:14px">Properties, transactions, contacts and enquiries were left untouched.</p>
+<p><a href="{url_for('projects_list')}" style="display:inline-block;margin-top:10px;background:#1a2e4a;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none">← Back to projects</a></p>
+</body>'''
+
+    # GET — confirmation preview
+    total_projects = Project.query.count()
+    total_listings = Listing.query.count()
+    del_projects_n = total_projects - len(keep_project_ids)
+    kept_html = ''.join(
+        f'<li>{_title(l)} <span style="color:#6b7280">({l.website_category})</span></li>'
+        for l in keepers) or '<li style="color:#b91c1c">No commercial/residential listing found to keep!</li>'
+    return f'''<!doctype html><meta charset=utf-8>
+<body style="font-family:system-ui,Arial;max-width:640px;margin:60px auto;padding:0 20px;color:#111">
+<h2 style="color:#b91c1c">⚠ Clean up database — please confirm</h2>
+<p>This will <b>keep just two listings</b> (one commercial, one residential) and their projects, and <b>permanently delete</b> everything else.</p>
+<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:14px 18px;margin:18px 0">
+  <div style="font-weight:700;color:#1b7a3f;margin-bottom:6px">Will be KEPT</div>
+  <ul style="margin:0">{kept_html}</ul>
+</div>
+<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:14px 18px;margin:18px 0">
+  <div style="font-weight:700;color:#b91c1c;margin-bottom:6px">Will be DELETED</div>
+  <ul style="margin:0">
+    <li>{del_projects_n} of {total_projects} projects</li>
+    <li>{total_listings - len(keep_listing_ids)} of {total_listings} listings (and their uploaded photos)</li>
+  </ul>
+</div>
+<p style="color:#6b7280;font-size:14px">Properties, transactions, contacts and enquiries are left intact. This cannot be undone.</p>
+<form method="post" style="margin-top:24px">
+  <button type="submit" style="background:#b91c1c;color:#fff;border:none;padding:12px 22px;border-radius:6px;font-size:15px;font-weight:600;cursor:pointer">Yes, delete everything except those two</button>
+  <a href="{url_for('projects_list')}" style="margin-left:14px;color:#374151">Cancel</a>
+</form>
+</body>'''
+
+
 def _migrate_email_columns():
     from sqlalchemy import text, inspect
     with app.app_context():
