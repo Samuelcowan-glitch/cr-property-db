@@ -554,7 +554,9 @@ def load_user(user_id):
 
 
 # Public endpoints: website API + login page itself
-_PUBLIC_ENDPOINTS = {'login', 'logout', 'static', 'api_enquiry', 'api_listings'}
+# listing_photo_image must be public so the website can display gallery photos
+# (the <img> requests are unauthenticated, just like /api/listings).
+_PUBLIC_ENDPOINTS = {'login', 'logout', 'static', 'api_enquiry', 'api_listings', 'listing_photo_image'}
 
 
 @app.before_request
