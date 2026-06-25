@@ -1,11 +1,12 @@
 import os
 from waitress import serve
-from app import app, db, _migrate_project_columns, _migrate_listing_columns, _ensure_default_user, Property
+from app import app, db, _migrate_project_columns, _migrate_listing_columns, _migrate_email_columns, _ensure_default_user, Property
 
 with app.app_context():
     db.create_all()
     _migrate_project_columns()
     _migrate_listing_columns()
+    _migrate_email_columns()
     _ensure_default_user()
 
     # Auto-seed properties if database is empty (first deploy)
