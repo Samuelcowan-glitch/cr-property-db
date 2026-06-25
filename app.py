@@ -2058,6 +2058,11 @@ def listing_new(prop_id):
 
 # ── Public API (consumed by website) ─────────────────────────────────────────
 
+@app.route('/health')
+def health():
+    return 'ok', 200
+
+
 @app.route('/api/listings')
 def api_listings():
     # Serve from Listing model first; fall back to legacy Property.website_listed
