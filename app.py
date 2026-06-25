@@ -2065,7 +2065,11 @@ def health():
 
 @app.route('/api/listings')
 def api_listings():
-    # Serve from Listing model first; fall back to legacy Property.website_listed
+    # The website is driven SOLELY by project Website Listings. A property
+    # appears only when its project's listing has "Show on website" on. A
+    # project/instruction with no website-listed listing is NOT shown, and
+    # removing/untoggling the listing removes it from the website. No fallback
+    # to the legacy Property.website_listed flag.
     result = []
     listings = Listing.query.filter_by(website_listed=True).all()
     if listings:
@@ -2099,27 +2103,6 @@ def api_listings():
                 'blurb':         l.blurb or p.blurb or p.description or '',
                 'beds':          l.beds or p.beds,
                 'baths':         l.baths or p.baths,
-            })
-    else:
-        # Legacy fallback
-        for p in Property.query.filter_by(website_listed=True).all():
-            price = p.listing_price or 0
-            unit  = p.listing_price_unit or 'poa'
-            result.append({
-                'id': f'cr-db-{p.id}', 'featured': bool(p.featured),
-                'category': p.website_category or 'commercial',
-                'status': 'sale' if unit == 'sale' else 'let',
-                'listingStatus': p.listing_status or 'available',
-                'type': p.property_type or 'Property', 'use': p.use_class or 'office',
-                'title': p.address, 'area': p.area or p.postcode, 'postcode': p.postcode,
-                'address': p.address, 'price': price, 'priceUnit': unit,
-                'priceDisplay': p.price_display or None,
-                'sqft': int(p.size) if p.size else 0,
-                'lat': p.lat, 'lng': p.lng,
-                'added': p.created_at.strftime('%Y-%m-%d'),
-                'photo': p.photo_id or 'photo-1497366216548-37526070297c',
-                'blurb': p.blurb or p.description or '',
-                'beds': p.beds, 'baths': p.baths,
             })
     resp = jsonify(result)
     # Always serve fresh data so admin changes (remove/toggle) show on the
