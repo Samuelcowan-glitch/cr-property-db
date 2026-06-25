@@ -2121,7 +2121,11 @@ def api_listings():
                 'blurb': p.blurb or p.description or '',
                 'beds': p.beds, 'baths': p.baths,
             })
-    return jsonify(result)
+    resp = jsonify(result)
+    # Always serve fresh data so admin changes (remove/toggle) show on the
+    # website without waiting on a stale browser/CDN cache.
+    resp.headers['Cache-Control'] = 'no-store, max-age=0'
+    return resp
 
 
 def _migrate_email_columns():
