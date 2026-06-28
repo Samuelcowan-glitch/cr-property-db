@@ -666,25 +666,6 @@ def properties_list():
 def property_new():
     if request.method == 'POST':
         size_raw = request.form.get('size', '').strip()
-        def _parse_listing(form):
-            lp = form.get('listing_price', '').strip()
-            return dict(
-                website_listed=bool(form.get('website_listed')),
-                website_category=form.get('website_category') or None,
-                listing_status=form.get('listing_status') or 'available',
-                featured=bool(form.get('featured')),
-                area=form.get('area') or None,
-                use_class=form.get('use_class') or None,
-                listing_price=float(lp) if lp else None,
-                listing_price_unit=form.get('listing_price_unit') or 'poa',
-                price_display=form.get('price_display') or None,
-                beds=int(form.get('beds')) if form.get('beds','').strip() else None,
-                baths=int(form.get('baths')) if form.get('baths','').strip() else None,
-                lat=float(form.get('lat')) if form.get('lat','').strip() else None,
-                lng=float(form.get('lng')) if form.get('lng','').strip() else None,
-                photo_id=form.get('photo_id') or None,
-                blurb=form.get('blurb') or None,
-            )
         prop = Property(
             address=request.form['address'],
             postcode=request.form['postcode'].upper(),
@@ -692,7 +673,7 @@ def property_new():
             size=float(size_raw) if size_raw else None,
             measurement_type=request.form.get('measurement_type'),
             description=request.form.get('description'),
-            **_parse_listing(request.form),
+            residential_use=request.form.get('residential_use') or None,
         )
         db.session.add(prop)
         db.session.commit()
@@ -719,26 +700,9 @@ def property_edit(id):
         prop.size = float(size_raw) if size_raw else None
         prop.measurement_type = request.form.get('measurement_type')
         prop.description = request.form.get('description')
-        lp = request.form.get('listing_price', '').strip()
-        prop.website_listed     = bool(request.form.get('website_listed'))
-        prop.website_category   = request.form.get('website_category') or None
-        prop.listing_status     = request.form.get('listing_status') or 'available'
-        prop.featured           = bool(request.form.get('featured'))
-        prop.area               = request.form.get('area') or None
-        prop.use_class          = request.form.get('use_class') or None
-        prop.listing_price      = float(lp) if lp else None
-        prop.listing_price_unit = request.form.get('listing_price_unit') or 'poa'
-        prop.price_display      = request.form.get('price_display') or None
-        prop.beds               = int(request.form.get('beds')) if request.form.get('beds','').strip() else None
-        prop.baths              = int(request.form.get('baths')) if request.form.get('baths','').strip() else None
-        prop.lat                = float(request.form.get('lat')) if request.form.get('lat','').strip() else None
-        prop.lng                = float(request.form.get('lng')) if request.form.get('lng','').strip() else None
-        prop.photo_id           = request.form.get('photo_id') or None
-        prop.blurb              = request.form.get('blurb') or None
-        prop.residential_use    = request.form.get('residential_use') or None
-        ls = request.form.get('listing_size', '').strip()
-        prop.listing_size       = float(ls) if ls else None
-        prop.listing_size_unit  = request.form.get('listing_size_unit') or None
+        prop.residential_use = request.form.get('residential_use') or None
+        # Website listing details (category/price/photos/brochure) are managed per
+        # instruction on the project's Website Listing tab — not on the Property.
         db.session.commit()
         flash('Property updated.', 'success')
         return redirect(url_for('property_detail', id=prop.id))
