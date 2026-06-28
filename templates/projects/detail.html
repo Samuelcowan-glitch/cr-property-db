@@ -602,7 +602,7 @@
         <span style="font-size:13px;font-weight:700">&#127758; Website Listing — {% if lst.website_listed %}LIVE{% else %}HIDDEN{% endif %}</span>
         <span style="font-size:11px;opacity:.8">{{ lst.listing_status|replace('-',' ')|title if lst.listing_status else '' }}</span>
       </div>
-      <form method="post" action="{{ url_for('listing_edit', id=lst.id) }}" style="padding:16px">
+      <form method="post" action="{{ url_for('listing_edit', id=lst.id) }}" class="listing-edit-form" style="padding:16px">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
 
           <div>
@@ -618,7 +618,7 @@
             </select>
           </div>
 
-          <div>
+          <div class="lst-com">
             <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Use Class</label>
             <select name="use_class" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
               <option value="">— Select —</option>
@@ -642,10 +642,10 @@
             <input type="number" name="size" value="{{ lst.size|int if lst.size else '' }}" placeholder="e.g. 1665" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
           </div>
 
-          <div>
-            <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Measurement</label>
+          <div class="lst-com">
+            <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Measurement <span style="font-weight:400;text-transform:none">(residential = GIA)</span></label>
             <select name="measurement_type" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
-              {% for m in ['NIA','GIA','GEA','IPMS'] %}
+              {% for m in ['NIA','GIA','GEA','IPMS 1','IPMS 2'] %}
               <option value="{{ m }}" {{ 'selected' if lst.measurement_type == m else '' }}>{{ m }}</option>
               {% endfor %}
             </select>
@@ -684,6 +684,37 @@
           <div style="grid-column:span 2">
             <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Marketing Description</label>
             <textarea name="blurb" rows="4" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px;resize:vertical;font-family:inherit">{{ lst.blurb or '' }}</textarea>
+          </div>
+
+          <div class="lst-res">
+            <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Bedrooms</label>
+            <input type="number" name="beds" min="0" value="{{ lst.beds or '' }}" placeholder="e.g. 3" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
+          </div>
+          <div class="lst-res">
+            <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Bathrooms</label>
+            <input type="number" name="baths" min="0" value="{{ lst.baths or '' }}" placeholder="e.g. 2" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
+          </div>
+
+          <div class="lst-sale">
+            <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Initial / Gross Yield (%)</label>
+            <input type="number" name="initial_yield" step="0.01" min="0" value="{{ lst.initial_yield or '' }}" placeholder="e.g. 5.25" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
+          </div>
+          <div class="lst-sale">
+            <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Investment / Vacant</label>
+            <select name="investment_vacant" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
+              <option value="">— Select —</option>
+              <option value="Investment" {{ 'selected' if lst.investment_vacant == 'Investment' else '' }}>Investment</option>
+              <option value="Vacant Possession" {{ 'selected' if lst.investment_vacant == 'Vacant Possession' else '' }}>Vacant Possession</option>
+            </select>
+          </div>
+
+          <div style="grid-column:span 2">
+            <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Key Terms <span style="font-weight:400;text-transform:none">(short — shown on website)</span></label>
+            <textarea name="key_terms" rows="2" placeholder="e.g. New FRI lease · Available now · EPC B" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px;resize:vertical;font-family:inherit">{{ lst.key_terms or '' }}</textarea>
+          </div>
+          <div style="grid-column:span 2">
+            <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Location <span style="font-weight:400;text-transform:none">(small paragraph — shown on website)</span></label>
+            <textarea name="location_description" rows="2" placeholder="e.g. Moments from the King's Road, close to the river and excellent transport links" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px;resize:vertical;font-family:inherit">{{ lst.location_description or '' }}</textarea>
           </div>
 
           <div style="display:flex;gap:20px;align-items:center">
@@ -825,6 +856,24 @@ function filterMatches(q) {
     el.style.display = el.textContent.toLowerCase().includes(q) ? '' : 'none';
   });
 }
+// Website Listing form: reveal the right fields for the listing type —
+// .lst-res (residential), .lst-com (commercial), .lst-sale (for-sale only).
+function syncListingForm(form) {
+  var catEl = form.querySelector('[name=website_category]');
+  var unitEl = form.querySelector('[name=listing_price_unit]');
+  var cat = catEl ? catEl.value : 'commercial';
+  var unit = unitEl ? unitEl.value : '';
+  form.querySelectorAll('.lst-res').forEach(function(el){ el.style.display = cat === 'residential' ? '' : 'none'; });
+  form.querySelectorAll('.lst-com').forEach(function(el){ el.style.display = cat === 'commercial'  ? '' : 'none'; });
+  form.querySelectorAll('.lst-sale').forEach(function(el){ el.style.display = unit === 'sale' ? '' : 'none'; });
+}
+document.querySelectorAll('.listing-edit-form').forEach(function(form) {
+  syncListingForm(form);
+  var c = form.querySelector('[name=website_category]');
+  var u = form.querySelector('[name=listing_price_unit]');
+  if (c) c.addEventListener('change', function(){ syncListingForm(form); });
+  if (u) u.addEventListener('change', function(){ syncListingForm(form); });
+});
 </script>
 
 {% endblock %}
