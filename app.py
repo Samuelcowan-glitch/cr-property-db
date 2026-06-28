@@ -409,6 +409,12 @@ class Listing(db.Model):
     amenities          = db.Column(db.Text)            # comma-separated tags
     availability_reason= db.Column(db.String(100))
 
+    # ── Website listing criteria (shown on public listing) ──
+    key_terms          = db.Column(db.Text)            # short key terms (all types)
+    location_description = db.Column(db.Text)          # small location paragraph (all types)
+    initial_yield      = db.Column(db.Float)           # % — sale listings (commercial + residential)
+    investment_vacant  = db.Column(db.String(20))      # Investment / Vacant — commercial sale
+
     # ── Brochure & Floor Plan ──
     brochure_data      = db.Column(db.LargeBinary)
     brochure_filename  = db.Column(db.String(255))
@@ -2002,13 +2008,40 @@ def _save_listing_from_form(form, l):
     l.listing_price_unit = form.get('listing_price_unit','poa')
     l.price_display      = form.get('price_display') or None
     l.size               = pf(form.get('size',''))
-    l.measurement_type   = form.get('measurement_type') or None
+    # Residential measurement is always GIA; commercial picks the basis.
+    if l.website_category == 'residential':
+        l.measurement_type = 'GIA'
+    else:
+        l.measurement_type = form.get('measurement_type') or None
     l.beds  = int(form.get('beds'))  if form.get('beds','').strip()  else None
     l.baths = int(form.get('baths')) if form.get('baths','').strip() else None
     l.lat   = pf(form.get('lat',''))
     l.lng   = pf(form.get('lng',''))
     l.photo_id = form.get('photo_id') or None
-    l.blurb    = form.get('blurb') or None
+    l.blurb    = form.get('blurb') or None            # Description (shown on website)
+    # ── Website listing criteria (the four listing types) ──
+    l.residential_use     = form.get('residential_use') or None
+    l.key_terms           = form.get('key_terms') or None
+    l.location_description = form.get('location_description') or None
+    l.initial_yield       = pf(form.get('initial_yield',''))
+    l.investment_vacant   = form.get('investment_vacant') or None
+    # Derive sale/let flags from the chosen price basis (pa/pcm = let, sale = sale)
+    l.set_as_for_sale = (l.listing_price_unit == 'sale')
+    l.set_as_to_let   = (l.listing_price_unit in ('pa', 'pcm'))
+    # Commercial uses separate rent (listing_price) + sale_price inputs with no unit
+    # dropdown; reconcile into the single website price + unit the API serves.
+    if l.website_category == 'commercial':
+        l.sale_price      = pf(form.get('sale_price', ''))
+        l.set_as_for_sale = bool(form.get('set_as_for_sale'))
+        l.set_as_to_let   = bool(form.get('set_as_to_let'))
+        if l.set_as_for_sale and l.sale_price:
+            l.listing_price      = l.sale_price
+            l.listing_price_unit = 'sale'
+            l.price_display      = form.get('sale_price_display') or l.price_display
+        elif l.listing_price:
+            l.listing_price_unit = 'pa'    # commercial rent quoted per annum
+        else:
+            l.listing_price_unit = 'poa'
 
 
 @app.route('/projects/<int:proj_id>/listing/new', methods=['GET', 'POST'])
@@ -2120,6 +2153,13 @@ def api_listings():
                 'blurb':         l.blurb or p.blurb or p.description or '',
                 'beds':          l.beds or p.beds,
                 'baths':         l.baths or p.baths,
+                'measurement':   l.measurement_type or ('GIA' if l.website_category == 'residential' else None),
+                'keyTerms':      l.key_terms or None,
+                'locationText':  l.location_description or None,
+                'yield':         l.initial_yield or None,
+                'tenure':        l.investment_vacant or l.residential_use or None,
+                'pricePerSqft':  round((l.listing_price or 0) / int(l.size or p.size), 2)
+                                 if (unit == 'pa' and int(l.size or p.size or 0) > 0) else None,
             })
     resp = jsonify(result)
     # Always serve fresh data so admin changes (remove/toggle) show on the
@@ -2432,6 +2472,10 @@ def _migrate_listings_table_columns():
         ('key_points',           'TEXT'),
         ('amenities',            'TEXT'),
         ('availability_reason',  'TEXT'),
+        ('key_terms',            'TEXT'),
+        ('location_description', 'TEXT'),
+        ('initial_yield',        'REAL'),
+        ('investment_vacant',    'TEXT'),
         ('lat',                  'REAL'),
         ('lng',                  'REAL'),
         ('brochure_data',        'BYTEA'),
