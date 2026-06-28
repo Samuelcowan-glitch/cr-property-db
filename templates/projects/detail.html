@@ -318,10 +318,18 @@
         <a href="{{ url_for('enquiry_new') }}" style="color:rgba(255,255,255,.8);font-size:11px">+ Add</a>
       </div>
       <div style="max-height:260px;overflow-y:auto">
-        {% set direct_enqs = [] %}
+        {# Enquiries linked to this project by EITHER its property or the project
+           itself (website enquiries may link either way) — combined + deduped. #}
+        {% set ns = namespace(items=[], ids=[]) %}
         {% if project.property %}
-          {% set direct_enqs = project.property.enquiries %}
+          {% for e in project.property.enquiries %}
+            {% if e.id not in ns.ids %}{% set _ = ns.items.append(e) %}{% set _ = ns.ids.append(e.id) %}{% endif %}
+          {% endfor %}
         {% endif %}
+        {% for e in project.enquiries %}
+          {% if e.id not in ns.ids %}{% set _ = ns.items.append(e) %}{% set _ = ns.ids.append(e.id) %}{% endif %}
+        {% endfor %}
+        {% set direct_enqs = ns.items %}
         {% if direct_enqs %}
           {% for e in direct_enqs | sort(attribute='created_at', reverse=True) %}
           <div style="padding:10px 12px;border-bottom:1px solid #f1f3f4">

@@ -1909,12 +1909,23 @@ def api_enquiry():
         if contact.contact_type in (None, 'Enquiry', 'Prospect', 'Other') and contact_type not in (None, 'Prospect'):
             contact.contact_type = contact_type
 
-    # Try to match a property from the property name passed in the form
+    # Try to match a property from the property reference passed in the form.
+    # The website sends "Title — Address, POSTCODE", so match on the postcode
+    # first (most reliable), then the address portion after the dash, then a
+    # final loose fallback on the whole string.
     prop = None
     if property_ref:
-        prop = Property.query.filter(
-            Property.address.ilike(f'%{property_ref[:40]}%')
-        ).first()
+        import re
+        ref = property_ref.strip()
+        pc = re.search(r'[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}', ref.upper())
+        if pc:
+            prop = Property.query.filter(Property.postcode.ilike(pc.group(0))).first()
+        if not prop:
+            tail = ref.split('—')[-1].strip()
+            if tail:
+                prop = Property.query.filter(Property.address.ilike(f'%{tail[:40]}%')).first()
+        if not prop:
+            prop = Property.query.filter(Property.address.ilike(f'%{ref[:40]}%')).first()
 
     # Find the active project for that property (if any)
     proj = None
