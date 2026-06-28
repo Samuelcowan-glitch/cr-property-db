@@ -696,8 +696,8 @@
           </div>
 
           <div class="lst-sale">
-            <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Initial / Gross Yield (%)</label>
-            <input type="number" name="initial_yield" step="0.01" min="0" value="{{ lst.initial_yield or '' }}" placeholder="e.g. 5.25" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
+            <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px"><span class="yield-label">Initial / Gross Yield (%)</span></label>
+            <input type="number" name="initial_yield" class="yield-input" step="0.01" min="0" value="{{ lst.initial_yield or '' }}" placeholder="e.g. 5.25" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
           </div>
           <div class="lst-sale">
             <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Investment / Vacant</label>
@@ -706,6 +706,18 @@
               <option value="Investment" {{ 'selected' if lst.investment_vacant == 'Investment' else '' }}>Investment</option>
               <option value="Vacant Possession" {{ 'selected' if lst.investment_vacant == 'Vacant Possession' else '' }}>Vacant Possession</option>
             </select>
+          </div>
+          <div class="lst-sale">
+            <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Tenure</label>
+            <select name="tenure" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
+              <option value="">— Select —</option>
+              <option value="Freehold" {{ 'selected' if lst.tenure == 'Freehold' else '' }}>Freehold</option>
+              <option value="Long Leasehold" {{ 'selected' if lst.tenure == 'Long Leasehold' else '' }}>Long Leasehold</option>
+            </select>
+          </div>
+          <div class="lst-leasehold">
+            <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Lease Years Remaining</label>
+            <input type="number" name="lease_years_remaining" min="0" value="{{ lst.lease_years_remaining or '' }}" placeholder="e.g. 125" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
           </div>
 
           <div style="grid-column:span 2">
@@ -861,18 +873,29 @@ function filterMatches(q) {
 function syncListingForm(form) {
   var catEl = form.querySelector('[name=website_category]');
   var unitEl = form.querySelector('[name=listing_price_unit]');
+  var ivEl = form.querySelector('[name=investment_vacant]');
+  var tenEl = form.querySelector('[name=tenure]');
   var cat = catEl ? catEl.value : 'commercial';
-  var unit = unitEl ? unitEl.value : '';
+  var isSale = unitEl && unitEl.value === 'sale';
   form.querySelectorAll('.lst-res').forEach(function(el){ el.style.display = cat === 'residential' ? '' : 'none'; });
   form.querySelectorAll('.lst-com').forEach(function(el){ el.style.display = cat === 'commercial'  ? '' : 'none'; });
-  form.querySelectorAll('.lst-sale').forEach(function(el){ el.style.display = unit === 'sale' ? '' : 'none'; });
+  form.querySelectorAll('.lst-sale').forEach(function(el){ el.style.display = isSale ? '' : 'none'; });
+  // Vacant possession → the yield field becomes a capital value (cap rate £/sq ft)
+  var vp = ivEl && ivEl.value === 'Vacant Possession';
+  var yl = form.querySelector('.yield-label');
+  var yi = form.querySelector('.yield-input');
+  if (yl) yl.textContent = vp ? 'Cap Rate (£ per sq ft)' : 'Initial / Gross Yield (%)';
+  if (yi) yi.placeholder = vp ? 'e.g. 1,250' : 'e.g. 5.25';
+  // Long leasehold sale → ask for years remaining
+  var ll = tenEl && tenEl.value === 'Long Leasehold';
+  form.querySelectorAll('.lst-leasehold').forEach(function(el){ el.style.display = (isSale && ll) ? '' : 'none'; });
 }
 document.querySelectorAll('.listing-edit-form').forEach(function(form) {
   syncListingForm(form);
-  var c = form.querySelector('[name=website_category]');
-  var u = form.querySelector('[name=listing_price_unit]');
-  if (c) c.addEventListener('change', function(){ syncListingForm(form); });
-  if (u) u.addEventListener('change', function(){ syncListingForm(form); });
+  ['website_category', 'listing_price_unit', 'investment_vacant', 'tenure'].forEach(function(n) {
+    var el = form.querySelector('[name=' + n + ']');
+    if (el) el.addEventListener('change', function(){ syncListingForm(form); });
+  });
 });
 </script>
 

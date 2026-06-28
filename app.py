@@ -412,8 +412,10 @@ class Listing(db.Model):
     # ── Website listing criteria (shown on public listing) ──
     key_terms          = db.Column(db.Text)            # short key terms (all types)
     location_description = db.Column(db.Text)          # small location paragraph (all types)
-    initial_yield      = db.Column(db.Float)           # % — sale listings (commercial + residential)
-    investment_vacant  = db.Column(db.String(20))      # Investment / Vacant — commercial sale
+    initial_yield      = db.Column(db.Float)           # % yield, OR cap rate £/sqft when Vacant Possession
+    investment_vacant  = db.Column(db.String(20))      # Investment / Vacant Possession — sale
+    tenure             = db.Column(db.String(30))      # Freehold / Long Leasehold — sale
+    lease_years_remaining = db.Column(db.Integer)      # years left if Long Leasehold
 
     # ── Brochure & Floor Plan ──
     brochure_data      = db.Column(db.LargeBinary)
@@ -2025,6 +2027,8 @@ def _save_listing_from_form(form, l):
     l.location_description = form.get('location_description') or None
     l.initial_yield       = pf(form.get('initial_yield',''))
     l.investment_vacant   = form.get('investment_vacant') or None
+    l.tenure              = form.get('tenure') or None
+    l.lease_years_remaining = int(form.get('lease_years_remaining')) if form.get('lease_years_remaining','').strip() else None
     # Derive sale/let flags from the chosen price basis (pa/pcm = let, sale = sale)
     l.set_as_for_sale = (l.listing_price_unit == 'sale')
     l.set_as_to_let   = (l.listing_price_unit in ('pa', 'pcm'))
@@ -2158,6 +2162,9 @@ def api_listings():
                 'locationText':  l.location_description or None,
                 'yield':         l.initial_yield or None,
                 'tenure':        l.investment_vacant or l.residential_use or None,
+                'saleTenure':    l.tenure or None,
+                'leaseYears':    l.lease_years_remaining or None,
+                'vacantPossession': l.investment_vacant == 'Vacant Possession',
                 'pricePerSqft':  round((l.listing_price or 0) / int(l.size or p.size), 2)
                                  if (unit == 'pa' and int(l.size or p.size or 0) > 0) else None,
             })
@@ -2476,6 +2483,8 @@ def _migrate_listings_table_columns():
         ('location_description', 'TEXT'),
         ('initial_yield',        'REAL'),
         ('investment_vacant',    'TEXT'),
+        ('tenure',               'TEXT'),
+        ('lease_years_remaining','INTEGER'),
         ('lat',                  'REAL'),
         ('lng',                  'REAL'),
         ('brochure_data',        'BYTEA'),
