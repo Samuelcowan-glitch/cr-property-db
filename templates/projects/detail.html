@@ -652,18 +652,17 @@
           </div>
 
           <div>
-            <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Price / Rent (&pound;)</label>
+            <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px"><span class="price-label">Price / Rent (&pound;)</span></label>
             <input type="number" name="listing_price" value="{{ lst.listing_price|int if lst.listing_price else '' }}" placeholder="e.g. 42120" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
           </div>
 
           <div>
-            <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Price Unit</label>
-            <select name="listing_price_unit" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
-              <option value="pa"  {{ 'selected' if lst.listing_price_unit == 'pa'  else '' }}>Per annum</option>
-              <option value="pcm" {{ 'selected' if lst.listing_price_unit == 'pcm' else '' }}>Per month</option>
-              <option value="sale"{{ 'selected' if lst.listing_price_unit == 'sale'else '' }}>Sale price</option>
-              <option value="poa" {{ 'selected' if lst.listing_price_unit == 'poa' else '' }}>Price on application</option>
+            <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Listing Type</label>
+            <select name="transaction" class="transaction-select" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
+              <option value="let"  {{ 'selected' if not lst.listing_price_unit or lst.listing_price_unit != 'sale' else '' }}>To Let</option>
+              <option value="sale" {{ 'selected' if lst.listing_price_unit == 'sale' else '' }}>For Sale</option>
             </select>
+            <input type="hidden" name="listing_price_unit" class="price-unit-hidden" value="{{ lst.listing_price_unit or 'pa' }}">
           </div>
 
           <div style="grid-column:span 2">
@@ -727,6 +726,88 @@
           <div style="grid-column:span 2">
             <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Location <span style="font-weight:400;text-transform:none">(small paragraph — shown on website)</span></label>
             <textarea name="location_description" rows="2" placeholder="e.g. Moments from the King's Road, close to the river and excellent transport links" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px;resize:vertical;font-family:inherit">{{ lst.location_description or '' }}</textarea>
+          </div>
+
+          <div class="lst-let-com" style="grid-column:span 2;margin-top:8px;border-top:1px solid #eef0f2;padding-top:12px">
+            <div style="font-size:11px;font-weight:700;color:#5f6368;text-transform:uppercase;letter-spacing:.5px">Commercial Lease Detail <span style="font-weight:400;text-transform:none;color:#9aa0a6">— internal, for your records / brochure (not shown on the website)</span></div>
+          </div>
+          <div class="lst-let-com">
+            <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Rent &pound; per sq ft (from / to)</label>
+            <div style="display:flex;gap:6px">
+              <input type="number" step="0.01" name="rent_from" value="{{ '%.2f'|format(lst.rent_from) if lst.rent_from else '' }}" placeholder="from" style="flex:1;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
+              <input type="number" step="0.01" name="rent_to" value="{{ '%.2f'|format(lst.rent_to) if lst.rent_to else '' }}" placeholder="to" style="flex:1;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
+            </div>
+          </div>
+          <div class="lst-let-com">
+            <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Rent Qualifier</label>
+            <select name="rent_qualifier" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
+              <option value="">— Select —</option>
+              {% for o in ['Quoting','Guideline','Asking','Fixed'] %}<option value="{{ o }}" {{ 'selected' if lst.rent_qualifier == o else '' }}>{{ o }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="lst-let-com">
+            <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Rent Basis</label>
+            <select name="rent_inclusive" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
+              <option value="">— Select —</option>
+              {% for o in ['Exclusive','Inclusive','N/A'] %}<option value="{{ o }}" {{ 'selected' if lst.rent_inclusive == o else '' }}>{{ o }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="lst-let-com">
+            <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Lease Length (years / months)</label>
+            <div style="display:flex;gap:6px">
+              <input type="number" name="lease_length_years" value="{{ lst.lease_length_years or '' }}" placeholder="years" style="flex:1;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
+              <input type="number" name="lease_length_months" value="{{ lst.lease_length_months or '' }}" placeholder="months" style="flex:1;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
+            </div>
+          </div>
+          <div class="lst-let-com">
+            <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Lease Type</label>
+            <select name="lease_type" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
+              <option value="">— Select —</option>
+              {% for o in ['New Lease','Assignment','Sub-lease','Renewal','Licence'] %}<option value="{{ o }}" {{ 'selected' if lst.lease_type == o else '' }}>{{ o }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="lst-let-com">
+            <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Inside / Outside 1954 Act</label>
+            <select name="inside_1954_act" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
+              <option value="">— Select —</option>
+              {% for o in ['Inside 1954 Act','Outside 1954 Act','Contracted Out'] %}<option value="{{ o }}" {{ 'selected' if lst.inside_1954_act == o else '' }}>{{ o }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="lst-let-com">
+            <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Repair &amp; Insuring</label>
+            <select name="repair_insuring" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
+              <option value="">— Select —</option>
+              {% for o in ['FRI — Full Repairing & Insuring','IRI — Internal Repairing & Insuring','Internal Only','Landlord Insuring'] %}<option value="{{ o }}" {{ 'selected' if lst.repair_insuring == o else '' }}>{{ o }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="lst-let-com">
+            <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Service Charge (&pound; psf)</label>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input type="number" step="0.01" name="service_charge" value="{{ '%.2f'|format(lst.service_charge) if lst.service_charge else '' }}" placeholder="per sq ft" style="flex:1;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
+              <label style="font-size:12px;white-space:nowrap"><input type="checkbox" name="service_charge_na" value="1" {{ 'checked' if lst.service_charge_na else '' }}> N/A</label>
+            </div>
+          </div>
+          <div class="lst-let-com">
+            <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Rateable Value (&pound;)</label>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input type="number" name="rateable_value" value="{{ lst.rateable_value|int if lst.rateable_value else '' }}" placeholder="rateable value" style="flex:1;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
+              <label style="font-size:12px;white-space:nowrap"><input type="checkbox" name="rateable_value_na" value="1" {{ 'checked' if lst.rateable_value_na else '' }}> N/A</label>
+            </div>
+          </div>
+          <div class="lst-let-com">
+            <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">EPC Rating</label>
+            <select name="epc_band" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
+              <option value="">— Select —</option>
+              {% for o in ['A','B','C','D','E','F','G','Exempt'] %}<option value="{{ o }}" {{ 'selected' if lst.epc_band == o else '' }}>{{ o }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="lst-let-com">
+            <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Parking Ratio</label>
+            <input type="text" name="parking_ratio" value="{{ lst.parking_ratio or '' }}" placeholder="e.g. 1:500 sq ft" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
+          </div>
+          <div class="lst-let-com">
+            <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Parking Spaces</label>
+            <input type="number" name="parking_spaces" value="{{ lst.parking_spaces or '' }}" placeholder="e.g. 4" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
           </div>
 
           <div style="display:flex;gap:20px;align-items:center">
@@ -872,14 +953,22 @@ function filterMatches(q) {
 // .lst-res (residential), .lst-com (commercial), .lst-sale (for-sale only).
 function syncListingForm(form) {
   var catEl = form.querySelector('[name=website_category]');
-  var unitEl = form.querySelector('[name=listing_price_unit]');
+  var txEl  = form.querySelector('[name=transaction]');
+  var unitEl = form.querySelector('.price-unit-hidden');
   var ivEl = form.querySelector('[name=investment_vacant]');
   var tenEl = form.querySelector('[name=tenure]');
   var cat = catEl ? catEl.value : 'commercial';
-  var isSale = unitEl && unitEl.value === 'sale';
+  var isCom = cat === 'commercial';
+  var isSale = txEl && txEl.value === 'sale';
+  // Keep the hidden price unit + the price-field label in step with the toggle.
+  if (unitEl) unitEl.value = isSale ? 'sale' : (isCom ? 'pa' : 'pcm');
+  var pl = form.querySelector('.price-label');
+  if (pl) pl.innerHTML = isSale ? 'Asking Price (£)' : (isCom ? 'Guide Rent (£ pa)' : 'Rent (£ pcm)');
   form.querySelectorAll('.lst-res').forEach(function(el){ el.style.display = cat === 'residential' ? '' : 'none'; });
-  form.querySelectorAll('.lst-com').forEach(function(el){ el.style.display = cat === 'commercial'  ? '' : 'none'; });
+  form.querySelectorAll('.lst-com').forEach(function(el){ el.style.display = isCom ? '' : 'none'; });
   form.querySelectorAll('.lst-sale').forEach(function(el){ el.style.display = isSale ? '' : 'none'; });
+  form.querySelectorAll('.lst-let').forEach(function(el){ el.style.display = !isSale ? '' : 'none'; });
+  form.querySelectorAll('.lst-let-com').forEach(function(el){ el.style.display = (!isSale && isCom) ? '' : 'none'; });
   // Vacant possession → the yield field becomes a capital value (cap rate £/sq ft)
   var vp = ivEl && ivEl.value === 'Vacant Possession';
   var yl = form.querySelector('.yield-label');
@@ -892,7 +981,7 @@ function syncListingForm(form) {
 }
 document.querySelectorAll('.listing-edit-form').forEach(function(form) {
   syncListingForm(form);
-  ['website_category', 'listing_price_unit', 'investment_vacant', 'tenure'].forEach(function(n) {
+  ['website_category', 'transaction', 'investment_vacant', 'tenure'].forEach(function(n) {
     var el = form.querySelector('[name=' + n + ']');
     if (el) el.addEventListener('change', function(){ syncListingForm(form); });
   });

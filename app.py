@@ -2029,23 +2029,48 @@ def _save_listing_from_form(form, l):
     l.investment_vacant   = form.get('investment_vacant') or None
     l.tenure              = form.get('tenure') or None
     l.lease_years_remaining = int(form.get('lease_years_remaining')) if form.get('lease_years_remaining','').strip() else None
-    # Derive sale/let flags from the chosen price basis (pa/pcm = let, sale = sale)
-    l.set_as_for_sale = (l.listing_price_unit == 'sale')
-    l.set_as_to_let   = (l.listing_price_unit in ('pa', 'pcm'))
-    # Commercial uses separate rent (listing_price) + sale_price inputs with no unit
-    # dropdown; reconcile into the single website price + unit the API serves.
-    if l.website_category == 'commercial':
-        l.sale_price      = pf(form.get('sale_price', ''))
-        l.set_as_for_sale = bool(form.get('set_as_for_sale'))
-        l.set_as_to_let   = bool(form.get('set_as_to_let'))
-        if l.set_as_for_sale and l.sale_price:
-            l.listing_price      = l.sale_price
-            l.listing_price_unit = 'sale'
-            l.price_display      = form.get('sale_price_display') or l.price_display
-        elif l.listing_price:
-            l.listing_price_unit = 'pa'    # commercial rent quoted per annum
-        else:
-            l.listing_price_unit = 'poa'
+    def pi(v): return int(v) if v and str(v).strip() else None
+    # Sale vs let. The inline form sends an explicit `transaction` toggle (let/sale)
+    # and sets listing_price_unit to match. The big form has no toggle — derive it
+    # from the price basis and reconcile its separate sale_price input.
+    transaction = form.get('transaction')
+    if transaction in ('let', 'sale'):
+        l.set_as_for_sale = (transaction == 'sale')
+        l.set_as_to_let   = (transaction == 'let')
+    else:
+        l.set_as_for_sale = (l.listing_price_unit == 'sale')
+        l.set_as_to_let   = (l.listing_price_unit in ('pa', 'pcm'))
+        if l.website_category == 'commercial':
+            l.sale_price      = pf(form.get('sale_price', ''))
+            l.set_as_for_sale = bool(form.get('set_as_for_sale'))
+            l.set_as_to_let   = bool(form.get('set_as_to_let'))
+            if l.set_as_for_sale and l.sale_price:
+                l.listing_price      = l.sale_price
+                l.listing_price_unit = 'sale'
+                l.price_display      = form.get('sale_price_display') or l.price_display
+            elif l.listing_price:
+                l.listing_price_unit = 'pa'    # commercial rent quoted per annum
+            else:
+                l.listing_price_unit = 'poa'
+    # ── Commercial lease detail (INTERNAL — for records/brochure, NOT on /api/listings) ──
+    l.lease_type          = form.get('lease_type') or None
+    l.rent_qualifier      = form.get('rent_qualifier') or None
+    l.rent_inclusive      = form.get('rent_inclusive') or None
+    l.rent_from           = pf(form.get('rent_from', ''))
+    l.rent_to             = pf(form.get('rent_to', ''))
+    l.rent_comment        = form.get('rent_comment') or None
+    l.lease_length_years  = pi(form.get('lease_length_years'))
+    l.lease_length_months = pi(form.get('lease_length_months'))
+    l.inside_1954_act     = form.get('inside_1954_act') or None
+    l.repair_insuring     = form.get('repair_insuring') or None
+    l.service_charge      = pf(form.get('service_charge', ''))
+    l.service_charge_na   = bool(form.get('service_charge_na'))
+    l.rateable_value      = pf(form.get('rateable_value', ''))
+    l.rateable_value_na   = bool(form.get('rateable_value_na'))
+    l.epc_band            = form.get('epc_band') or l.epc_band
+    l.parking_ratio       = form.get('parking_ratio') or None
+    l.parking_rent        = pf(form.get('parking_rent', ''))
+    l.parking_spaces      = pi(form.get('parking_spaces'))
 
 
 @app.route('/projects/<int:proj_id>/listing/new', methods=['GET', 'POST'])
