@@ -564,7 +564,8 @@ def load_user(user_id):
 # Public endpoints: website API + login page itself
 # listing_photo_image must be public so the website can display gallery photos
 # (the <img> requests are unauthenticated, just like /api/listings).
-_PUBLIC_ENDPOINTS = {'login', 'logout', 'static', 'api_enquiry', 'api_listings', 'listing_photo_image'}
+_PUBLIC_ENDPOINTS = {'login', 'logout', 'static', 'api_enquiry', 'api_listings', 'listing_photo_image',
+                     'listing_brochure_download', 'listing_floorplan_download'}
 
 
 @app.before_request
@@ -1872,6 +1873,20 @@ def listing_floorplan_delete(id):
     db.session.commit()
     return redirect(url_for('listing_edit', id=id) + '#media')
 
+
+@app.route('/listings/<int:id>/floorplan/download')
+def listing_floorplan_download(id):
+    from flask import send_file
+    import io, mimetypes
+    listing = Listing.query.get_or_404(id)
+    if not listing.floor_plan_data:
+        flash('No floor plan uploaded.', 'warning')
+        return redirect(url_for('listing_edit', id=id))
+    name = listing.floor_plan_filename or 'floor-plan.pdf'
+    mime = mimetypes.guess_type(name)[0] or 'application/octet-stream'
+    return send_file(io.BytesIO(listing.floor_plan_data),
+                     mimetype=mime, as_attachment=True, download_name=name)
+
 # ── Website → DB: inbound enquiry webhook ────────────────────────────────────
 
 @app.route('/api/enquiry', methods=['POST', 'OPTIONS'])
@@ -2150,7 +2165,12 @@ def api_listings():
             p = l.prop
             if p is None:
                 continue
-            title = f"{l.unit_name}, {p.address}" if l.unit_name else p.address
+            # Big text = the address. Only prepend the unit name when the address
+            # doesn't already start with it (avoids "Unit 2, Unit 2, Marlin House").
+            if l.unit_name and not p.address.lower().lstrip().startswith(l.unit_name.lower().strip()):
+                title = f"{l.unit_name}, {p.address}"
+            else:
+                title = p.address
             price = l.listing_price or 0
             unit  = l.listing_price_unit or 'poa'
             # Gallery: absolute URLs to each uploaded photo, served from this
@@ -2190,6 +2210,8 @@ def api_listings():
                 'saleTenure':    l.tenure or None,
                 'leaseYears':    l.lease_years_remaining or None,
                 'vacantPossession': l.investment_vacant == 'Vacant Possession',
+                'brochureUrl':   (base + url_for('listing_brochure_download', id=l.id)) if l.brochure_data else None,
+                'floorPlanUrl':  (base + url_for('listing_floorplan_download', id=l.id)) if l.floor_plan_data else None,
                 'pricePerSqft':  round((l.listing_price or 0) / int(l.size or p.size), 2)
                                  if (unit == 'pa' and int(l.size or p.size or 0) > 0) else None,
             })
