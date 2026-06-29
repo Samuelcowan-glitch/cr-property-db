@@ -435,7 +435,9 @@ class Listing(db.Model):
             addr = self.project.property.address
         elif self.prop:
             addr = self.prop.address
-        return (self.unit_name + ', ' + addr) if self.unit_name and addr else (addr or self.unit_name or 'Listing')
+        if not addr:
+            return self.unit_name or 'Listing'
+        return _normalise_address(addr, self.unit_name)
 
     @property
     def display_price(self):
@@ -567,6 +569,38 @@ def load_user(user_id):
 _PUBLIC_ENDPOINTS = {'login', 'logout', 'static', 'api_enquiry', 'api_listings', 'listing_photo_image',
                      'listing_brochure_download', 'listing_floorplan_download'}
 
+
+
+
+# ── Address normalisation ─────────────────────────────────────────────────────
+def _normalise_address(addr, unit=None):
+    addr = ' '.join((addr or '').split()).strip()
+    if unit:
+        unit = unit.strip()
+        if unit and not addr.lower().startswith(unit.lower()):
+            addr = f"{unit}, {addr}"
+    return addr
+
+
+def _find_or_create_property(form):
+    addr = _normalise_address((form.get('address') or '').strip())
+    pc   = (form.get('postcode') or '').strip().upper()
+    existing = Property.query.filter(
+        db.func.lower(Property.address) == addr.lower(),
+        db.func.upper(Property.postcode) == pc
+    ).first()
+    if existing:
+        return existing
+    p = Property(
+        address=addr, postcode=pc,
+        property_type=form.get('property_type') or None,
+        size=float(form['size']) if form.get('size') else None,
+        measurement_type=form.get('measurement_type') or None,
+        residential_use=form.get('residential_use') or None,
+    )
+    db.session.add(p)
+    db.session.flush()
+    return p
 
 @app.before_request
 def require_login():
@@ -983,10 +1017,16 @@ def project_new():
     if request.method == 'POST':
         def parse_date(val):
             return datetime.strptime(val, '%Y-%m-%d').date() if val else None
-        prop_id_raw = request.form.get('property_id')
+        mode = request.form.get('property_mode', 'new')
+        if mode == 'existing' and request.form.get('property_id'):
+            prop = Property.query.get(int(request.form['property_id']))
+        else:
+            prop = _find_or_create_property(request.form)
+        raw_name = request.form.get('name', '').strip()
+        name = raw_name or f"{request.form.get('instruction_type') or 'Instruction'} — {prop.address if prop else ''}".strip(' —')
         p = Project(
-            property_id=int(prop_id_raw) if prop_id_raw else None,
-            name=request.form['name'],
+            property_id=prop.id if prop else None,
+            name=name,
             project_ref=request.form.get('project_ref'),
             status=request.form.get('status', 'Active'),
             fee_earner=request.form.get('fee_earner'),
@@ -2164,10 +2204,7 @@ def api_listings():
                 continue
             # Big text = the address. Only prepend the unit name when the address
             # doesn't already start with it (avoids "Unit 2, Unit 2, Marlin House").
-            if l.unit_name and not p.address.lower().lstrip().startswith(l.unit_name.lower().strip()):
-                title = f"{l.unit_name}, {p.address}"
-            else:
-                title = p.address
+            title = _normalise_address(p.address, l.unit_name)
             price = l.listing_price or 0
             unit  = l.listing_price_unit or 'poa'
             # Gallery: absolute URLs to each uploaded photo, served from this

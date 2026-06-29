@@ -1,5 +1,22 @@
 {% extends "base.html" %}
-{% block title %}{{ 'Edit Project' if project else 'New Project' }}{% endblock %}
+{% block title %}{{ 'Edit Project' if project else 'New Project' }}
+<script>
+function switchPropMode(mode) {
+  var isNew = mode === 'new';
+  document.getElementById('prop-new').style.display = isNew ? '' : 'none';
+  document.getElementById('prop-existing').style.display = isNew ? 'none' : '';
+  var lbls = document.querySelectorAll('[name="property_mode"]');
+  lbls.forEach(function(r) {
+    var lbl = r.closest('label');
+    if (r.value === mode) {
+      lbl.style.background = '#1a2e4a'; lbl.style.color = '#fff'; lbl.style.borderColor = '#1a2e4a';
+    } else {
+      lbl.style.background = '#fff'; lbl.style.color = '#1a2e4a'; lbl.style.borderColor = '#cdd2d8';
+    }
+  });
+}
+</script>
+{% endblock %}
 {% block topbar_title %}{{ 'Edit Project' if project else 'New Project / Instruction' }}{% endblock %}
 {% block topbar_actions %}
   <a href="{{ url_for('projects_list') }}" class="btn btn-outline btn-sm">← Projects</a>
@@ -26,7 +43,7 @@
         <label for="name">Project / Instruction Name *</label>
         <input type="text" id="name" name="name" required
                value="{{ project.name if project else '' }}"
-               placeholder="e.g. Rent Review — 12 King Street">
+               placeholder="e.g. Rent Review — 12 King Street (auto-generated if blank)">
       </div>
 
       <div class="form-group">
@@ -45,18 +62,97 @@
         </select>
       </div>
 
+      {% if not project %}
+      {# ── Property card (new project only) ── #}
+      </div>{# close form-grid temporarily #}
+      <div class="card" style="margin-bottom:16px;border:1px solid #e0e4ea;border-radius:6px">
+        <div class="card-header" style="background:#1a2e4a;color:#fff;padding:10px 16px;border-radius:6px 6px 0 0">
+          <div class="card-title" style="color:#fff">Property</div>
+        </div>
+        <div style="padding:16px">
+          <div style="display:flex;gap:8px;margin-bottom:16px">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:6px 14px;border-radius:20px;border:2px solid #1a2e4a;background:#1a2e4a;color:#fff;font-size:13px;font-weight:600">
+              <input type="radio" name="property_mode" value="new" checked
+                     onchange="switchPropMode(this.value)" style="display:none"> New property
+            </label>
+            <label id="lbl-existing" style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:6px 14px;border-radius:20px;border:2px solid #cdd2d8;background:#fff;color:#1a2e4a;font-size:13px;font-weight:600">
+              <input type="radio" name="property_mode" value="existing"
+                     onchange="switchPropMode(this.value)" style="display:none"> Link existing
+            </label>
+          </div>
+
+          {# New property inputs #}
+          <div id="prop-new" class="form-grid">
+            <div class="form-group span-2">
+              <label for="address">Address *</label>
+              <input type="text" id="address" name="address"
+                     placeholder="e.g. 12 King Street, London">
+            </div>
+            <div class="form-group">
+              <label for="postcode">Postcode *</label>
+              <input type="text" id="postcode" name="postcode"
+                     placeholder="e.g. SW10 0SZ" style="text-transform:uppercase">
+            </div>
+            <div class="form-group">
+              <label for="property_type">Property Type</label>
+              <select id="property_type" name="property_type">
+                <option value="">— Select —</option>
+                {% for t in ['Office','Retail','Industrial','Warehouse','Residential','Mixed Use','Land','Hotel','Leisure','Other'] %}
+                <option value="{{ t }}">{{ t }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="size">Floor Area (sq ft)</label>
+              <input type="number" id="size" name="size" step="0.01" min="0"
+                     placeholder="e.g. 2500">
+            </div>
+            <div class="form-group">
+              <label for="measurement_type">Measurement Basis</label>
+              <select id="measurement_type" name="measurement_type">
+                <option value="">— Select —</option>
+                <option value="GIA">GIA — Gross Internal Area</option>
+                <option value="NIA">NIA — Net Internal Area</option>
+                <option value="GEA">GEA — Gross External Area</option>
+                <option value="IPMS 1">IPMS 1</option>
+                <option value="IPMS 2">IPMS 2</option>
+                <option value="IPMS 3">IPMS 3</option>
+              </select>
+            </div>
+          </div>
+
+          {# Link existing dropdown #}
+          <div id="prop-existing" style="display:none">
+            <div class="form-group">
+              <label for="property_id">Select Property</label>
+              <select id="property_id" name="property_id">
+                <option value="">— No property linked —</option>
+                {% for p in properties %}
+                <option value="{{ p.id }}"
+                  {{ 'selected' if prop_id and prop_id|int == p.id else '' }}>
+                  {{ p.address }}, {{ p.postcode }}
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="form-grid" style="margin-bottom:16px">
+      {% else %}
       <div class="form-group span-2">
         <label for="property_id">Linked Property</label>
         <select id="property_id" name="property_id">
           <option value="">— No property linked —</option>
           {% for p in properties %}
           <option value="{{ p.id }}"
-            {{ 'selected' if (project and project.property_id == p.id) or (prop_id and prop_id|int == p.id) else '' }}>
+            {{ 'selected' if project and project.property_id == p.id else '' }}>
             {{ p.address }}, {{ p.postcode }}
           </option>
           {% endfor %}
         </select>
       </div>
+      {% endif %}
 
       <div class="form-group">
         <label for="client">Client</label>
