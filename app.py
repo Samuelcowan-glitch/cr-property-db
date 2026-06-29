@@ -2135,8 +2135,19 @@ def listing_new_for_project(proj_id):
         db.session.add(l)
         db.session.commit()
         flash('Website listing created.', 'success')
-        return redirect(url_for('project_detail', id=proj_id))
-    return render_template('projects/listing_form.html', project=project, prop=prop, listing=None)
+        return redirect(url_for('project_detail', id=proj_id) + '#tab-listing')
+    # GET: create a blank listing immediately and drop the user on the inline form
+    l = Listing(
+        project_id=proj_id,
+        property_id=prop.id if prop else None,
+        website_category='commercial',
+        listing_status='available',
+        set_as_to_let=True,
+    )
+    db.session.add(l)
+    db.session.commit()
+    flash('Website listing created — fill in the details below.', 'success')
+    return redirect(url_for('project_detail', id=proj_id) + '#tab-listing')
 
 
 @app.route('/listings/<int:id>/edit', methods=['GET', 'POST'])
@@ -2149,9 +2160,12 @@ def listing_edit(id):
         db.session.commit()
         flash('Listing updated.', 'success')
         if project:
-            return redirect(url_for('project_detail', id=project.id))
+            return redirect(url_for('project_detail', id=project.id) + '#tab-listing')
         return redirect(url_for('property_detail', id=prop.id) if prop else url_for('projects_list'))
-    return render_template('projects/listing_form.html', project=project, prop=prop, listing=l)
+    # GET: redirect to the inline form on the project detail page
+    if project:
+        return redirect(url_for('project_detail', id=project.id) + '#tab-listing')
+    return redirect(url_for('property_detail', id=prop.id) if prop else url_for('projects_list'))
 
 
 @app.route('/listings/<int:id>/delete', methods=['POST'])
