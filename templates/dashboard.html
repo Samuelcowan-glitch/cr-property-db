@@ -39,7 +39,7 @@
   </a>
 </div>
 
-<!-- â”€â”€ Three-panel organiser â”€â”€ -->
+<!-- ── Three-panel organiser ── -->
 <div class="organiser-grid">
 
   <!-- LEFT: Active Listings / Instructions -->
@@ -81,7 +81,7 @@
       {% else %}
         <div class="panel-empty">
           No properties yet.<br>
-          <a href="{{ url_for('property_new') }}" style="color:var(--orange)">Add your first property â†’</a>
+          <a href="{{ url_for('property_new') }}" style="color:var(--orange)">Add your first property →</a>
         </div>
       {% endif %}
     </div>
@@ -209,7 +209,7 @@
 
 </div>
 
-<!-- â”€â”€ Bottom row â”€â”€ -->
+<!-- ── Bottom row ── -->
 <div class="bottom-row">
 
   <!-- Recent Transactions -->
@@ -228,7 +228,7 @@
             </div>
             <div class="trans-detail">
               {{ t.transaction_type }}
-              {% if t.tenure_type %} â€” {{ t.tenure_type }}{% endif %}
+              {% if t.tenure_type %} — {{ t.tenure_type }}{% endif %}
               {% if t.transaction_date %} &nbsp;·&nbsp; {{ t.transaction_date.strftime('%d %b %Y') }}{% endif %}
             </div>
             <div class="trans-detail" style="margin-top:1px;color:#9aa0a6">{{ t.parties }}</div>
@@ -253,31 +253,31 @@
     <div class="panel-alt-body">
       <div class="quick-links">
         <a class="quick-link" href="{{ url_for('property_new') }}">
-          ðŸ¢ &nbsp;Add Property <span class="ql-arrow">â†’</span>
+          🏢 &nbsp;Add Property <span class="ql-arrow">→</span>
         </a>
         <a class="quick-link" href="{{ url_for('transaction_new') }}">
-          ðŸ“‹ &nbsp;Record Transaction <span class="ql-arrow">â†’</span>
+          📋 &nbsp;Record Transaction <span class="ql-arrow">→</span>
         </a>
         <a class="quick-link" href="{{ url_for('project_new') }}">
-          ðŸ“ &nbsp;New Project / Instruction <span class="ql-arrow">â†’</span>
+          📁 &nbsp;New Project / Instruction <span class="ql-arrow">→</span>
         </a>
         <a class="quick-link" href="{{ url_for('contact_new') }}">
-          ðŸ‘¤ &nbsp;Add Contact <span class="ql-arrow">â†’</span>
+          👤 &nbsp;Add Contact <span class="ql-arrow">→</span>
         </a>
         <a class="quick-link" href="{{ url_for('organisation_new') }}">
-          ðŸ›ï¸ &nbsp;Add Organisation <span class="ql-arrow">â†’</span>
+          🏛️ &nbsp;Add Organisation <span class="ql-arrow">→</span>
         </a>
         <a class="quick-link" href="{{ url_for('enquiry_new') }}">
-          ðŸ“© &nbsp;Record Enquiry <span class="ql-arrow">â†’</span>
+          📩 &nbsp;Record Enquiry <span class="ql-arrow">→</span>
         </a>
         <a class="quick-link" href="{{ url_for('transactions_list') }}?type=Capital">
-          ðŸ’· &nbsp;Search Capital Transactions <span class="ql-arrow">â†’</span>
+          💷 &nbsp;Search Capital Transactions <span class="ql-arrow">→</span>
         </a>
         <a class="quick-link" href="{{ url_for('transactions_list') }}?type=Leasehold">
-          ðŸ”‘ &nbsp;Search Leasehold Transactions <span class="ql-arrow">â†’</span>
+          🔑 &nbsp;Search Leasehold Transactions <span class="ql-arrow">→</span>
         </a>
         <a class="quick-link" href="{{ url_for('projects_list') }}?status=Active">
-          âœ… &nbsp;Active Instructions <span class="ql-arrow">â†’</span>
+          ✅ &nbsp;Active Instructions <span class="ql-arrow">→</span>
         </a>
       </div>
     </div>
