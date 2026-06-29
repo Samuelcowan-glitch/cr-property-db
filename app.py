@@ -712,6 +712,10 @@ def property_edit(id):
 @app.route('/properties/<int:id>/delete', methods=['POST'])
 def property_delete(id):
     prop = Property.query.get_or_404(id)
+    for enq in prop.enquiries:
+        enq.property_id = None
+    for listing in list(prop.unit_listings):
+        db.session.delete(listing)
     db.session.delete(prop)
     db.session.commit()
     flash('Property deleted.', 'info')
@@ -1050,6 +1054,8 @@ def project_edit(id):
 @app.route('/projects/<int:id>/delete', methods=['POST'])
 def project_delete(id):
     project = Project.query.get_or_404(id)
+    for enq in project.enquiries:
+        enq.project_id = None
     db.session.delete(project)
     db.session.commit()
     flash('Project deleted.', 'info')
