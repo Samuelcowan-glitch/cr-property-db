@@ -46,6 +46,7 @@
   {% if project.property %}
   <button class="tab-btn" data-tab="property">Property Detail</button>
   {% endif %}
+  <button class="tab-btn" data-tab="documents">Documents</button>
 </div>
 
 
@@ -837,6 +838,67 @@
   <a href="{{ url_for('listing_new_for_project', proj_id=project.id) }}" class="btn btn-primary">+ Create Website Listing</a>
 </div>
 {% endif %}
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     TAB: DOCUMENTS
+══════════════════════════════════════════════════════════════ -->
+<div class="tab-panel" data-tab-group="proj" data-tab="documents">
+<div style="display:grid;grid-template-columns:1fr 320px;gap:16px;align-items:start">
+
+  <!-- LEFT: documents grouped by folder -->
+  <div>
+    {% if project.documents %}
+      {% for key, label in folder_labels.items() %}
+        {% set fdocs = project.documents | selectattr('folder', 'equalto', key) | list %}
+        {% if fdocs %}
+        <div class="card" style="margin-bottom:14px;overflow:hidden">
+          <div style="background:#1a2e4a;color:#fff;padding:10px 16px;font-size:13px;font-weight:700">📁 {{ label }} <span style="opacity:.6;font-weight:500">({{ fdocs|length }})</span></div>
+          <div>
+            {% for d in fdocs %}
+            <div style="display:flex;align-items:center;gap:12px;padding:11px 16px;border-bottom:1px solid #f1f3f4">
+              <div style="flex:1;min-width:0">
+                <div style="font-size:13px;font-weight:600;color:#1a2e4a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ d.document_name }}</div>
+                <div style="font-size:11px;color:#9aa0a6">{% if d.file_size %}{{ (d.file_size / 1024)|round|int }} KB · {% endif %}{{ d.uploaded_at.strftime('%d %b %Y') if d.uploaded_at else '' }}{% if d.notes %} · {{ d.notes }}{% endif %}</div>
+              </div>
+              {% if d.file_data %}<a href="{{ url_for('document_download', id=d.id) }}" class="btn btn-sm btn-outline">Download</a>{% endif %}
+              <form method="post" action="{{ url_for('document_delete', id=d.id) }}" class="confirm-delete" style="margin:0">
+                <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+              </form>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+      {% endfor %}
+    {% else %}
+      <div class="card" style="padding:48px 24px;text-align:center;color:#9aa0a6">
+        <div style="font-size:34px;margin-bottom:10px">📂</div>
+        <div style="font-size:14px;color:#5f6368">No documents yet</div>
+        <div style="font-size:12.5px;margin-top:4px">Upload one using the form on the right.</div>
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- RIGHT: upload form -->
+  <div class="card" style="overflow:hidden">
+    <div style="background:#1a2e4a;color:#fff;padding:10px 16px;font-size:13px;font-weight:700">⬆️ Upload Document</div>
+    <form method="post" action="{{ url_for('document_add', id=project.id) }}" enctype="multipart/form-data" style="padding:16px">
+      <label style="font-size:12px;color:#5f6368;display:block;margin-bottom:4px">File</label>
+      <input type="file" name="file" style="width:100%;font-size:12.5px;margin-bottom:14px">
+      <label style="font-size:12px;color:#5f6368;display:block;margin-bottom:4px">Document name <span style="color:#9aa0a6">(optional)</span></label>
+      <input type="text" name="document_name" placeholder="Defaults to the file name" style="width:100%;font-size:13px;padding:7px 10px;border:1px solid #d1d5db;border-radius:5px;box-sizing:border-box;margin-bottom:14px">
+      <label style="font-size:12px;color:#5f6368;display:block;margin-bottom:4px">Folder <span style="color:#ef4444">*</span></label>
+      <select name="folder" required style="width:100%;font-size:13px;padding:7px 10px;border:1px solid #d1d5db;border-radius:5px;box-sizing:border-box;margin-bottom:14px;background:#fff">
+        {% for key, label in folder_labels.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+      </select>
+      <label style="font-size:12px;color:#5f6368;display:block;margin-bottom:4px">Notes <span style="color:#9aa0a6">(optional)</span></label>
+      <textarea name="notes" rows="2" placeholder="Optional notes" style="width:100%;font-size:13px;padding:7px 10px;border:1px solid #d1d5db;border-radius:5px;box-sizing:border-box;font-family:inherit;resize:vertical;margin-bottom:16px"></textarea>
+      <button type="submit" class="btn btn-primary" style="width:100%">Upload Document</button>
+    </form>
+  </div>
+
+</div>
 </div>
 
 <!-- ════ Hidden upload form for quick upload ════ -->
