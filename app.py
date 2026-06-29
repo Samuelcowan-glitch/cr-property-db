@@ -1782,6 +1782,15 @@ def listing_photo_image(id):
     return send_file(io.BytesIO(ph.file_data), mimetype=ph.file_mime or 'image/jpeg')
 
 
+def _listing_media_back(id):
+    """Return to wherever a brochure/floor-plan form was submitted from — the
+    project's Website Listing tab or the standalone listing edit page."""
+    nxt = request.form.get('next') or request.args.get('next')
+    if nxt and nxt.startswith('/') and not nxt.startswith('//'):
+        return redirect(nxt)
+    return redirect(url_for('listing_edit', id=id) + '#media')
+
+
 @app.route('/listings/<int:id>/brochure/upload', methods=['POST'])
 def listing_brochure_upload(id):
     listing = Listing.query.get_or_404(id)
@@ -1792,7 +1801,7 @@ def listing_brochure_upload(id):
         listing.brochure_size     = len(listing.brochure_data)
         db.session.commit()
         flash('Brochure uploaded.', 'success')
-    return redirect(url_for('listing_edit', id=id) + '#media')
+    return _listing_media_back(id)
 
 
 @app.route('/listings/<int:id>/brochure/delete', methods=['POST'])
@@ -1801,7 +1810,7 @@ def listing_brochure_delete(id):
     listing.brochure_data = listing.brochure_filename = listing.brochure_size = None
     db.session.commit()
     flash('Brochure removed.', 'info')
-    return redirect(url_for('listing_edit', id=id) + '#media')
+    return _listing_media_back(id)
 
 
 @app.route('/listings/<int:id>/brochure/download')
@@ -1827,7 +1836,7 @@ def listing_floorplan_upload(id):
         listing.floor_plan_size     = len(listing.floor_plan_data)
         db.session.commit()
         flash('Floor plan uploaded.', 'success')
-    return redirect(url_for('listing_edit', id=id) + '#media')
+    return _listing_media_back(id)
 
 
 @app.route('/listings/<int:id>/floorplan/delete', methods=['POST'])
@@ -1835,7 +1844,7 @@ def listing_floorplan_delete(id):
     listing = Listing.query.get_or_404(id)
     listing.floor_plan_data = listing.floor_plan_filename = listing.floor_plan_size = None
     db.session.commit()
-    return redirect(url_for('listing_edit', id=id) + '#media')
+    return _listing_media_back(id)
 
 
 @app.route('/listings/<int:id>/floorplan/download')
