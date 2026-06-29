@@ -73,11 +73,11 @@ function switchPropMode(mode) {
           <div style="display:flex;gap:8px;margin-bottom:16px">
             <label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:6px 14px;border-radius:20px;border:2px solid #1a2e4a;background:#1a2e4a;color:#fff;font-size:13px;font-weight:600">
               <input type="radio" name="property_mode" value="new" checked
-                     onchange="switchPropMode(this.value)" style="display:none"> New property
+                     onchange="switchPropMode(this.value)" style="position:absolute;opacity:0;width:0;height:0"> New property
             </label>
             <label id="lbl-existing" style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:6px 14px;border-radius:20px;border:2px solid #cdd2d8;background:#fff;color:#1a2e4a;font-size:13px;font-weight:600">
               <input type="radio" name="property_mode" value="existing"
-                     onchange="switchPropMode(this.value)" style="display:none"> Link existing
+                     onchange="switchPropMode(this.value)" style="position:absolute;opacity:0;width:0;height:0"> Link existing
             </label>
           </div>
 
