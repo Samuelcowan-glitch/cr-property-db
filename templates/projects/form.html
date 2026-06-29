@@ -1,5 +1,11 @@
 {% extends "base.html" %}
-{% block title %}{{ 'Edit Project' if project else 'New Project' }}
+{% block title %}{{ 'Edit Project' if project else 'New Project' }}{% endblock %}
+{% block topbar_title %}{{ 'Edit Project' if project else 'New Project / Instruction' }}{% endblock %}
+{% block topbar_actions %}
+  <a href="{{ url_for('projects_list') }}" class="btn btn-outline btn-sm">← Projects</a>
+{% endblock %}
+
+{% block content %}
 <script>
 function switchPropMode(mode) {
   var isNew = mode === 'new';
@@ -18,13 +24,6 @@ function switchPropMode(mode) {
   document.querySelector('[name="property_mode"][value="' + mode + '"]').checked = true;
 }
 </script>
-{% endblock %}
-{% block topbar_title %}{{ 'Edit Project' if project else 'New Project / Instruction' }}{% endblock %}
-{% block topbar_actions %}
-  <a href="{{ url_for('projects_list') }}" class="btn btn-outline btn-sm">← Projects</a>
-{% endblock %}
-
-{% block content %}
 <div class="breadcrumb">
   <a href="{{ url_for('dashboard') }}">Dashboard</a>
   <span class="sep">/</span>
