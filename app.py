@@ -1017,6 +1017,8 @@ def project_new():
     if request.method == 'POST':
         def parse_date(val):
             return datetime.strptime(val, '%Y-%m-%d').date() if val else None
+        def parse_float(val):
+            return float(val.replace(',', '')) if val and val.strip() else None
         mode = request.form.get('property_mode', 'new')
         if mode == 'existing' and request.form.get('property_id'):
             prop = Property.query.get(int(request.form['property_id']))
@@ -1032,6 +1034,15 @@ def project_new():
             fee_earner=request.form.get('fee_earner'),
             client=request.form.get('client'),
             instruction_date=parse_date(request.form.get('instruction_date')),
+            instruction_type=request.form.get('instruction_type') or None,
+            fee_percent=parse_float(request.form.get('fee_percent')),
+            fee_fixed=parse_float(request.form.get('fee_fixed')),
+            available_from=parse_date(request.form.get('available_from')),
+            next_call=parse_date(request.form.get('next_call')),
+            client_phone=request.form.get('client_phone') or None,
+            client_mobile=request.form.get('client_mobile') or None,
+            client_email=request.form.get('client_email') or None,
+            key_contact=request.form.get('key_contact') or None,
             notes=request.form.get('notes'),
         )
         db.session.add(p)
