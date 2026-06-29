@@ -712,8 +712,15 @@ def property_edit(id):
 @app.route('/properties/<int:id>/delete', methods=['POST'])
 def property_delete(id):
     prop = Property.query.get_or_404(id)
+    # Unlink enquiries pointing at this property (keep the enquiry history).
     for enq in prop.enquiries:
         enq.property_id = None
+    # Deleting the property cascade-deletes its projects, so unlink any
+    # enquiries pointing at those projects too, or the cascade is blocked.
+    for project in prop.projects:
+        for enq in project.enquiries:
+            enq.project_id = None
+    # Listings tied to the property by property_id have no cascade — remove them.
     for listing in list(prop.unit_listings):
         db.session.delete(listing)
     db.session.delete(prop)
