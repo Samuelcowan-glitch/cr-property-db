@@ -484,6 +484,8 @@
       <form method="post" action="{{ url_for('listing_edit', id=lst.id) }}" class="listing-edit-form" style="padding:16px">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
 
+<div style="grid-column:span 2;background:#1a2e4a;color:#fff;padding:8px 14px;border-radius:5px;font-size:12px;font-weight:700;margin-top:4px">🏢 Listing Details</div>
+
           <div>
             <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Unit Name</label>
             <input type="text" name="unit_name" value="{{ lst.unit_name or '' }}" placeholder="e.g. Ground Floor, Unit 3 (blank = whole building)" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
@@ -516,6 +518,8 @@
             </select>
           </div>
 
+<div style="grid-column:span 2;background:#1a2e4a;color:#fff;padding:8px 14px;border-radius:5px;font-size:12px;font-weight:700;margin-top:4px">📐 Space & Measurement</div>
+
           <div>
             <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Size (sq ft)</label>
             <input type="number" name="size" value="{{ lst.size|int if lst.size else '' }}" placeholder="e.g. 1665" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
@@ -529,6 +533,8 @@
               {% endfor %}
             </select>
           </div>
+
+<div style="grid-column:span 2;background:#1a2e4a;color:#fff;padding:8px 14px;border-radius:5px;font-size:12px;font-weight:700;margin-top:4px">💰 Pricing</div>
 
           <div>
             <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px"><span class="price-label">Price / Rent (&pound;)</span></label>
@@ -549,6 +555,8 @@
             <input type="text" name="price_display" value="{{ lst.price_display or '' }}" placeholder="Leave blank to auto-format" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
           </div>
 
+<div style="grid-column:span 2;background:#1a2e4a;color:#fff;padding:8px 14px;border-radius:5px;font-size:12px;font-weight:700;margin-top:4px">📍 Marketing</div>
+
           <div>
             <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Area</label>
             <input type="text" name="area" value="{{ lst.area or '' }}" placeholder="e.g. Chelsea Harbour" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
@@ -564,6 +572,8 @@
             <textarea name="blurb" rows="4" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px;resize:vertical;font-family:inherit">{{ lst.blurb or '' }}</textarea>
           </div>
 
+<div style="grid-column:span 2" class="lst-res;background:#1a2e4a;color:#fff;padding:8px 14px;border-radius:5px;font-size:12px;font-weight:700;margin-top:4px">🏡 Residential Details</div>
+
           <div class="lst-res">
             <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Bedrooms</label>
             <input type="number" name="beds" min="0" value="{{ lst.beds or '' }}" placeholder="e.g. 3" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
@@ -572,6 +582,8 @@
             <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Bathrooms</label>
             <input type="number" name="baths" min="0" value="{{ lst.baths or '' }}" placeholder="e.g. 2" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
           </div>
+
+<div style="grid-column:span 2" class="lst-sale;background:#1a2e4a;color:#fff;padding:8px 14px;border-radius:5px;font-size:12px;font-weight:700;margin-top:4px">📈 Investment / Sale Details</div>
 
           <div class="lst-sale">
             <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px"><span class="yield-label">Initial / Gross Yield (%)</span></label>
@@ -598,6 +610,8 @@
             <input type="number" name="lease_years_remaining" min="0" value="{{ lst.lease_years_remaining or '' }}" placeholder="e.g. 125" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
           </div>
 
+<div style="grid-column:span 2;background:#1a2e4a;color:#fff;padding:8px 14px;border-radius:5px;font-size:12px;font-weight:700;margin-top:4px">🔑 Key Terms & Location</div>
+
           <div style="grid-column:span 2">
             <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Key Terms <span style="font-weight:400;text-transform:none">(short — shown on website)</span></label>
             <textarea name="key_terms" rows="2" placeholder="e.g. New FRI lease · Available now · EPC B" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px;resize:vertical;font-family:inherit">{{ lst.key_terms or '' }}</textarea>
@@ -607,9 +621,7 @@
             <textarea name="location_description" rows="2" placeholder="e.g. Moments from the King's Road, close to the river and excellent transport links" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px;resize:vertical;font-family:inherit">{{ lst.location_description or '' }}</textarea>
           </div>
 
-          <div class="lst-let-com" style="grid-column:span 2;margin-top:8px;border-top:1px solid #eef0f2;padding-top:12px">
-            <div style="font-size:11px;font-weight:700;color:#5f6368;text-transform:uppercase;letter-spacing:.5px">Commercial Lease Detail <span style="font-weight:400;text-transform:none;color:#9aa0a6">— internal, for your records / brochure (not shown on the website)</span></div>
-          </div>
+<div style="grid-column:span 2;margin-top:4px" class="lst-let-com;background:#1a2e4a;color:#fff;padding:8px 14px;border-radius:5px;font-size:12px;font-weight:700;margin-top:4px">📋 Commercial Lease Detail <span style="font-size:10px;font-weight:400;opacity:.7">— internal records / brochure only</span></div>
           <div class="lst-let-com">
             <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Rent &pound; per sq ft (from / to)</label>
             <div style="display:flex;gap:6px">
