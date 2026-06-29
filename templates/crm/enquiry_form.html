@@ -208,13 +208,14 @@
       <button type="submit" class="btn btn-primary">{{ 'Save Changes' if enquiry else 'Record Enquiry' }}</button>
       {% if enquiry %}
         <a href="{{ url_for('enquiries_list') }}" class="btn btn-secondary">Cancel</a>
-        <form method="post" action="{{ url_for('enquiry_delete', id=enquiry.id) }}" class="confirm-delete" style="margin-left:auto">
-          <button type="submit" class="btn btn-danger btn-sm">Delete</button>
-        </form>
+        <button type="submit" form="enquiry-delete-form" class="btn btn-danger btn-sm" style="margin-left:auto">Delete</button>
       {% else %}
         <a href="{{ url_for('enquiries_list') }}" class="btn btn-secondary">Cancel</a>
       {% endif %}
     </div>
   </form>
+  {% if enquiry %}
+  <form id="enquiry-delete-form" method="post" action="{{ url_for('enquiry_delete', id=enquiry.id) }}" class="confirm-delete"></form>
+  {% endif %}
 </div>
 {% endblock %}

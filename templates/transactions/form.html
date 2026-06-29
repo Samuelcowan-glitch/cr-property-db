@@ -438,14 +438,15 @@
       <button type="submit" class="btn btn-primary">{{ 'Save Changes' if trans else 'Record Transaction' }}</button>
       {% if trans %}
         <a href="{{ url_for('property_detail', id=trans.property_id) }}" class="btn btn-secondary">Cancel</a>
-        <form method="post" action="{{ url_for('transaction_delete', id=trans.id) }}" class="confirm-delete" style="margin-left:auto">
-          <button type="submit" class="btn btn-danger btn-sm">Delete</button>
-        </form>
+        <button type="submit" form="transaction-delete-form" class="btn btn-danger btn-sm" style="margin-left:auto">Delete</button>
       {% else %}
         <a href="{{ url_for('transactions_list') }}" class="btn btn-secondary">Cancel</a>
       {% endif %}
     </div>
   </form>
+  {% if trans %}
+  <form id="transaction-delete-form" method="post" action="{{ url_for('transaction_delete', id=trans.id) }}" class="confirm-delete"></form>
+  {% endif %}
 </div>
 
 <script>
