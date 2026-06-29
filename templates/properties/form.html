@@ -91,13 +91,15 @@
       <button type="submit" class="btn btn-primary">{{ 'Save Changes' if prop else 'Create Property' }}</button>
       {% if prop %}
         <a href="{{ url_for('property_detail', id=prop.id) }}" class="btn btn-secondary">Cancel</a>
-        <form method="post" action="{{ url_for('property_delete', id=prop.id) }}" class="confirm-delete" style="margin-left:auto">
-          <button type="submit" class="btn btn-danger btn-sm">Delete Property</button>
-        </form>
+        <button type="submit" form="property-delete-form" class="btn btn-danger btn-sm" style="margin-left:auto">Delete Property</button>
       {% else %}
         <a href="{{ url_for('properties_list') }}" class="btn btn-secondary">Cancel</a>
       {% endif %}
     </div>
   </form>
+  {% if prop %}
+  <!-- Delete form kept OUTSIDE the edit form (nested forms are invalid HTML) -->
+  <form id="property-delete-form" method="post" action="{{ url_for('property_delete', id=prop.id) }}" class="confirm-delete"></form>
+  {% endif %}
 </div>
 {% endblock %}
