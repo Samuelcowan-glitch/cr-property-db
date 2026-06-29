@@ -5,15 +5,17 @@ function switchPropMode(mode) {
   var isNew = mode === 'new';
   document.getElementById('prop-new').style.display = isNew ? '' : 'none';
   document.getElementById('prop-existing').style.display = isNew ? 'none' : '';
-  var lbls = document.querySelectorAll('[name="property_mode"]');
-  lbls.forEach(function(r) {
-    var lbl = r.closest('label');
-    if (r.value === mode) {
-      lbl.style.background = '#1a2e4a'; lbl.style.color = '#fff'; lbl.style.borderColor = '#1a2e4a';
-    } else {
-      lbl.style.background = '#fff'; lbl.style.color = '#1a2e4a'; lbl.style.borderColor = '#cdd2d8';
-    }
-  });
+  var lblNew = document.getElementById('lbl-new');
+  var lblExist = document.getElementById('lbl-existing');
+  if (isNew) {
+    lblNew.style.background = '#1a2e4a'; lblNew.style.color = '#fff'; lblNew.style.borderColor = '#1a2e4a';
+    lblExist.style.background = '#fff'; lblExist.style.color = '#1a2e4a'; lblExist.style.borderColor = '#cdd2d8';
+  } else {
+    lblExist.style.background = '#1a2e4a'; lblExist.style.color = '#fff'; lblExist.style.borderColor = '#1a2e4a';
+    lblNew.style.background = '#fff'; lblNew.style.color = '#1a2e4a'; lblNew.style.borderColor = '#cdd2d8';
+  }
+  // check the right radio
+  document.querySelector('[name="property_mode"][value="' + mode + '"]').checked = true;
 }
 </script>
 {% endblock %}
@@ -71,13 +73,11 @@ function switchPropMode(mode) {
         </div>
         <div style="padding:16px">
           <div style="display:flex;gap:8px;margin-bottom:16px">
-            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:6px 14px;border-radius:20px;border:2px solid #1a2e4a;background:#1a2e4a;color:#fff;font-size:13px;font-weight:600">
-              <input type="radio" name="property_mode" value="new" checked
-                     onchange="switchPropMode(this.value)" style="position:absolute;opacity:0;width:0;height:0"> New property
+            <label onclick="switchPropMode('new')" style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:6px 14px;border-radius:20px;border:2px solid #1a2e4a;background:#1a2e4a;color:#fff;font-size:13px;font-weight:600" id="lbl-new">
+              <input type="radio" name="property_mode" value="new" checked style="position:absolute;opacity:0;width:0;height:0"> New property
             </label>
-            <label id="lbl-existing" style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:6px 14px;border-radius:20px;border:2px solid #cdd2d8;background:#fff;color:#1a2e4a;font-size:13px;font-weight:600">
-              <input type="radio" name="property_mode" value="existing"
-                     onchange="switchPropMode(this.value)" style="position:absolute;opacity:0;width:0;height:0"> Link existing
+            <label onclick="switchPropMode('existing')" style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:6px 14px;border-radius:20px;border:2px solid #cdd2d8;background:#fff;color:#1a2e4a;font-size:13px;font-weight:600" id="lbl-existing">
+              <input type="radio" name="property_mode" value="existing" style="position:absolute;opacity:0;width:0;height:0"> Link existing
             </label>
           </div>
 
