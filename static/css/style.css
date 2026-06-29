@@ -2,14 +2,14 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --navy:     #1c2b3a;
-  --navy2:    #243547;
-  --navy3:    #2e4460;
-  --orange:   #c8601a;
-  --orange-l: #d97230;
-  --orange-bg:#fef3ec;
-  --blue:     #1565c0;
-  --blue-l:   #1976d2;
+  --navy:     #0e1f44;   /* website --ink (dark blue, primary) */
+  --navy2:    #16264c;   /* slightly lighter ink */
+  --navy3:    #1c3160;   /* website --ink-soft */
+  --orange:   #e0303f;   /* website --brass (red accent) */
+  --orange-l: #c52532;   /* darker red for hover */
+  --orange-bg:#fdecee;   /* light red tint background */
+  --blue:     #1c3160;   /* links → ink-soft to match website */
+  --blue-l:   #0e1f44;
   --teal:     #0097a7;
   --white:    #ffffff;
   --grey-50:  #f5f6f7;
