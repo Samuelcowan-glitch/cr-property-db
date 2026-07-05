@@ -378,8 +378,8 @@ class Listing(db.Model):
     lease_length_months= db.Column(db.Integer)
     lease_length_years = db.Column(db.Integer)
     lease_length_comment=db.Column(db.Text)
-    inside_1954_act    = db.Column(db.String(20))     # Inside / Outside / Contracted Out
-    repair_insuring    = db.Column(db.String(30))     # FRI / IRI / Internal
+    inside_1954_act    = db.Column(db.Text)           # Inside / Outside / Contracted Out
+    repair_insuring    = db.Column(db.Text)           # FRI / IRI / Internal (long labels)
 
     # ── Commercial: Sale Information ──
     set_as_for_sale    = db.Column(db.Boolean, default=False)
@@ -394,8 +394,8 @@ class Listing(db.Model):
     rateable_value_na  = db.Column(db.Boolean, default=False)
     rates_multiplier   = db.Column(db.Float)
     rates_payable      = db.Column(db.Float)
-    epc_band           = db.Column(db.String(5))      # A-G
-    epc_band_potential = db.Column(db.String(5))
+    epc_band           = db.Column(db.Text)           # A-G, or "Exempt" / "Not Required"
+    epc_band_potential = db.Column(db.Text)
     vat_comment        = db.Column(db.Text)
     legal_fees         = db.Column(db.String(30))     # Each Party / Ingoing / N/A
     parking_ratio      = db.Column(db.String(50))
@@ -2604,6 +2604,15 @@ def _migrate_listings_table_columns():
         for col_name, col_def in new_cols:
             if col_name not in existing:
                 conn.execute(text(f'ALTER TABLE listings ADD COLUMN {col_name} {col_def}'))
+        # Widen text columns that db.create_all() first made too small (e.g. VARCHAR(5)
+        # for epc_band, VARCHAR(30) for repair_insuring). Postgres enforces VARCHAR
+        # length and 500s on longer dropdown values like "Not Required" or
+        # "FRI — Full Repairing & Insuring"; SQLite ignores length so it only bit live.
+        # Converting to TEXT removes the limit. Postgres-only (SQLite can't ALTER TYPE).
+        if db.engine.dialect.name == 'postgresql':
+            for col in ('epc_band', 'epc_band_potential', 'repair_insuring',
+                        'inside_1954_act', 'rent_qualifier', 'rent_inclusive', 'lease_type'):
+                conn.execute(text(f'ALTER TABLE listings ALTER COLUMN {col} TYPE TEXT'))
         conn.commit()
 
 
