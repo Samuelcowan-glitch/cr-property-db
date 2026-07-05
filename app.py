@@ -1011,6 +1011,49 @@ def projects_list():
     return render_template('projects/list.html', projects=projects, q=q, status=status)
 
 
+def _upsert_client_contact(form):
+    """Create/update a CRM contact from a project's client details so every
+    client entered on a project automatically shows up in Contacts. Matches an
+    existing contact by email, else by name, to avoid duplicates. Returns the
+    Contact (not committed here — caller commits with the project)."""
+    name = (form.get('client') or '').strip()
+    if not name:
+        return None
+    email  = (form.get('client_email') or '').strip() or None
+    phone  = (form.get('client_phone') or '').strip() or None
+    mobile = (form.get('client_mobile') or '').strip() or None
+    # A letting instruction's client is the landlord; otherwise a general client.
+    target_type = 'Landlord' if (form.get('instruction_type') or '').strip() == 'Letting' else 'Client'
+    parts = name.split(' ', 1)
+    first_name = parts[0] or name
+    last_name  = parts[1] if len(parts) > 1 else '.'
+    contact = None
+    if email:
+        contact = Contact.query.filter_by(email=email).first()
+    if not contact:
+        contact = Contact.query.filter(
+            db.func.lower(Contact.first_name) == first_name.lower(),
+            db.func.lower(Contact.last_name)  == last_name.lower(),
+        ).first()
+    if contact:
+        if email  and not contact.email:  contact.email  = email
+        if phone  and not contact.phone:  contact.phone  = phone
+        if mobile and not contact.mobile: contact.mobile = mobile
+        # Fill in a generic/blank type, and promote a Client → Landlord on a
+        # letting, but never downgrade an existing Landlord/specific type.
+        if contact.contact_type in (None, '', 'Enquiry', 'Prospect', 'Other') \
+           or (target_type == 'Landlord' and contact.contact_type == 'Client'):
+            contact.contact_type = target_type
+    else:
+        contact = Contact(
+            first_name=first_name, last_name=last_name,
+            email=email, phone=phone, mobile=mobile,
+            contact_type=target_type,
+        )
+        db.session.add(contact)
+    return contact
+
+
 @app.route('/projects/new', methods=['GET', 'POST'])
 def project_new():
     properties = Property.query.order_by(Property.address).all()
@@ -1046,6 +1089,7 @@ def project_new():
             notes=request.form.get('notes'),
         )
         db.session.add(p)
+        _upsert_client_contact(request.form)   # auto-add client to CRM
         db.session.commit()
         flash('Project created.', 'success')
         return redirect(url_for('project_detail', id=p.id))
@@ -1103,6 +1147,7 @@ def project_edit(id):
         ff = request.form.get('fee_fixed', '').strip()
         project.fee_percent       = float(fp) if fp else None
         project.fee_fixed         = float(ff) if ff else None
+        _upsert_client_contact(request.form)   # keep CRM in sync with client details
         db.session.commit()
         flash('Project updated.', 'success')
         return redirect(url_for('project_detail', id=project.id))
@@ -1249,14 +1294,28 @@ def organisation_delete(id):
 @app.route('/contacts')
 def contacts_list():
     q = request.args.get('q', '')
+    ctype = request.args.get('type', '')   # Landlord / Tenant / Client section filter
     query = Contact.query
+    # Section filters. Tenants include prospective tenants; landlords are exact.
+    _type_groups = {
+        'Landlord': ['Landlord'],
+        'Tenant':   ['Tenant', 'Prospective Tenant'],
+        'Client':   ['Client'],
+    }
+    if ctype in _type_groups:
+        query = query.filter(Contact.contact_type.in_(_type_groups[ctype]))
     if q:
         query = query.filter(
             db.or_(Contact.first_name.ilike(f'%{q}%'), Contact.last_name.ilike(f'%{q}%'),
                    Contact.email.ilike(f'%{q}%'), Contact.contact_type.ilike(f'%{q}%'))
         )
     contacts = query.order_by(Contact.last_name, Contact.first_name).all()
-    return render_template('crm/contacts_list.html', contacts=contacts, q=q)
+    # Counts for the section tabs
+    counts = {k: Contact.query.filter(Contact.contact_type.in_(v)).count()
+              for k, v in _type_groups.items()}
+    counts['all'] = Contact.query.count()
+    return render_template('crm/contacts_list.html', contacts=contacts, q=q,
+                           ctype=ctype, counts=counts)
 
 
 @app.route('/contacts/new', methods=['GET', 'POST'])

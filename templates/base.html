@@ -53,8 +53,14 @@
       <div class="nav-divider"></div>
       <div class="nav-section-label">CRM</div>
 
-      <a href="{{ url_for('contacts_list') }}" class="{{ 'active' if 'contact' in request.endpoint else '' }}">
+      <a href="{{ url_for('contacts_list') }}" class="{{ 'active' if 'contact' in request.endpoint and not request.args.get('type') else '' }}">
         <span class="nav-icon">👤</span> Contacts
+      </a>
+      <a href="{{ url_for('contacts_list', type='Landlord') }}" class="{{ 'active' if request.args.get('type') == 'Landlord' else '' }}">
+        <span class="nav-icon">🔑</span> Landlords
+      </a>
+      <a href="{{ url_for('contacts_list', type='Tenant') }}" class="{{ 'active' if request.args.get('type') == 'Tenant' else '' }}">
+        <span class="nav-icon">🏠</span> Tenants
       </a>
       <a href="{{ url_for('organisations_list') }}" class="{{ 'active' if 'organisation' in request.endpoint else '' }}">
         <span class="nav-icon">🏛️</span> Organisations

@@ -6,13 +6,22 @@
 {% endblock %}
 
 {% block content %}
+{% set section_titles = {'Landlord': 'Landlords', 'Tenant': 'Tenants', 'Client': 'Clients'} %}
 <div class="section-header">
-  <h2>Contacts</h2>
+  <h2>{{ section_titles.get(ctype, 'All Contacts') }}</h2>
   <form class="search-bar" method="get">
+    {% if ctype %}<input type="hidden" name="type" value="{{ ctype }}">{% endif %}
     <input type="text" name="q" value="{{ q }}" placeholder="Search name, email, type…">
     <button class="btn btn-secondary btn-sm" type="submit">Search</button>
-    {% if q %}<a href="{{ url_for('contacts_list') }}" class="btn btn-outline btn-sm">Clear</a>{% endif %}
+    {% if q %}<a href="{{ url_for('contacts_list', type=ctype or None) }}" class="btn btn-outline btn-sm">Clear</a>{% endif %}
   </form>
+</div>
+
+<div class="tab-bar" style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">
+  <a class="btn btn-sm {{ 'btn-primary' if not ctype else 'btn-outline' }}" href="{{ url_for('contacts_list') }}">All <span style="opacity:.6">({{ counts.all }})</span></a>
+  <a class="btn btn-sm {{ 'btn-primary' if ctype == 'Client' else 'btn-outline' }}" href="{{ url_for('contacts_list', type='Client') }}">Clients <span style="opacity:.6">({{ counts.Client }})</span></a>
+  <a class="btn btn-sm {{ 'btn-primary' if ctype == 'Landlord' else 'btn-outline' }}" href="{{ url_for('contacts_list', type='Landlord') }}">🔑 Landlords <span style="opacity:.6">({{ counts.Landlord }})</span></a>
+  <a class="btn btn-sm {{ 'btn-primary' if ctype == 'Tenant' else 'btn-outline' }}" href="{{ url_for('contacts_list', type='Tenant') }}">🏠 Tenants <span style="opacity:.6">({{ counts.Tenant }})</span></a>
 </div>
 
 {% if contacts %}
