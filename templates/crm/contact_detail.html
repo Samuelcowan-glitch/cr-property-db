@@ -14,7 +14,7 @@
 </div>
 
 <div style="margin-bottom:20px">
-  <h2 style="font-size:22px;font-weight:700;color:#1a2e4a">{{ contact.full_name }}</h2>
+  <h2 style="font-size:22px;font-weight:700;color:#0e1f44">{{ contact.full_name }}</h2>
   <div style="color:#5f6368;font-size:13px;margin-top:4px">
     {% if contact.job_title %}{{ contact.job_title }}{% endif %}
     {% if contact.organisation %} &nbsp;·&nbsp; <a href="{{ url_for('organisation_detail', id=contact.organisation.id) }}">{{ contact.organisation.name }}</a>{% endif %}
