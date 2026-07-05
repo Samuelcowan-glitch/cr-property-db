@@ -2121,37 +2121,59 @@ def api_enquiry():
 
 def _save_listing_from_form(form, l):
     def pf(v): return float(v.replace(',','')) if v and v.strip() else None
-    l.unit_name          = form.get('unit_name','').strip() or None
-    l.website_listed     = bool(form.get('website_listed'))
-    l.listing_status     = form.get('listing_status','available')
-    l.featured           = bool(form.get('featured'))
-    l.website_category   = form.get('website_category') or None
-    l.use_class          = form.get('use_class') or None
-    l.area               = form.get('area') or None
-    l.listing_price      = pf(form.get('listing_price',''))
-    l.listing_price_unit = form.get('listing_price_unit','poa')
-    l.price_display      = form.get('price_display') or None
-    l.size               = pf(form.get('size',''))
+    def pi(v): return int(v) if v and str(v).strip() else None
+    # Only overwrite a field the form actually submitted. The big create form
+    # disables the inactive category's inputs on submit, so a save there used to
+    # blank out every field it wasn't showing — this is why listings "lost" info.
+    # `website_listed`/`featured` stay unconditional so they can still be unticked.
+    def setf(attr, key, conv=None):
+        if key in form:
+            v = form.get(key)
+            setattr(l, attr, conv(v) if conv else (v or None))
+    def clean_area(v):
+        v = (v or '').strip()
+        if not v:
+            return None
+        prop_for_area = Property.query.get(l.property_id) if l.property_id else None
+        pc = (prop_for_area.postcode if prop_for_area else '').strip()
+        if pc:
+            v = re.sub(r'\s*,?\s*' + re.escape(pc) + r'\s*$', '', v, flags=re.IGNORECASE).strip()
+            if v.lower() == pc.lower():
+                v = ''
+        return v or None
+    setf('unit_name', 'unit_name', lambda v: v.strip() or None)
+    l.website_listed = bool(form.get('website_listed'))
+    if 'listing_status' in form:
+        l.listing_status = form.get('listing_status') or 'available'
+    l.featured = bool(form.get('featured'))
+    if 'website_category' in form:
+        l.website_category = form.get('website_category') or None
+    setf('use_class', 'use_class')
+    setf('area', 'area', clean_area)
+    setf('listing_price', 'listing_price', pf)
+    if 'listing_price_unit' in form:
+        l.listing_price_unit = form.get('listing_price_unit') or 'poa'
+    setf('price_display', 'price_display')
+    setf('size', 'size', pf)
     # Residential measurement is always GIA; commercial picks the basis.
     if l.website_category == 'residential':
         l.measurement_type = 'GIA'
     else:
-        l.measurement_type = form.get('measurement_type') or None
-    l.beds  = int(form.get('beds'))  if form.get('beds','').strip()  else None
-    l.baths = int(form.get('baths')) if form.get('baths','').strip() else None
-    l.lat   = pf(form.get('lat',''))
-    l.lng   = pf(form.get('lng',''))
-    l.photo_id = form.get('photo_id') or None
-    l.blurb    = form.get('blurb') or None            # Description (shown on website)
+        setf('measurement_type', 'measurement_type')
+    setf('beds', 'beds', pi)
+    setf('baths', 'baths', pi)
+    setf('lat', 'lat', pf)
+    setf('lng', 'lng', pf)
+    setf('photo_id', 'photo_id')
+    setf('blurb', 'blurb')            # Description (shown on website)
     # ── Website listing criteria (the four listing types) ──
-    l.residential_use     = form.get('residential_use') or None
-    l.key_terms           = form.get('key_terms') or None
-    l.location_description = form.get('location_description') or None
-    l.initial_yield       = pf(form.get('initial_yield',''))
-    l.investment_vacant   = form.get('investment_vacant') or None
-    l.tenure              = form.get('tenure') or None
-    l.lease_years_remaining = int(form.get('lease_years_remaining')) if form.get('lease_years_remaining','').strip() else None
-    def pi(v): return int(v) if v and str(v).strip() else None
+    setf('residential_use', 'residential_use')
+    setf('key_terms', 'key_terms')
+    setf('location_description', 'location_description')
+    setf('initial_yield', 'initial_yield', pf)
+    setf('investment_vacant', 'investment_vacant')
+    setf('tenure', 'tenure')
+    setf('lease_years_remaining', 'lease_years_remaining', pi)
     # Sale vs let. The inline form sends an explicit `transaction` toggle (let/sale)
     # and sets listing_price_unit to match. The big form has no toggle — derive it
     # from the price basis and reconcile its separate sale_price input.
@@ -2163,7 +2185,7 @@ def _save_listing_from_form(form, l):
         l.set_as_for_sale = (l.listing_price_unit == 'sale')
         l.set_as_to_let   = (l.listing_price_unit in ('pa', 'pcm'))
         if l.website_category == 'commercial':
-            l.sale_price      = pf(form.get('sale_price', ''))
+            setf('sale_price', 'sale_price', pf)
             l.set_as_for_sale = bool(form.get('set_as_for_sale'))
             l.set_as_to_let   = bool(form.get('set_as_to_let'))
             if l.set_as_for_sale and l.sale_price:
@@ -2175,24 +2197,25 @@ def _save_listing_from_form(form, l):
             else:
                 l.listing_price_unit = 'poa'
     # ── Commercial lease detail (INTERNAL — for records/brochure, NOT on /api/listings) ──
-    l.lease_type          = form.get('lease_type') or None
-    l.rent_qualifier      = form.get('rent_qualifier') or None
-    l.rent_inclusive      = form.get('rent_inclusive') or None
-    l.rent_from           = pf(form.get('rent_from', ''))
-    l.rent_to             = pf(form.get('rent_to', ''))
-    l.rent_comment        = form.get('rent_comment') or None
-    l.lease_length_years  = pi(form.get('lease_length_years'))
-    l.lease_length_months = pi(form.get('lease_length_months'))
-    l.inside_1954_act     = form.get('inside_1954_act') or None
-    l.repair_insuring     = form.get('repair_insuring') or None
-    l.service_charge      = pf(form.get('service_charge', ''))
+    setf('lease_type', 'lease_type')
+    setf('rent_qualifier', 'rent_qualifier')
+    setf('rent_inclusive', 'rent_inclusive')
+    setf('rent_from', 'rent_from', pf)
+    setf('rent_to', 'rent_to', pf)
+    setf('rent_comment', 'rent_comment')
+    setf('lease_length_years', 'lease_length_years', pi)
+    setf('lease_length_months', 'lease_length_months', pi)
+    setf('inside_1954_act', 'inside_1954_act')
+    setf('repair_insuring', 'repair_insuring')
+    setf('service_charge', 'service_charge', pf)
     l.service_charge_na   = bool(form.get('service_charge_na'))
-    l.rateable_value      = pf(form.get('rateable_value', ''))
+    setf('rateable_value', 'rateable_value', pf)
     l.rateable_value_na   = bool(form.get('rateable_value_na'))
-    l.epc_band            = form.get('epc_band') or l.epc_band
-    l.parking_ratio       = form.get('parking_ratio') or None
-    l.parking_rent        = pf(form.get('parking_rent', ''))
-    l.parking_spaces      = pi(form.get('parking_spaces'))
+    if form.get('epc_band'):
+        l.epc_band = form.get('epc_band')
+    setf('parking_ratio', 'parking_ratio')
+    setf('parking_rent', 'parking_rent', pf)
+    setf('parking_spaces', 'parking_spaces', pi)
 
 
 @app.route('/projects/<int:proj_id>/listing/new', methods=['GET', 'POST'])
