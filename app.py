@@ -1180,7 +1180,7 @@ def document_add(id):
             doc_name = file.filename
     if not doc_name:
         flash('Please provide a document name or upload a file.', 'warning')
-        return redirect(url_for('project_detail', id=id))
+        return redirect(url_for('project_detail', id=id) + '#tab-documents')
     doc = ProjectDocument(
         project_id=id,
         folder=request.form['folder'],
@@ -1193,7 +1193,7 @@ def document_add(id):
     db.session.add(doc)
     db.session.commit()
     flash('Document added.', 'success')
-    return redirect(url_for('project_detail', id=id))
+    return redirect(url_for('project_detail', id=id) + '#tab-documents')
 
 
 @app.route('/documents/<int:id>/delete', methods=['POST'])
@@ -1203,7 +1203,7 @@ def document_delete(id):
     db.session.delete(doc)
     db.session.commit()
     flash('Document removed.', 'info')
-    return redirect(url_for('project_detail', id=project_id))
+    return redirect(url_for('project_detail', id=project_id) + '#tab-documents')
 
 
 @app.route('/documents/<int:id>/download')
