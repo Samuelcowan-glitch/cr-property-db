@@ -2230,7 +2230,14 @@ def listing_new_for_project(proj_id):
         db.session.commit()
         flash('Website listing created.', 'success')
         return redirect(url_for('project_detail', id=proj_id) + '#tab-listing')
-    # GET: create a blank listing immediately and drop the user on the inline form
+    # GET: never create a second listing for a project — reopening the form on a
+    # project that already has one just returns to it (this is how duplicate
+    # website listings were being created).
+    existing = Listing.query.filter_by(project_id=proj_id).first()
+    if existing:
+        flash('This project already has a website listing — editing it below.', 'info')
+        return redirect(url_for('project_detail', id=proj_id) + '#tab-listing')
+    # Create a blank listing immediately and drop the user on the inline form
     l = Listing(
         project_id=proj_id,
         property_id=prop.id if prop else None,
