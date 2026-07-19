@@ -2776,3 +2776,7 @@ if __name__ == '__main__':
             import import_listings  # seeds the 32 website properties
             _seed_project_listings()
     app.run(debug=False, host='127.0.0.1', port=8080)
+
+# GoHighLevel live sync (Cowan & Rutter sub-account)
+import ghl_sync
+ghl_sync.init(app, db, Contact=Contact, Enquiry=Enquiry, Project=Project)
