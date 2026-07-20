@@ -1898,6 +1898,28 @@ def listing_photo_delete(id):
     return redirect(_listing_media_return(listing))
 
 
+@app.route('/listing-photos/<int:id>/reorder', methods=['POST'])
+def listing_photo_reorder(id):
+    """Reorder a listing's photos. The first photo (lowest sort_order) is the
+    cover shown on the website. action = 'cover' | 'left' | 'right'."""
+    ph = ListingPhoto.query.get_or_404(id)
+    listing = ph.listing
+    action = request.form.get('action')
+    photos = list(listing.photos)                 # already ordered by sort_order
+    idx = next((i for i, p in enumerate(photos) if p.id == ph.id), None)
+    if idx is not None:
+        if action == 'cover':
+            photos.insert(0, photos.pop(idx))
+        elif action == 'left' and idx > 0:
+            photos[idx - 1], photos[idx] = photos[idx], photos[idx - 1]
+        elif action == 'right' and idx < len(photos) - 1:
+            photos[idx + 1], photos[idx] = photos[idx], photos[idx + 1]
+        for i, p in enumerate(photos):            # renumber so order is always clean
+            p.sort_order = i
+        db.session.commit()
+    return redirect(_listing_media_return(listing))
+
+
 @app.route('/listing-photos/<int:id>/image')
 def listing_photo_image(id):
     from flask import send_file
