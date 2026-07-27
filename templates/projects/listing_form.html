@@ -87,6 +87,10 @@
       <input type="checkbox" name="featured" value="1" {{ 'checked' if l and l.featured else '' }} style="accent-color:#e0303f;width:16px;height:16px">
       Featured
     </label>
+    <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer" title="Also publish this listing to the Zoopla data feed">
+      <input type="checkbox" name="zoopla_listed" value="1" {{ 'checked' if l and l.zoopla_listed else '' }} style="accent-color:#e0303f;width:16px;height:16px">
+      Publish to Zoopla
+    </label>
     <button type="submit" class="btn btn-orange" style="font-weight:700;min-width:150px">{{ 'Save Changes' if l else 'Create Listing' }}</button>
   </div>
 </div>

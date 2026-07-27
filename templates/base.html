@@ -68,6 +68,9 @@
       <a href="{{ url_for('enquiries_list') }}" class="{{ 'active' if 'enquir' in request.endpoint else '' }}">
         <span class="nav-icon">📩</span> Enquiries
       </a>
+      <a href="{{ url_for('admin_zoopla') }}" class="{{ 'active' if request.endpoint and 'zoopla' in request.endpoint else '' }}">
+        <span class="nav-icon">🏷️</span> Zoopla feed
+      </a>
     </div>
 
     <div class="sidebar-footer" style="display:flex;align-items:center;justify-content:space-between;gap:8px">

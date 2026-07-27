@@ -6,3 +6,4 @@ requests==2.32.3
 waitress==3.0.2
 sqlalchemy==2.0.51
 psycopg2-binary==2.9.9
+paramiko==3.5.1

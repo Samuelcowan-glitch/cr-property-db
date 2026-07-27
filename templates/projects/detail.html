@@ -666,6 +666,9 @@
             <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
               <input type="checkbox" name="featured" value="1" {{ 'checked' if lst.featured else '' }}> Featured
             </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px" title="Also publish this listing to the Zoopla data feed">
+              <input type="checkbox" name="zoopla_listed" value="1" {{ 'checked' if lst.zoopla_listed else '' }}> Publish to Zoopla
+            </label>
           </div>
 
         </div>

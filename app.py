@@ -335,6 +335,7 @@ class Listing(db.Model):
     property_id        = db.Column(db.Integer, db.ForeignKey('properties.id'), nullable=True)
     unit_name          = db.Column(db.String(100))    # "Unit 3", "Ground Floor", blank=whole building
     website_listed     = db.Column(db.Boolean, default=True)
+    zoopla_listed      = db.Column(db.Boolean, default=False)   # publish to Zoopla feed (separate switch)
     listing_status     = db.Column(db.String(20), default='available')
     featured           = db.Column(db.Boolean, default=False)
     website_category   = db.Column(db.String(20))     # commercial / residential
@@ -2169,6 +2170,7 @@ def _save_listing_from_form(form, l):
     if 'listing_status' in form:
         l.listing_status = form.get('listing_status') or 'available'
     l.featured = bool(form.get('featured'))
+    l.zoopla_listed = bool(form.get('zoopla_listed'))
     if 'website_category' in form:
         l.website_category = form.get('website_category') or None
     setf('use_class', 'use_class')
@@ -2391,6 +2393,95 @@ def api_listings():
     # website without waiting on a stale browser/CDN cache.
     resp.headers['Cache-Control'] = 'no-store, max-age=0'
     return resp
+
+
+@app.route('/admin/zoopla', methods=['GET'])
+def admin_zoopla():
+    """Zoopla feed dashboard: shows which listings will be sent, a preview of
+    the BLM file, feed configuration status, and a Push button. Login-gated via
+    the global before_request guard (not in _PUBLIC_ENDPOINTS)."""
+    import zoopla_feed as zf
+    cfg = zf.feed_config()
+    # Send every Zoopla-toggled listing as live, plus any that are on the
+    # website but toggled OFF so Zoopla takes them down (PUBLISHED_FLAG=0).
+    live = Listing.query.filter_by(zoopla_listed=True).order_by(Listing.id).all()
+    takedown = (Listing.query.filter_by(zoopla_listed=False, website_listed=True)
+                             .order_by(Listing.id).all())
+    to_send = live + takedown
+    blm_text, media_files = zf.generate_feed(to_send, cfg['branch_id'])
+
+    def _t(l):
+        try:
+            return l.display_title
+        except Exception:
+            return f'Listing #{l.id}'
+
+    live_rows = ''.join(
+        f'<tr><td>CR-{l.id}</td><td>{_t(l)}</td>'
+        f'<td>{l.website_category or "-"}</td>'
+        f'<td>{l.listing_status or "available"}</td>'
+        f'<td>{len(list(l.photos or []))}</td></tr>' for l in live) \
+        or '<tr><td colspan=5 style="color:#6b7280">No listings toggled for Zoopla yet.</td></tr>'
+    takedown_note = (f'<p style="color:#6b7280;font-size:13px">Plus '
+                     f'<b>{len(takedown)}</b> website listing(s) not on Zoopla — '
+                     f'sent with PUBLISHED_FLAG=0 so Zoopla removes them.</p>'
+                     if takedown else '')
+
+    if cfg['ready']:
+        status_html = (f'<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;'
+                       f'padding:12px 16px;margin:14px 0"><b style="color:#1b7a3f">Feed configured</b> — '
+                       f'{cfg["host"]}, branch {cfg["branch_id"]}, file {cfg["filename"]}.</div>')
+        push_btn = ('<form method="post" action="/admin/zoopla/push" style="margin-top:8px">'
+                    '<button style="background:#0e1f44;color:#fff;padding:11px 20px;border:0;'
+                    'border-radius:6px;font-size:15px;cursor:pointer">Push feed to Zoopla now</button></form>')
+    else:
+        status_html = (f'<div style="background:#fef9c3;border:1px solid #fde047;border-radius:8px;'
+                       f'padding:12px 16px;margin:14px 0"><b>Feed not connected yet.</b> Ask your Zoopla '
+                       f'account manager to enable a custom data feed for your branch, then set these '
+                       f'Railway env vars: <code>ZOOPLA_FTP_HOST</code>, <code>ZOOPLA_FTP_USER</code>, '
+                       f'<code>ZOOPLA_FTP_PASS</code>, <code>ZOOPLA_BRANCH_ID</code>. Preview below still works.</div>')
+        push_btn = ('<button disabled style="background:#9ca3af;color:#fff;padding:11px 20px;border:0;'
+                    'border-radius:6px;font-size:15px;margin-top:8px">Push (set credentials first)</button>')
+
+    import html as _html
+    preview = _html.escape(blm_text)
+    return f'''<!doctype html><meta charset=utf-8>
+<body style="font-family:system-ui,Arial;max-width:920px;margin:40px auto;padding:0 20px;color:#111">
+<h2 style="color:#0e1f44">Zoopla feed</h2>
+{status_html}
+<h3 style="margin-bottom:4px">Listings going to Zoopla ({len(live)})</h3>
+{takedown_note}
+<table style="width:100%;border-collapse:collapse;font-size:14px">
+<thead><tr style="text-align:left;border-bottom:2px solid #0e1f44">
+<th>Ref</th><th>Listing</th><th>Category</th><th>Status</th><th>Photos</th></tr></thead>
+<tbody>{live_rows}</tbody></table>
+{push_btn}
+<h3 style="margin-top:28px">BLM file preview</h3>
+<p style="color:#6b7280;font-size:13px">This is exactly what would be uploaded ({len(media_files)} media file(s) ship alongside it).</p>
+<pre style="background:#0e1f44;color:#dbe4ff;padding:16px;border-radius:8px;overflow:auto;font-size:12px;max-height:420px">{preview}</pre>
+<p><a href="{url_for('projects_list')}" style="color:#0e1f44">← Back to projects</a></p>
+</body>'''
+
+
+@app.route('/admin/zoopla/push', methods=['POST'])
+def admin_zoopla_push():
+    """Generate the BLM feed and upload it (with images) to Zoopla over SFTP."""
+    import zoopla_feed as zf
+    cfg = zf.feed_config()
+    live = Listing.query.filter_by(zoopla_listed=True).order_by(Listing.id).all()
+    takedown = (Listing.query.filter_by(zoopla_listed=False, website_listed=True)
+                             .order_by(Listing.id).all())
+    blm_text, media_files = zf.generate_feed(live + takedown, cfg['branch_id'])
+    ok, msg = zf.upload_feed(blm_text, media_files, cfg)
+    colour = '#1b7a3f' if ok else '#b91c1c'
+    heading = 'Feed pushed to Zoopla' if ok else 'Push failed'
+    return f'''<!doctype html><meta charset=utf-8>
+<body style="font-family:system-ui,Arial;max-width:640px;margin:60px auto;padding:0 20px;color:#111">
+<h2 style="color:{colour}">{heading}</h2>
+<p>{msg}</p>
+<p style="color:#6b7280;font-size:13px">Sent {len(live)} live listing(s). Zoopla ingests the feed on its own schedule, so changes appear on the portal after their next pickup — not instantly.</p>
+<p><a href="{url_for('admin_zoopla')}" style="display:inline-block;margin-top:10px;background:#0e1f44;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none">← Back to Zoopla feed</a></p>
+</body>'''
 
 
 @app.route('/admin/cleanup-keep-two', methods=['GET', 'POST'])
@@ -2650,6 +2741,7 @@ def _migrate_listings_table_columns():
     new_cols = [
         ('project_id',           'INTEGER'),
         ('unit_name',            'TEXT'),
+        ('zoopla_listed',        'BOOLEAN DEFAULT FALSE'),
         ('residential_use',      'TEXT'),
         ('min_size',             'REAL'),
         ('max_size',             'REAL'),
