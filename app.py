@@ -1921,12 +1921,51 @@ def listing_photo_reorder(id):
     return redirect(_listing_media_return(listing))
 
 
+# Small in-process cache of resized thumbnails, keyed by (photo_id, width).
+# A photo blob for an id never changes, so entries never go stale. Cleared
+# wholesale when it grows past the cap (simple + good enough for one worker).
+_THUMB_CACHE = {}
+_THUMB_CACHE_MAX = 300
+
+
 @app.route('/listing-photos/<int:id>/image')
 def listing_photo_image(id):
     from flask import send_file
     import io
+    w = request.args.get('w', type=int)
+    # Load only the columns we need; blobs are big so avoid selecting extras.
     ph = ListingPhoto.query.get_or_404(id)
-    return send_file(io.BytesIO(ph.file_data), mimetype=ph.file_mime or 'image/jpeg')
+    data = ph.file_data
+    mime = ph.file_mime or 'image/jpeg'
+
+    if w and 32 <= w <= 2000:
+        key = (id, w)
+        cached = _THUMB_CACHE.get(key)
+        if cached is not None:
+            mime, data = cached
+        else:
+            try:
+                from PIL import Image
+                im = Image.open(io.BytesIO(ph.file_data))
+                if im.mode not in ('RGB', 'L'):
+                    im = im.convert('RGB')
+                im.thumbnail((w, w * 10), Image.LANCZOS)   # cap width, keep aspect
+                buf = io.BytesIO()
+                im.save(buf, format='JPEG', quality=78, optimize=True, progressive=True)
+                data, mime = buf.getvalue(), 'image/jpeg'
+                if len(_THUMB_CACHE) >= _THUMB_CACHE_MAX:
+                    _THUMB_CACHE.clear()
+                _THUMB_CACHE[key] = (mime, data)
+            except Exception:
+                data, mime = ph.file_data, (ph.file_mime or 'image/jpeg')
+
+    resp = send_file(io.BytesIO(data), mimetype=mime)
+    # A photo for a given id (and width) is immutable — let the browser and any
+    # CDN cache it for a year so repeat visits are instant. Timing-Allow-Origin
+    # lets the public site read image timing/size for its own diagnostics.
+    resp.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+    resp.headers['Timing-Allow-Origin'] = '*'
+    return resp
 
 
 def _listing_media_back(id):
@@ -2335,7 +2374,21 @@ def api_listings():
     # removing/untoggling the listing removes it from the website. No fallback
     # to the legacy Property.website_listed flag.
     result = []
-    listings = Listing.query.filter_by(website_listed=True).all()
+    # Perf: eager-load each listing's property and photos in bulk (kills the
+    # N+1), and DEFER the heavy binary columns. The API only needs photo *ids*
+    # to build URLs and *sizes* to know a brochure/floor-plan exists — it must
+    # never pull the 130 image blobs or the PDF blobs out of Postgres, which is
+    # what made this endpoint take 4-6s.
+    from sqlalchemy.orm import joinedload, selectinload, load_only, defer
+    listings = (Listing.query.filter_by(website_listed=True)
+                .options(
+                    joinedload(Listing.prop),
+                    selectinload(Listing.photos).load_only(
+                        ListingPhoto.id, ListingPhoto.listing_id, ListingPhoto.sort_order),
+                    defer(Listing.brochure_data),
+                    defer(Listing.floor_plan_data),
+                )
+                .all())
     if listings:
         for l in listings:
             p = l.prop
@@ -2350,6 +2403,8 @@ def api_listings():
             # app. Force https so images load on the https website (GitHub
             # Pages) without mixed-content blocking. Ordered by sort_order.
             base = request.host_url.replace('http://', 'https://').rstrip('/')
+            # Request a card-sized thumbnail (?w=) for the first image the site
+            # uses as the cover; the gallery can still request larger widths.
             photos = [base + url_for('listing_photo_image', id=ph.id) for ph in l.photos]
             result.append({
                 'id':            f'cr-lst-{l.id}',
@@ -2383,8 +2438,8 @@ def api_listings():
                 'saleTenure':    l.tenure or None,
                 'leaseYears':    l.lease_years_remaining or None,
                 'vacantPossession': l.investment_vacant == 'Vacant Possession',
-                'brochureUrl':   (base + url_for('listing_brochure_download', id=l.id)) if l.brochure_data else None,
-                'floorPlanUrl':  (base + url_for('listing_floorplan_download', id=l.id)) if l.floor_plan_data else None,
+                'brochureUrl':   (base + url_for('listing_brochure_download', id=l.id)) if l.brochure_size else None,
+                'floorPlanUrl':  (base + url_for('listing_floorplan_download', id=l.id)) if l.floor_plan_size else None,
                 'pricePerSqft':  round((l.listing_price or 0) / int(l.size or p.size), 2)
                                  if (unit == 'pa' and int(l.size or p.size or 0) > 0) else None,
             })
