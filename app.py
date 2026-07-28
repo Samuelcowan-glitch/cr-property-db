@@ -2219,6 +2219,8 @@ def _save_listing_from_form(form, l):
         l.listing_price_unit = form.get('listing_price_unit') or 'poa'
     setf('price_display', 'price_display')
     setf('size', 'size', pf)
+    setf('min_size', 'min_size', pf)   # "Size from" — quoted range low end
+    setf('max_size', 'max_size', pf)   # "Size to"   — quoted range high end
     # Residential measurement is always GIA; commercial picks the basis.
     if l.website_category == 'residential':
         l.measurement_type = 'GIA'
@@ -2422,6 +2424,8 @@ def api_listings():
                 'priceUnit':     unit,
                 'priceDisplay':  l.price_display or None,
                 'sqft':          int(l.size or p.size or 0),
+                'sizeFrom':      int(l.min_size) if l.min_size else None,
+                'sizeTo':        int(l.max_size) if l.max_size else None,
                 'lat':           l.lat or p.lat,
                 'lng':           l.lng or p.lng,
                 'added':         l.created_at.strftime('%Y-%m-%d'),

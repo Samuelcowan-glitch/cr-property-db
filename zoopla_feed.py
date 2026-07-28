@@ -119,6 +119,13 @@ def _description(listing, prop):
         parts.append(listing.blurb)
     elif prop and prop.description:
         parts.append(prop.description)
+    # Size range ("from / to"), when quoted as a range for commercial space.
+    lo, hi = getattr(listing, 'min_size', None), getattr(listing, 'max_size', None)
+    if lo or hi:
+        if lo and hi:
+            parts.append(f'Size: {int(lo):,} - {int(hi):,} sq ft')
+        else:
+            parts.append(f'Size: {int(lo or hi):,} sq ft')
     if listing.location_description:
         parts.append('Location: ' + listing.location_description)
     if listing.key_terms:

@@ -484,6 +484,15 @@
           </div>
 
           <div class="lst-com">
+            <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Size range <span style="font-weight:400;text-transform:none">(from / to, sq ft)</span></label>
+            <div style="display:flex;gap:6px;align-items:center">
+              <input type="number" name="min_size" value="{{ lst.min_size|int if lst.min_size else '' }}" placeholder="from e.g. 500" style="flex:1;min-width:0;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
+              <span style="color:#9aa0a6;font-size:13px">–</span>
+              <input type="number" name="max_size" value="{{ lst.max_size|int if lst.max_size else '' }}" placeholder="to e.g. 2500" style="flex:1;min-width:0;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
+            </div>
+          </div>
+
+          <div class="lst-com">
             <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Measurement <span style="font-weight:400;text-transform:none">(residential = GIA)</span></label>
             <select name="measurement_type" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
               {% for m in ['NIA','GIA','GEA','IPMS 1','IPMS 2'] %}
