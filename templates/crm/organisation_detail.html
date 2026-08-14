@@ -13,9 +13,25 @@
   <span class="current">{{ org.name }}</span>
 </div>
 
+{% set status_colors = {
+  'New Enquiry': '#1c3160', 'Active Requirement': '#1a7f4b', 'Prospect': '#3a6ea5',
+  'Under Offer': '#c9820a', 'Current Tenant': '#0e5a34', 'Requirement Satisfied': '#5b6675',
+  'Inactive': '#8a939f', 'Archived': '#5f6368' } %}
 <div style="margin-bottom:20px">
-  <h2 style="font-size:22px;font-weight:700;color:#0e1f44">{{ org.name }}</h2>
-  <div style="color:#5f6368;font-size:13px;margin-top:4px">
+  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    <h2 style="font-size:22px;font-weight:700;color:#0e1f44;margin:0">{{ org.name }}</h2>
+    <span style="display:inline-block;padding:3px 12px;border-radius:999px;font-size:12px;font-weight:700;color:#fff;background:{{ status_colors.get(org.status, '#5f6368') }}">{{ org.status or '—' }}</span>
+    <form method="post" action="{{ url_for('organisation_set_status', id=org.id) }}" style="margin-left:auto;display:flex;gap:6px;align-items:center">
+      <label for="status-quick" style="font-size:11px;color:#9aa0a6;text-transform:uppercase;letter-spacing:.5px">Set status</label>
+      <select id="status-quick" name="status" onchange="this.form.submit()" style="padding:6px 8px;border:1px solid #d5dbe4;border-radius:6px;font-size:13px">
+        {% for s in CONTACT_STATUSES %}
+        <option value="{{ s }}" {{ 'selected' if org.status == s else '' }}>{{ s }}</option>
+        {% endfor %}
+      </select>
+      <noscript><button class="btn btn-sm btn-primary">Save</button></noscript>
+    </form>
+  </div>
+  <div style="color:#5f6368;font-size:13px;margin-top:6px">
     {{ org.org_type or '' }}{% if org.postcode %} &nbsp;·&nbsp; {{ org.postcode }}{% endif %}
   </div>
 </div>
@@ -43,12 +59,13 @@
       </div>
       {% if org.contacts %}
       <table>
-        <thead><tr><th>Name</th><th>Job Title</th><th>Type</th><th>Email</th><th></th></tr></thead>
+        <thead><tr><th>Name</th><th>Status</th><th>Type</th><th>Email</th><th></th></tr></thead>
         <tbody>
           {% for c in org.contacts %}
           <tr>
-            <td><a href="{{ url_for('contact_detail', id=c.id) }}">{{ c.full_name }}</a></td>
-            <td>{{ c.job_title or '—' }}</td>
+            <td><a href="{{ url_for('contact_detail', id=c.id) }}">{{ c.full_name }}</a>
+              {% if c.follow_up_overdue %}<span title="Follow-up overdue" style="color:#c0392b">⚠</span>{% endif %}</td>
+            <td><span style="display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:700;color:#fff;background:{{ status_colors.get(c.status, '#5f6368') }}">{{ c.status or '—' }}</span></td>
             <td>{{ c.contact_type or '—' }}</td>
             <td>{% if c.email %}<a href="mailto:{{ c.email }}">{{ c.email }}</a>{% else %}—{% endif %}</td>
             <td><a href="{{ url_for('contact_edit', id=c.id) }}" class="btn btn-sm btn-outline">Edit</a></td>
@@ -82,6 +99,26 @@
       </table>
       {% else %}
       <div class="empty-state" style="padding:16px"><p>No enquiries linked.</p></div>
+      {% endif %}
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <div class="card-header"><div class="card-title">Activity History</div></div>
+      {% if org.activities %}
+      <table>
+        <thead><tr><th style="width:160px">When</th><th>Activity</th><th style="width:120px">By</th></tr></thead>
+        <tbody>
+          {% for a in org.activities %}
+          <tr>
+            <td style="white-space:nowrap;color:#5f6368;font-size:12px">{{ a.created_at.strftime('%d %b %Y %H:%M') }}</td>
+            <td>{% if a.kind == 'status_change' %}<span class="badge badge-hold">Status</span> {{ a.old_status or '—' }} → <strong>{{ a.new_status }}</strong>{% else %}{{ a.body }}{% endif %}</td>
+            <td style="color:#9aa0a6;font-size:12px">{{ a.author or '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty-state" style="padding:16px"><p>No activity yet.</p></div>
       {% endif %}
     </div>
   </div>

@@ -39,6 +39,46 @@
   </a>
 </div>
 
+<!-- ── Needs attention: new enquiries + overdue applicant follow-ups ── -->
+{% if new_enquiries or overdue_contacts %}
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px">
+  <div style="background:#eef4fb;border:1px solid #cfe0f2;border-left:4px solid #1c3160;border-radius:8px;padding:12px 14px">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#1c3160;margin-bottom:6px">
+      🆕 New enquiries — not yet contacted ({{ new_enquiries|length }})
+    </div>
+    {% if new_enquiries %}
+      {% for e in new_enquiries[:5] %}
+      <div style="font-size:12.5px;margin-bottom:3px">
+        <a href="{{ url_for('enquiry_edit', id=e.id) }}" style="color:#0e1f44;font-weight:600">{{ e.subject }}</a>
+        {% if e.contact %}<span style="color:#5f6368"> — {{ e.contact.full_name }}</span>{% endif %}
+        {% if e.linked_property %}<span style="color:#9aa0a6"> · {{ e.linked_property.address }}</span>{% endif %}
+      </div>
+      {% endfor %}
+      {% if new_enquiries|length > 5 %}<div style="font-size:11px;color:#5f6368;margin-top:4px">+ {{ new_enquiries|length - 5 }} more</div>{% endif %}
+    {% else %}
+      <div style="font-size:12.5px;color:#5f6368">All caught up.</div>
+    {% endif %}
+  </div>
+  <div style="background:#fdecee;border:1px solid #f5c9cf;border-left:4px solid #c0392b;border-radius:8px;padding:12px 14px">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#c0392b;margin-bottom:6px">
+      ⚠ Applicants — follow-up overdue ({{ overdue_contacts|length }})
+    </div>
+    {% if overdue_contacts %}
+      {% for c in overdue_contacts[:5] %}
+      <div style="font-size:12.5px;margin-bottom:3px">
+        <a href="{{ url_for('contact_detail', id=c.id) }}" style="color:#0e1f44;font-weight:600">{{ c.full_name }}</a>
+        <span style="color:#c0392b"> — due {{ c.next_follow_up.strftime('%d %b') }}</span>
+        <span style="color:#9aa0a6"> · {{ c.status }}</span>
+      </div>
+      {% endfor %}
+      {% if overdue_contacts|length > 5 %}<div style="font-size:11px;color:#5f6368;margin-top:4px">+ {{ overdue_contacts|length - 5 }} more</div>{% endif %}
+    {% else %}
+      <div style="font-size:12.5px;color:#5f6368">Nothing overdue.</div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
 <!-- ── Three-panel organiser ── -->
 <div class="organiser-grid">
 

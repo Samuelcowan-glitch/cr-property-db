@@ -24,13 +24,32 @@
   <a class="btn btn-sm {{ 'btn-primary' if ctype == 'Tenant' else 'btn-outline' }}" href="{{ url_for('contacts_list', type='Tenant') }}">🏠 Tenants <span style="opacity:.6">({{ counts.Tenant }})</span></a>
 </div>
 
+{% set status_colors = {
+  'New Enquiry': '#1c3160', 'Active Requirement': '#1a7f4b', 'Prospect': '#3a6ea5',
+  'Under Offer': '#c9820a', 'Current Tenant': '#0e5a34', 'Requirement Satisfied': '#5b6675',
+  'Inactive': '#8a939f', 'Archived': '#5f6368' } %}
+<form method="get" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px;padding:10px 12px;background:#f7f9fc;border:1px solid #e6ebf2;border-radius:8px">
+  {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
+  {% if ctype %}<input type="hidden" name="type" value="{{ ctype }}">{% endif %}
+  <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#5f6368">Status</span>
+  {% for s in CONTACT_STATUSES %}
+  <label style="display:inline-flex;align-items:center;gap:5px;font-size:12.5px;cursor:pointer;padding:3px 9px;border-radius:999px;border:1px solid {{ '#0e1f44' if s in statuses else '#d5dbe4' }};background:{{ '#eef2f8' if s in statuses else '#fff' }}">
+    <input type="checkbox" name="status" value="{{ s }}" {{ 'checked' if s in statuses else '' }} style="margin:0">
+    {{ s }} <span style="opacity:.55">({{ status_counts.get(s, 0) }})</span>
+  </label>
+  {% endfor %}
+  <button class="btn btn-sm btn-primary" type="submit">Apply</button>
+  {% if statuses %}<a href="{{ url_for('contacts_list', type=ctype or None, q=q or None) }}" class="btn btn-sm btn-outline">Reset</a>{% endif %}
+  <span style="font-size:11px;color:#9aa0a6;margin-left:auto">Archived hidden unless selected</span>
+</form>
+
 {% if contacts %}
 <div class="table-wrap">
   <table>
     <thead>
       <tr>
         <th>Name</th>
-        <th>Job Title</th>
+        <th>Status</th>
         <th>Organisation</th>
         <th>Type</th>
         <th>Email</th>
@@ -41,8 +60,9 @@
     <tbody>
       {% for c in contacts %}
       <tr>
-        <td><a href="{{ url_for('contact_detail', id=c.id) }}"><strong>{{ c.full_name }}</strong></a></td>
-        <td>{{ c.job_title or '—' }}</td>
+        <td><a href="{{ url_for('contact_detail', id=c.id) }}"><strong>{{ c.full_name }}</strong></a>
+          {% if c.follow_up_overdue %}<span title="Follow-up overdue" style="color:#c0392b">⚠</span>{% endif %}</td>
+        <td><span style="display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:700;color:#fff;background:{{ status_colors.get(c.status, '#5f6368') }}">{{ c.status or '—' }}</span></td>
         <td>
           {% if c.organisation %}
             <a href="{{ url_for('organisation_detail', id=c.organisation.id) }}" style="font-size:12px">{{ c.organisation.name }}</a>

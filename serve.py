@@ -1,6 +1,6 @@
 import os
 from waitress import serve
-from app import app, db, _migrate_project_columns, _migrate_listing_columns, _migrate_listings_table_columns, _migrate_email_columns, _ensure_default_user, _seed_project_listings, Property
+from app import app, db, _migrate_project_columns, _migrate_listing_columns, _migrate_listings_table_columns, _migrate_email_columns, _migrate_crm_columns, _ensure_default_user, _seed_project_listings, Property
 
 with app.app_context():
     db.create_all()
@@ -8,6 +8,7 @@ with app.app_context():
     _migrate_listing_columns()
     _migrate_listings_table_columns()
     _migrate_email_columns()
+    _migrate_crm_columns()
     _ensure_default_user()
 
     # First deploy only (empty DB): seed the 32 website properties, then give

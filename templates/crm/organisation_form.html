@@ -33,6 +33,14 @@
         </select>
       </div>
       <div class="form-group">
+        <label for="status">Status *</label>
+        <select id="status" name="status" required>
+          {% for s in CONTACT_STATUSES %}
+          <option value="{{ s }}" {{ 'selected' if (org and org.status == s) or (not org and s == 'Prospect') else '' }}>{{ s }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
         <label for="postcode">Postcode</label>
         <input type="text" id="postcode" name="postcode" value="{{ org.postcode if org else '' }}" style="text-transform:uppercase">
       </div>

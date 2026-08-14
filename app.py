@@ -171,11 +171,21 @@ class Transaction(db.Model):
 
 # ── CRM Models ─────────────────────────────────────────────────────────────
 
+# CRM applicant/contact + organisation lifecycle statuses (one shared vocabulary).
+CONTACT_STATUSES = [
+    'New Enquiry', 'Active Requirement', 'Prospect', 'Under Offer',
+    'Current Tenant', 'Requirement Satisfied', 'Inactive', 'Archived',
+]
+# Statuses hidden from the default "active" list views.
+ARCHIVED_STATUSES = ['Archived']
+
+
 class Organisation(db.Model):
     __tablename__ = 'organisations'
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(255), nullable=False)
     org_type = db.Column(db.String(50))   # Client, Agent, Solicitor, Developer, Investor, Other
+    status = db.Column(db.String(30), default='Prospect')
     address = db.Column(db.String(255))
     postcode = db.Column(db.String(20))
     phone = db.Column(db.String(50))
@@ -210,11 +220,49 @@ class Contact(db.Model):
     req_budget_min    = db.Column(db.Float)
     req_budget_max    = db.Column(db.Float)
     req_budget_unit   = db.Column(db.String(10))   # pa / pcm / sale
-    req_notes         = db.Column(db.Text)
+    req_notes         = db.Column(db.Text)          # special requirements
+    # Lifecycle status + follow-up / requirement extras
+    status            = db.Column(db.String(30), default='Prospect')
+    preferred_move_in = db.Column(db.Date)
+    lease_length      = db.Column(db.String(50))
+    assigned_agent    = db.Column(db.String(100))
+    last_contact_date = db.Column(db.Date)
+    next_follow_up    = db.Column(db.Date)
 
     @property
     def full_name(self):
         return f"{self.first_name} {self.last_name}"
+
+    @property
+    def follow_up_overdue(self):
+        return bool(self.status not in ARCHIVED_STATUSES
+                    and self.next_follow_up and self.next_follow_up < date.today())
+
+    @property
+    def last_activity(self):
+        return self.activities[0] if self.activities else None
+
+
+class ContactActivity(db.Model):
+    """Activity/history log for a contact OR an organisation: status changes, notes,
+    and logged interactions. Status changes record old->new with the date/time."""
+    __tablename__ = 'contact_activities'
+    id = db.Column(db.Integer, primary_key=True)
+    contact_id      = db.Column(db.Integer, db.ForeignKey('contacts.id'), nullable=True)
+    organisation_id = db.Column(db.Integer, db.ForeignKey('organisations.id'), nullable=True)
+    kind       = db.Column(db.String(30), default='note')  # status_change / note / interaction / enquiry
+    body       = db.Column(db.Text)
+    old_status = db.Column(db.String(30))
+    new_status = db.Column(db.String(30))
+    author     = db.Column(db.String(100))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    contact = db.relationship('Contact', backref=db.backref(
+        'activities', lazy=True, cascade='all, delete-orphan',
+        order_by='ContactActivity.created_at.desc()'))
+    organisation = db.relationship('Organisation', backref=db.backref(
+        'activities', lazy=True, cascade='all, delete-orphan',
+        order_by='ContactActivity.created_at.desc()'))
 
 
 class Enquiry(db.Model):
@@ -668,6 +716,15 @@ def dashboard():
 
     due_today = []  # follow-up banner removed from dashboard
 
+    # New enquiries that have NOT been contacted yet (no logged contact date).
+    new_enquiries = [e for e in open_enquiries if not e.last_contact_date]
+    # Applicants (contacts) with an overdue follow-up — flag for chasing.
+    overdue_contacts = (Contact.query
+                        .filter(Contact.next_follow_up.isnot(None),
+                                Contact.next_follow_up < today,
+                                Contact.status.notin_(ARCHIVED_STATUSES + ['Inactive']))
+                        .order_by(Contact.next_follow_up).all())
+
     recent_transactions = Transaction.query.order_by(Transaction.created_at.desc()).limit(10).all()
     enq_count = Enquiry.query.filter(Enquiry.status == 'Open').count()
     contact_count = Contact.query.count()
@@ -681,6 +738,8 @@ def dashboard():
                            active_listings=active_listings,
                            contacts=contacts,
                            open_enquiries=open_enquiries,
+                           new_enquiries=new_enquiries,
+                           overdue_contacts=overdue_contacts,
                            due_today=due_today,
                            recent_transactions=recent_transactions,
                            today=today)
@@ -1056,6 +1115,56 @@ def _upsert_client_contact(form):
     return contact
 
 
+# ── CRM status + activity helpers ────────────────────────────────────────────
+def _current_author():
+    try:
+        return current_user.username if current_user.is_authenticated else None
+    except Exception:
+        return None
+
+
+def _parse_date(val):
+    """Parse a yyyy-mm-dd form value into a date, or None."""
+    val = (val or '').strip()
+    try:
+        return datetime.strptime(val, '%Y-%m-%d').date() if val else None
+    except ValueError:
+        return None
+
+
+def _log_activity(kind, body=None, contact=None, organisation=None,
+                  old_status=None, new_status=None):
+    """Append an entry to a contact's / organisation's activity history."""
+    act = ContactActivity(
+        contact_id=contact.id if contact else None,
+        organisation_id=organisation.id if organisation else None,
+        kind=kind, body=body, old_status=old_status, new_status=new_status,
+        author=_current_author())
+    db.session.add(act)
+    return act
+
+
+def _apply_status(new_status, contact=None, organisation=None):
+    """Set status on a contact or organisation; if it actually changed, record it
+    in the activity history with the date. Returns True if changed."""
+    if new_status not in CONTACT_STATUSES:
+        return False
+    target = contact or organisation
+    old = getattr(target, 'status', None)
+    if old == new_status:
+        return False
+    target.status = new_status
+    _log_activity('status_change', contact=contact, organisation=organisation,
+                  old_status=old, new_status=new_status,
+                  body=f'Status changed from {old or "—"} to {new_status}')
+    return True
+
+
+@app.context_processor
+def _inject_crm_constants():
+    return {'CONTACT_STATUSES': CONTACT_STATUSES, 'ARCHIVED_STATUSES': ARCHIVED_STATUSES}
+
+
 @app.route('/projects/new', methods=['GET', 'POST'])
 def project_new():
     properties = Property.query.order_by(Property.address).all()
@@ -1230,12 +1339,21 @@ def document_download(id):
 def organisations_list():
     q = request.args.get('q', '')
     query = Organisation.query
+    statuses = [s for s in request.args.getlist('status') if s in CONTACT_STATUSES]
+    if statuses:
+        query = query.filter(Organisation.status.in_(statuses))
+    else:
+        query = query.filter(db.or_(Organisation.status.is_(None),
+                                    Organisation.status.notin_(ARCHIVED_STATUSES)))
     if q:
         query = query.filter(
             db.or_(Organisation.name.ilike(f'%{q}%'), Organisation.org_type.ilike(f'%{q}%'))
         )
     orgs = query.order_by(Organisation.name).all()
-    return render_template('crm/organisations_list.html', orgs=orgs, q=q)
+    status_counts = {s: Organisation.query.filter(Organisation.status == s).count()
+                     for s in CONTACT_STATUSES}
+    return render_template('crm/organisations_list.html', orgs=orgs, q=q,
+                           statuses=statuses, status_counts=status_counts)
 
 
 @app.route('/organisations/new', methods=['GET', 'POST'])
@@ -1250,8 +1368,12 @@ def organisation_new():
             email=request.form.get('email'),
             website=request.form.get('website'),
             notes=request.form.get('notes'),
+            status=(request.form.get('status') if request.form.get('status') in CONTACT_STATUSES else 'Prospect'),
         )
         db.session.add(org)
+        db.session.commit()
+        _log_activity('status_change', organisation=org, new_status=org.status,
+                      body=f'Organisation created (status: {org.status})')
         db.session.commit()
         flash('Organisation added.', 'success')
         return redirect(url_for('organisation_detail', id=org.id))
@@ -1276,6 +1398,7 @@ def organisation_edit(id):
         org.email = request.form.get('email')
         org.website = request.form.get('website')
         org.notes = request.form.get('notes')
+        _apply_status(request.form.get('status'), organisation=org)
         db.session.commit()
         flash('Organisation updated.', 'success')
         return redirect(url_for('organisation_detail', id=org.id))
@@ -1306,6 +1429,13 @@ def contacts_list():
     }
     if ctype in _type_groups:
         query = query.filter(Contact.contact_type.in_(_type_groups[ctype]))
+    # Multi-select status filter. With none chosen, hide Archived from the default view.
+    statuses = [s for s in request.args.getlist('status') if s in CONTACT_STATUSES]
+    if statuses:
+        query = query.filter(Contact.status.in_(statuses))
+    else:
+        query = query.filter(db.or_(Contact.status.is_(None),
+                                    Contact.status.notin_(ARCHIVED_STATUSES)))
     if q:
         query = query.filter(
             db.or_(Contact.first_name.ilike(f'%{q}%'), Contact.last_name.ilike(f'%{q}%'),
@@ -1316,8 +1446,11 @@ def contacts_list():
     counts = {k: Contact.query.filter(Contact.contact_type.in_(v)).count()
               for k, v in _type_groups.items()}
     counts['all'] = Contact.query.count()
+    status_counts = {s: Contact.query.filter(Contact.status == s).count()
+                     for s in CONTACT_STATUSES}
     return render_template('crm/contacts_list.html', contacts=contacts, q=q,
-                           ctype=ctype, counts=counts)
+                           ctype=ctype, counts=counts, statuses=statuses,
+                           status_counts=status_counts)
 
 
 @app.route('/contacts/new', methods=['GET', 'POST'])
@@ -1345,8 +1478,17 @@ def contact_new():
             req_budget_max=float(request.form.get('req_budget_max')) if request.form.get('req_budget_max','').strip() else None,
             req_budget_unit=request.form.get('req_budget_unit') or 'pa',
             req_notes=request.form.get('req_notes') or None,
+            status=(request.form.get('status') if request.form.get('status') in CONTACT_STATUSES else 'Prospect'),
+            preferred_move_in=_parse_date(request.form.get('preferred_move_in')),
+            lease_length=request.form.get('lease_length') or None,
+            assigned_agent=request.form.get('assigned_agent') or None,
+            last_contact_date=_parse_date(request.form.get('last_contact_date')),
+            next_follow_up=_parse_date(request.form.get('next_follow_up')),
         )
         db.session.add(c)
+        db.session.commit()
+        _log_activity('status_change', contact=c, new_status=c.status,
+                      body=f'Contact created (status: {c.status})')
         db.session.commit()
         flash('Contact added.', 'success')
         return redirect(url_for('contact_detail', id=c.id))
@@ -1384,6 +1526,13 @@ def contact_edit(id):
         contact.req_budget_max    = float(request.form.get('req_budget_max')) if request.form.get('req_budget_max','').strip() else None
         contact.req_budget_unit   = request.form.get('req_budget_unit') or 'pa'
         contact.req_notes         = request.form.get('req_notes') or None
+        contact.preferred_move_in = _parse_date(request.form.get('preferred_move_in'))
+        contact.lease_length      = request.form.get('lease_length') or None
+        contact.assigned_agent    = request.form.get('assigned_agent') or None
+        contact.last_contact_date = _parse_date(request.form.get('last_contact_date'))
+        contact.next_follow_up    = _parse_date(request.form.get('next_follow_up'))
+        # Status: log to history only if it actually changed.
+        _apply_status(request.form.get('status'), contact=contact)
         db.session.commit()
         flash('Contact updated.', 'success')
         return redirect(url_for('contact_detail', id=contact.id))
@@ -1397,6 +1546,41 @@ def contact_delete(id):
     db.session.commit()
     flash('Contact deleted.', 'info')
     return redirect(url_for('contacts_list'))
+
+
+@app.route('/contacts/<int:id>/status', methods=['POST'])
+def contact_set_status(id):
+    """Inline status change from the contact record header (no separate page)."""
+    contact = Contact.query.get_or_404(id)
+    if _apply_status(request.form.get('status'), contact=contact):
+        db.session.commit()
+        flash(f'Status updated to {contact.status}.', 'success')
+    return redirect(request.referrer or url_for('contact_detail', id=contact.id))
+
+
+@app.route('/contacts/<int:id>/activity', methods=['POST'])
+def contact_add_activity(id):
+    """Log an interaction / note to the contact's activity history."""
+    contact = Contact.query.get_or_404(id)
+    body = (request.form.get('body') or '').strip()
+    if body:
+        kind = request.form.get('kind') or 'note'
+        _log_activity(kind, body=body, contact=contact)
+        if kind == 'interaction':
+            contact.last_contact_date = date.today()
+        db.session.commit()
+        flash('Activity logged.', 'success')
+    return redirect(url_for('contact_detail', id=contact.id) + '#activity')
+
+
+@app.route('/organisations/<int:id>/status', methods=['POST'])
+def organisation_set_status(id):
+    """Inline status change from the organisation record header."""
+    org = Organisation.query.get_or_404(id)
+    if _apply_status(request.form.get('status'), organisation=org):
+        db.session.commit()
+        flash(f'Status updated to {org.status}.', 'success')
+    return redirect(request.referrer or url_for('organisation_detail', id=org.id))
 
 
 # ── Enquiries ─────────────────────────────────────────────────────────────────
@@ -2935,6 +3119,34 @@ def _seed_project_listings():
     db.session.commit()
 
 
+def _migrate_crm_columns():
+    """Add CRM lifecycle-status + follow-up columns to contacts & organisations.
+    Idempotent (only adds missing columns). contact_activities table is created
+    by db.create_all(). Postgres backfills existing rows with the DEFAULT."""
+    from sqlalchemy import text, inspect
+    with app.app_context():
+        insp = inspect(db.engine)
+        cont_existing = {c['name'] for c in insp.get_columns('contacts')}
+        org_existing  = {c['name'] for c in insp.get_columns('organisations')}
+        cont_cols = [
+            ('status',            "TEXT DEFAULT 'Prospect'"),
+            ('preferred_move_in', 'DATE'),
+            ('lease_length',      'TEXT'),
+            ('assigned_agent',    'TEXT'),
+            ('last_contact_date', 'DATE'),
+            ('next_follow_up',    'DATE'),
+        ]
+        org_cols = [('status', "TEXT DEFAULT 'Prospect'")]
+        with db.engine.connect() as conn:
+            for col_name, col_def in cont_cols:
+                if col_name not in cont_existing:
+                    conn.execute(text(f'ALTER TABLE contacts ADD COLUMN {col_name} {col_def}'))
+            for col_name, col_def in org_cols:
+                if col_name not in org_existing:
+                    conn.execute(text(f'ALTER TABLE organisations ADD COLUMN {col_name} {col_def}'))
+            conn.commit()
+
+
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
@@ -2944,6 +3156,7 @@ if __name__ == '__main__':
         _migrate_document_columns()
         _migrate_enquiry_columns()
         _migrate_email_columns()
+        _migrate_crm_columns()
         _ensure_default_user()
         if Property.query.count() == 0:
             import import_listings  # seeds the 32 website properties

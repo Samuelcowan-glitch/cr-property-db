@@ -45,6 +45,14 @@
           {% endfor %}
         </select>
       </div>
+      <div class="form-group">
+        <label for="status">Status *</label>
+        <select id="status" name="status" required>
+          {% for s in CONTACT_STATUSES %}
+          <option value="{{ s }}" {{ 'selected' if (contact and contact.status == s) or (not contact and s == 'Prospect') else '' }}>{{ s }}</option>
+          {% endfor %}
+        </select>
+      </div>
       <div class="form-group span-2">
         <label for="organisation_id">Organisation</label>
         <select id="organisation_id" name="organisation_id">
@@ -141,10 +149,44 @@
         <input type="number" id="req_budget_max" name="req_budget_max" min="0"
                value="{{ contact.req_budget_max | int if contact and contact.req_budget_max else '' }}">
       </div>
+      <div class="form-group">
+        <label for="preferred_move_in">Preferred Move-in</label>
+        <input type="date" id="preferred_move_in" name="preferred_move_in"
+               value="{{ contact.preferred_move_in.isoformat() if contact and contact.preferred_move_in else '' }}">
+      </div>
+      <div class="form-group">
+        <label for="lease_length">Lease Length Required</label>
+        <input type="text" id="lease_length" name="lease_length"
+               value="{{ contact.lease_length if contact and contact.lease_length else '' }}"
+               placeholder="e.g. 5 years, 12 months">
+      </div>
       <div class="form-group span-2">
-        <label for="req_notes">Requirement Notes</label>
+        <label for="req_notes">Special Requirements</label>
         <textarea id="req_notes" name="req_notes" rows="2"
                   placeholder="Any other specific requirements…">{{ contact.req_notes if contact and contact.req_notes else '' }}</textarea>
+      </div>
+    </div>
+
+    <hr class="divider">
+    <div style="font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#5f6368;margin-bottom:12px">
+      📅 Follow-up &amp; Ownership
+    </div>
+    <div class="form-grid" style="margin-bottom:16px">
+      <div class="form-group">
+        <label for="assigned_agent">Assigned Agent</label>
+        <input type="text" id="assigned_agent" name="assigned_agent"
+               value="{{ contact.assigned_agent if contact and contact.assigned_agent else '' }}"
+               placeholder="Fee earner">
+      </div>
+      <div class="form-group">
+        <label for="last_contact_date">Last Contacted</label>
+        <input type="date" id="last_contact_date" name="last_contact_date"
+               value="{{ contact.last_contact_date.isoformat() if contact and contact.last_contact_date else '' }}">
+      </div>
+      <div class="form-group">
+        <label for="next_follow_up">Next Follow-up</label>
+        <input type="date" id="next_follow_up" name="next_follow_up"
+               value="{{ contact.next_follow_up.isoformat() if contact and contact.next_follow_up else '' }}">
       </div>
     </div>
     <div class="form-actions">

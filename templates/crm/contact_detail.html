@@ -13,12 +13,30 @@
   <span class="current">{{ contact.full_name }}</span>
 </div>
 
+{% set status_colors = {
+  'New Enquiry': '#1c3160', 'Active Requirement': '#1a7f4b', 'Prospect': '#3a6ea5',
+  'Under Offer': '#c9820a', 'Current Tenant': '#0e5a34', 'Requirement Satisfied': '#5b6675',
+  'Inactive': '#8a939f', 'Archived': '#5f6368' } %}
 <div style="margin-bottom:20px">
-  <h2 style="font-size:22px;font-weight:700;color:#0e1f44">{{ contact.full_name }}</h2>
-  <div style="color:#5f6368;font-size:13px;margin-top:4px">
+  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    <h2 style="font-size:22px;font-weight:700;color:#0e1f44;margin:0">{{ contact.full_name }}</h2>
+    <span style="display:inline-block;padding:3px 12px;border-radius:999px;font-size:12px;font-weight:700;color:#fff;background:{{ status_colors.get(contact.status, '#5f6368') }}">{{ contact.status or '—' }}</span>
+    {% if contact.follow_up_overdue %}<span style="display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:700;color:#fff;background:#c0392b">⚠ Follow-up overdue</span>{% endif %}
+    <form method="post" action="{{ url_for('contact_set_status', id=contact.id) }}" style="margin-left:auto;display:flex;gap:6px;align-items:center">
+      <label for="status-quick" style="font-size:11px;color:#9aa0a6;text-transform:uppercase;letter-spacing:.5px">Set status</label>
+      <select id="status-quick" name="status" onchange="this.form.submit()" style="padding:6px 8px;border:1px solid #d5dbe4;border-radius:6px;font-size:13px">
+        {% for s in CONTACT_STATUSES %}
+        <option value="{{ s }}" {{ 'selected' if contact.status == s else '' }}>{{ s }}</option>
+        {% endfor %}
+      </select>
+      <noscript><button class="btn btn-sm btn-primary">Save</button></noscript>
+    </form>
+  </div>
+  <div style="color:#5f6368;font-size:13px;margin-top:6px">
     {% if contact.job_title %}{{ contact.job_title }}{% endif %}
     {% if contact.organisation %} &nbsp;·&nbsp; <a href="{{ url_for('organisation_detail', id=contact.organisation.id) }}">{{ contact.organisation.name }}</a>{% endif %}
     {% if contact.contact_type %} &nbsp;·&nbsp; {{ contact.contact_type }}{% endif %}
+    {% if contact.assigned_agent %} &nbsp;·&nbsp; Agent: {{ contact.assigned_agent }}{% endif %}
   </div>
 </div>
 
@@ -59,5 +77,69 @@
     <div class="empty-state" style="padding:16px"><p>No enquiries linked.</p></div>
     {% endif %}
   </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px">
+  <div class="card">
+    <div class="card-header"><div class="card-title">Requirement</div></div>
+    <table class="detail-table">
+      <tr><td>Category</td><td>{{ contact.req_category|capitalize if contact.req_category else '—' }}</td></tr>
+      <tr><td>Property type</td><td>{{ contact.req_property_type or '—' }}</td></tr>
+      <tr><td>Intended use</td><td>{{ contact.req_use_class|capitalize if contact.req_use_class else '—' }}</td></tr>
+      <tr><td>Preferred location</td><td>{{ contact.req_area or '—' }}</td></tr>
+      <tr><td>Size</td><td>{% if contact.req_size_min or contact.req_size_max %}{{ contact.req_size_min|int if contact.req_size_min else '?' }}–{{ contact.req_size_max|int if contact.req_size_max else '?' }} sq ft{% else %}—{% endif %}</td></tr>
+      <tr><td>Max budget</td><td>{% if contact.req_budget_max %}£{{ '{:,.0f}'.format(contact.req_budget_max) }} {{ contact.req_budget_unit or '' }}{% else %}—{% endif %}</td></tr>
+      <tr><td>Preferred move-in</td><td>{{ contact.preferred_move_in.strftime('%d %b %Y') if contact.preferred_move_in else '—' }}</td></tr>
+      <tr><td>Lease length</td><td>{{ contact.lease_length or '—' }}</td></tr>
+      <tr><td>Special requirements</td><td>{{ contact.req_notes or '—' }}</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <div class="card-header"><div class="card-title">Follow-up</div></div>
+    <table class="detail-table">
+      <tr><td>Assigned agent</td><td>{{ contact.assigned_agent or '—' }}</td></tr>
+      <tr><td>Last contacted</td><td>{{ contact.last_contact_date.strftime('%d %b %Y') if contact.last_contact_date else '—' }}</td></tr>
+      <tr><td>Next follow-up</td><td>
+        {% if contact.next_follow_up %}<span style="{{ 'color:#c0392b;font-weight:700' if contact.follow_up_overdue else '' }}">{{ contact.next_follow_up.strftime('%d %b %Y') }}{{ ' ⚠ overdue' if contact.follow_up_overdue else '' }}</span>{% else %}—{% endif %}
+      </td></tr>
+      <tr><td>Last interaction</td><td>{% if contact.last_activity %}{{ contact.last_activity.created_at.strftime('%d %b %Y') }} · {{ contact.last_activity.kind|replace('_',' ') }}{% else %}—{% endif %}</td></tr>
+    </table>
+    <form method="post" action="{{ url_for('contact_add_activity', id=contact.id) }}" style="padding:12px;display:flex;gap:6px;flex-wrap:wrap">
+      <input type="hidden" name="kind" value="interaction">
+      <input type="text" name="body" placeholder="Log a call / email / meeting…" style="flex:1;min-width:150px;padding:6px 8px;border:1px solid #d5dbe4;border-radius:6px" required>
+      <button class="btn btn-sm btn-primary">Log</button>
+    </form>
+  </div>
+</div>
+
+<div class="card" id="activity" style="margin-top:16px">
+  <div class="card-header"><div class="card-title">Activity History</div></div>
+  <form method="post" action="{{ url_for('contact_add_activity', id=contact.id) }}" style="padding:12px;display:flex;gap:6px;border-bottom:1px solid #eef2f8">
+    <input type="hidden" name="kind" value="note">
+    <input type="text" name="body" placeholder="Add a note…" style="flex:1;padding:6px 8px;border:1px solid #d5dbe4;border-radius:6px" required>
+    <button class="btn btn-sm btn-outline">Add note</button>
+  </form>
+  {% if contact.activities %}
+  <table>
+    <thead><tr><th style="width:160px">When</th><th>Activity</th><th style="width:120px">By</th></tr></thead>
+    <tbody>
+      {% for a in contact.activities %}
+      <tr>
+        <td style="white-space:nowrap;color:#5f6368;font-size:12px">{{ a.created_at.strftime('%d %b %Y %H:%M') }}</td>
+        <td>
+          {% if a.kind == 'status_change' %}
+            <span class="badge badge-hold">Status</span> {{ a.old_status or '—' }} → <strong>{{ a.new_status }}</strong>
+          {% else %}
+            {% if a.kind == 'interaction' %}📞 {% elif a.kind == 'enquiry' %}✉️ {% endif %}{{ a.body }}
+          {% endif %}
+        </td>
+        <td style="color:#9aa0a6;font-size:12px">{{ a.author or '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state" style="padding:16px"><p>No activity yet.</p></div>
+  {% endif %}
 </div>
 {% endblock %}
