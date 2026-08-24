@@ -2,6 +2,7 @@
 {% block title %}{{ project.name }}{% endblock %}
 {% block topbar_title %}{{ project.name }}{% endblock %}
 {% block topbar_actions %}
+  <a href="{{ url_for('project_enquiry_schedule', id=project.id) }}" class="btn btn-orange btn-sm" target="_blank">Enquiry Schedule</a>
   <a href="{{ url_for('project_edit', id=project.id) }}" class="btn btn-outline btn-sm">Edit</a>
   {% if project.property %}
   <a href="{{ url_for('property_detail', id=project.property.id) }}" class="btn btn-outline btn-sm">View Property</a>

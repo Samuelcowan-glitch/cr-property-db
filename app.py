@@ -5,7 +5,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from flask_login import LoginManager, UserMixin, login_user, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 
 app = Flask(__name__)
 # Use DATABASE_URL from environment (Railway/Postgres) or fall back to local SQLite
@@ -291,6 +291,10 @@ class Enquiry(db.Model):
     # Follow-up tracking
     last_contact_date = db.Column(db.Date)
     next_follow_up    = db.Column(db.Date)
+    # Where this enquiry has got to, from first contact through to signed
+    # heads of terms. See ENQUIRY_STAGES.
+    stage             = db.Column(db.String(40), default='Enquiry Received')
+    stage_changed_on  = db.Column(db.Date)
 
     linked_property = db.relationship('Property', backref='enquiries')
     contact = db.relationship('Contact', backref='enquiries')
@@ -315,6 +319,50 @@ class Enquiry(db.Model):
     @property
     def traffic_emoji(self):
         return {'red': '🔴', 'amber': '🟡', 'green': '🟢', 'grey': '⚪'}.get(self.traffic_light, '⚪')
+
+
+# The road from an enquiry landing to heads of terms being signed. Order is the
+# pipeline order — "next stage" buttons walk down this list.
+ENQUIRY_STAGES = [
+    'Enquiry Received',
+    'Qualified',
+    'Viewing Arranged',
+    'Viewing Completed',
+    'Offer Received',
+    'Terms Agreed',
+    'Heads of Terms Issued',
+    'Heads of Terms Signed',
+]
+# Off-pipeline outcomes — reachable at any point, and they close the enquiry.
+ENQUIRY_STAGES_CLOSED = ['Lost', 'Withdrawn']
+ENQUIRY_ALL_STAGES = ENQUIRY_STAGES + ENQUIRY_STAGES_CLOSED
+
+
+def next_enquiry_stage(stage):
+    """The stage after this one, or None at the end of the pipeline."""
+    try:
+        i = ENQUIRY_STAGES.index(stage or ENQUIRY_STAGES[0])
+    except ValueError:
+        return None                      # Lost / Withdrawn have no next step
+    return ENQUIRY_STAGES[i + 1] if i + 1 < len(ENQUIRY_STAGES) else None
+
+
+class EnquiryStageEvent(db.Model):
+    """One step in an enquiry's progress, kept so the trail can be shown and
+    the time between steps measured."""
+    __tablename__ = 'enquiry_stage_events'
+    id         = db.Column(db.Integer, primary_key=True)
+    enquiry_id = db.Column(db.Integer, db.ForeignKey('enquiries.id'), nullable=False)
+    stage      = db.Column(db.String(40), nullable=False)
+    from_stage = db.Column(db.String(40))
+    occurred_on = db.Column(db.Date, default=date.today)
+    author     = db.Column(db.String(100))
+    note       = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    enquiry = db.relationship('Enquiry', backref=db.backref(
+        'stage_events', lazy=True, cascade='all, delete-orphan',
+        order_by='EnquiryStageEvent.occurred_on'))
 
 
 class EnquiryNote(db.Model):
@@ -1673,7 +1721,11 @@ def enquiry_detail(id):
             matched.append((score, p))
     matched.sort(key=lambda x: x[0], reverse=True)
     matched_props = [p for _, p in matched[:6]]
-    return render_template('crm/enquiry_detail.html', e=e, matched_props=matched_props, today=date.today())
+    return render_template('crm/enquiry_detail.html', e=e, matched_props=matched_props,
+                           today=date.today(),
+                           enquiry_stages=ENQUIRY_STAGES,
+                           enquiry_stages_closed=ENQUIRY_STAGES_CLOSED,
+                           next_stage=next_enquiry_stage(e.stage))
 
 
 @app.route('/enquiries/<int:id>/edit', methods=['GET', 'POST'])
@@ -2280,6 +2332,154 @@ def listing_floorplan_download(id):
     mime = mimetypes.guess_type(name)[0] or 'application/octet-stream'
     return send_file(io.BytesIO(listing.floor_plan_data),
                      mimetype=mime, as_attachment=True, download_name=name)
+
+# ── Enquiry pipeline ─────────────────────────────────────────────────────────
+
+def _set_enquiry_stage(enq, stage, author=None, note=None, occurred_on=None):
+    """Move an enquiry to a stage and record the step."""
+    if stage not in ENQUIRY_ALL_STAGES or stage == enq.stage:
+        return False
+    event = EnquiryStageEvent(
+        enquiry_id=enq.id, stage=stage, from_stage=enq.stage,
+        occurred_on=occurred_on or date.today(),
+        author=(author or '').strip() or None,
+        note=(note or '').strip() or None,
+    )
+    enq.stage = stage
+    enq.stage_changed_on = event.occurred_on
+    # Reaching the end, or falling out of the pipeline, closes the enquiry.
+    if stage == 'Heads of Terms Signed':
+        enq.status = 'Won'
+    elif stage in ENQUIRY_STAGES_CLOSED:
+        enq.status = 'Lost'
+    elif enq.status in ('Won', 'Lost'):
+        enq.status = 'Open'
+    db.session.add(event)
+    return True
+
+
+@app.route('/enquiries/<int:id>/stage', methods=['POST'])
+def enquiry_set_stage(id):
+    enq = Enquiry.query.get_or_404(id)
+    stage = (request.form.get('stage') or '').strip()
+    if stage == '__next__':
+        stage = next_enquiry_stage(enq.stage) or ''
+    occurred = None
+    raw = (request.form.get('occurred_on') or '').strip()
+    if raw:
+        try:
+            occurred = datetime.strptime(raw, '%Y-%m-%d').date()
+        except ValueError:
+            occurred = None
+    if _set_enquiry_stage(enq, stage, request.form.get('author'),
+                          request.form.get('note'), occurred):
+        enq.last_contact_date = enq.stage_changed_on
+        db.session.commit()
+        flash(f'Enquiry moved to “{stage}”.', 'success')
+    else:
+        flash('No change made to the enquiry stage.', 'info')
+    return redirect(request.referrer or url_for('enquiry_detail', id=id))
+
+
+# ── Enquiry schedule (client report) ─────────────────────────────────────────
+
+def _half_month_period(today=None):
+    """The current reporting fortnight: the 1st–15th, or the 16th–month end.
+
+    Schedules go out twice a month, so this is the period a schedule generated
+    today would normally cover.
+    """
+    import calendar
+    today = today or date.today()
+    if today.day <= 15:
+        return date(today.year, today.month, 1), date(today.year, today.month, 15)
+    last = calendar.monthrange(today.year, today.month)[1]
+    return date(today.year, today.month, 16), date(today.year, today.month, last)
+
+
+def _previous_half_month(today=None):
+    start, _ = _half_month_period(today)
+    end = start - timedelta(days=1)
+    return _half_month_period(end)
+
+
+def _enquiry_date(e):
+    """The date an enquiry came in — received_date if set, else when recorded."""
+    return e.received_date or (e.created_at.date() if e.created_at else None)
+
+
+def _project_enquiries(project):
+    """Every enquiry for an instruction, whether linked by project or property.
+
+    Website and portal enquiries can land either way, so both are collected and
+    deduplicated — the same rule the project page uses on screen.
+    """
+    seen, items = set(), []
+    for e in (project.enquiries or []):
+        if e.id not in seen:
+            seen.add(e.id); items.append(e)
+    if project.property:
+        for e in (project.property.enquiries or []):
+            if e.id not in seen:
+                seen.add(e.id); items.append(e)
+    return items
+
+
+@app.route('/projects/<int:id>/enquiry-schedule')
+def project_enquiry_schedule(id):
+    """A client-facing schedule of enquiries received on one instruction."""
+    project = Project.query.get_or_404(id)
+
+    def parse(param):
+        raw = (request.args.get(param) or '').strip()
+        try:
+            return datetime.strptime(raw, '%Y-%m-%d').date()
+        except ValueError:
+            return None
+
+    preset = request.args.get('preset', '')
+    today = date.today()
+    if preset == 'previous':
+        start, end = _previous_half_month()
+    elif preset == 'month':
+        start, end = date(today.year, today.month, 1), today
+    elif preset == 'two-months':
+        start, end = today - timedelta(days=61), today
+    elif preset == 'six-months':
+        start, end = today - timedelta(days=182), today
+    elif preset == 'all':
+        start, end = None, None
+    else:
+        start, end = parse('from'), parse('to')
+        if not start and not end and preset != 'custom':
+            start, end = _half_month_period()      # default: this fortnight
+
+    rows = []
+    for e in _project_enquiries(project):
+        on = _enquiry_date(e)
+        if start and (not on or on < start):
+            continue
+        if end and (not on or on > end):
+            continue
+        rows.append({'enquiry': e, 'on': on})
+    rows.sort(key=lambda r: (r['on'] or date.min), reverse=True)
+
+    by_source, by_stage = {}, {}
+    for r in rows:
+        src = r['enquiry'].source or 'Direct'
+        stg = r['enquiry'].stage or 'Enquiry Received'
+        by_source[src] = by_source.get(src, 0) + 1
+        by_stage[stg] = by_stage.get(stg, 0) + 1
+
+    return render_template(
+        'reports/enquiry_schedule.html',
+        project=project, rows=rows, start=start, end=end, preset=preset,
+        by_source=sorted(by_source.items(), key=lambda kv: -kv[1]),
+        by_stage=sorted(by_stage.items(), key=lambda kv: -kv[1]),
+        generated_on=today,
+        total_all_time=len(_project_enquiries(project)),
+    )
+
 
 # ── Website → DB: inbound enquiry webhook ────────────────────────────────────
 
@@ -3020,6 +3220,7 @@ def _migrate_enquiry_columns():
             ('req_budget_unit','TEXT'),('req_use_class','TEXT'),('req_category','TEXT'),
             ('last_contact_date','TEXT'),('next_follow_up','TEXT'),
             ('source','TEXT'),
+            ('stage',"TEXT DEFAULT 'Enquiry Received'"),('stage_changed_on','DATE'),
         ]
         with db.engine.connect() as conn:
             for col_name, col_def in new_cols:

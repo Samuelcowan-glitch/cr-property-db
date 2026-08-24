@@ -543,3 +543,33 @@ select.ss-native {
 /* .btn sets display:inline-flex, which beat the browser's own [hidden] rule and
    left hidden buttons on screen. */
 [hidden] { display: none !important; }
+
+/* ── Enquiry pipeline tracker ───────────────────────────────────────────────
+   Enquiry Received → … → Heads of Terms Signed. Completed steps fill navy,
+   the current step is outlined in red. */
+.pipeline { display: flex; gap: 4px; overflow-x: auto; padding-bottom: 2px; }
+.pipeline-step {
+  flex: 1 0 96px; min-width: 96px; display: flex; flex-direction: column;
+  align-items: center; gap: 5px; position: relative; padding-top: 2px;
+}
+.pipeline-step::before {
+  content: ""; position: absolute; top: 13px; left: -50%; width: 100%; height: 2px;
+  background: var(--grey-200); z-index: 0;
+}
+.pipeline-step:first-child::before { display: none; }
+.pipeline-step.is-done::before, .pipeline-step.is-here::before { background: var(--navy); }
+.pipeline-dot {
+  position: relative; z-index: 1;
+  width: 24px; height: 24px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700;
+  background: var(--white); color: var(--grey-400);
+  border: 2px solid var(--grey-200);
+}
+.pipeline-step.is-done .pipeline-dot { background: var(--navy); border-color: var(--navy); color: #fff; }
+.pipeline-step.is-here .pipeline-dot { background: var(--white); border-color: var(--orange); color: var(--orange); }
+.pipeline-label {
+  font-size: 10.5px; line-height: 1.3; text-align: center; color: var(--grey-600);
+}
+.pipeline-step.is-done .pipeline-label { color: var(--navy); }
+.pipeline-step.is-here .pipeline-label { color: var(--orange); font-weight: 700; }
