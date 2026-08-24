@@ -14,14 +14,101 @@ _db_url = os.environ.get('DATABASE_URL', 'sqlite:///property.db')
 if _db_url.startswith('postgres://'):
     _db_url = _db_url.replace('postgres://', 'postgresql://', 1)
 app.config['SQLALCHEMY_DATABASE_URI'] = _db_url
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'cowan-rutter-property-db-2026')
+
+# Session signing key. There is deliberately no hard-coded fallback: this
+# repository is public, so a known key would let anyone forge an admin session
+# cookie and read the whole client database without a password. Without
+# SECRET_KEY set, a random one is generated per boot — safe, but everyone is
+# signed out on each deploy, which is the nudge to set the variable.
+_secret = os.environ.get('SECRET_KEY')
+if not _secret:
+    import secrets as _secrets
+    _secret = _secrets.token_hex(32)
+    print('WARNING: SECRET_KEY is not set. Using a random key — logins will be '
+          'dropped on every restart. Set SECRET_KEY in the Railway variables.')
+app.config['SECRET_KEY'] = _secret
+
+# Cookies carry access to client personal data: keep them off JavaScript, off
+# plain HTTP, and out of cross-site requests.
+_local = _db_url.startswith('sqlite')
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE='Lax',
+    SESSION_COOKIE_SECURE=not _local,
+    REMEMBER_COOKIE_HTTPONLY=True,
+    REMEMBER_COOKIE_SAMESITE='Lax',
+    REMEMBER_COOKIE_SECURE=not _local,
+    REMEMBER_COOKIE_DURATION=timedelta(days=14),
+    PERMANENT_SESSION_LIFETIME=timedelta(hours=12),
+    MAX_CONTENT_LENGTH=30 * 1024 * 1024,      # 30 MB cap on any upload
+)
+
 db = SQLAlchemy(app)
-CORS(app, resources={r'/api/*': {'origins': '*'}})
+
+# The public API is only ever called by the website. Anything else has no
+# business reading it from a browser.
+CORS(app, resources={r'/api/*': {'origins': [
+    'https://cowanandrutter.com',
+    'https://www.cowanandrutter.com',
+    'https://samuelcowan-glitch.github.io',
+]}})
 
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 login_manager.login_message = 'Please log in to access the database.'
 login_manager.login_message_category = 'warning'
+
+DEFAULT_PASSWORD = 'changeme'
+
+
+@app.after_request
+def _security_headers(resp):
+    """Standard hardening headers.
+
+    nosniff matters most here: uploaded files are served back from this origin,
+    so a file that claims to be an image but contains HTML must never be
+    rendered as a page.
+    """
+    resp.headers.setdefault('X-Content-Type-Options', 'nosniff')
+    resp.headers.setdefault('X-Frame-Options', 'SAMEORIGIN')
+    resp.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
+    resp.headers.setdefault('Permissions-Policy', 'geolocation=(), microphone=(), camera=()')
+    if not _local:
+        resp.headers.setdefault('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
+    return resp
+
+
+# ── Login throttling ─────────────────────────────────────────────────────────
+# Small in-memory counter — enough to stop password guessing against a single
+# admin account on a single web process. A managed WAF would do this properly.
+_LOGIN_FAILURES = {}
+LOGIN_MAX_ATTEMPTS = 8
+LOGIN_LOCKOUT_MINUTES = 15
+
+
+def _login_key():
+    fwd = (request.headers.get('X-Forwarded-For') or '').split(',')[0].strip()
+    return fwd or request.remote_addr or 'unknown'
+
+
+def _login_blocked():
+    rec = _LOGIN_FAILURES.get(_login_key())
+    if not rec:
+        return 0
+    count, until = rec
+    if count >= LOGIN_MAX_ATTEMPTS and until > datetime.utcnow():
+        return int((until - datetime.utcnow()).total_seconds() // 60) + 1
+    return 0
+
+
+def _login_failed():
+    key = _login_key()
+    count = _LOGIN_FAILURES.get(key, (0, None))[0] + 1
+    _LOGIN_FAILURES[key] = (count, datetime.utcnow() + timedelta(minutes=LOGIN_LOCKOUT_MINUTES))
+
+
+def _login_succeeded():
+    _LOGIN_FAILURES.pop(_login_key(), None)
 
 
 # ── Models ─────────────────────────────────────────────────────────────────
@@ -709,7 +796,12 @@ def require_login():
     if request.endpoint in _PUBLIC_ENDPOINTS:
         return
     if not current_user.is_authenticated:
-        return redirect(url_for('login', next=request.url))
+        return redirect(url_for('login', next=request.full_path if request.query_string else request.path))
+    # The starting password is published in this repository, so nothing else in
+    # the database opens until it has been replaced.
+    if request.endpoint not in ('change_password', 'logout') and \
+            current_user.check_password(DEFAULT_PASSWORD):
+        return redirect(url_for('change_password'))
 
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -717,17 +809,49 @@ def login():
     if current_user.is_authenticated:
         return redirect(url_for('dashboard'))
     if request.method == 'POST':
+        wait = _login_blocked()
+        if wait:
+            flash(f'Too many failed attempts. Try again in {wait} minute(s).', 'danger')
+            return render_template('login.html'), 429
         username = request.form.get('username', '').strip().lower()
         password = request.form.get('password', '')
         user = User.query.filter_by(username=username).first()
         if user and user.check_password(password):
+            _login_succeeded()
             login_user(user, remember=True)
             next_page = request.args.get('next', '')
-            if next_page and next_page.startswith('/'):
+            # Only ever bounce to a path on this site — never an absolute or
+            # protocol-relative URL supplied by whoever sent the link.
+            if next_page.startswith('/') and not next_page.startswith('//'):
                 return redirect(next_page)
             return redirect(url_for('dashboard'))
+        _login_failed()
         flash('Incorrect username or password.', 'danger')
     return render_template('login.html')
+
+
+@app.route('/account/password', methods=['GET', 'POST'])
+def change_password():
+    """Set a new password for the signed-in user."""
+    if request.method == 'POST':
+        current = request.form.get('current_password', '')
+        new = request.form.get('new_password', '')
+        confirm = request.form.get('confirm_password', '')
+        if not current_user.check_password(current):
+            flash('Your current password is not correct.', 'danger')
+        elif len(new) < 12:
+            flash('Please choose a password of at least 12 characters.', 'danger')
+        elif new != confirm:
+            flash('The two new passwords do not match.', 'danger')
+        elif new == DEFAULT_PASSWORD:
+            flash('That is the published default password. Please choose another.', 'danger')
+        else:
+            current_user.password_hash = generate_password_hash(new)
+            db.session.commit()
+            flash('Password changed. Use the new password from now on.', 'success')
+            return redirect(url_for('dashboard'))
+    return render_template('change_password.html',
+                           using_default=current_user.check_password(DEFAULT_PASSWORD))
 
 
 @app.route('/logout', methods=['POST'])
@@ -2116,26 +2240,80 @@ def _listing_media_return(listing):
     return url_for('listing_edit', id=listing.id) + '#media'
 
 
+
+# ── Upload validation ────────────────────────────────────────────────────────
+# Uploaded files are served back from this same origin, so what a file *claims*
+# to be is never trusted: images are decoded before being accepted, PDFs are
+# checked for the PDF magic bytes, and filenames are stripped of any path.
+
+ALLOWED_IMAGE_MIMES = {'image/jpeg', 'image/png', 'image/webp', 'image/gif'}
+MAX_UPLOAD_BYTES = 30 * 1024 * 1024
+
+
+def _clean_filename(name, fallback):
+    from werkzeug.utils import secure_filename
+    cleaned = secure_filename(name or '')
+    return cleaned[:180] or fallback
+
+
+def _read_image_upload(f):
+    """Return (data, mime, filename) for a genuine image, or (None, reason)."""
+    import io
+    data = f.read(MAX_UPLOAD_BYTES + 1)
+    if len(data) > MAX_UPLOAD_BYTES:
+        return None, 'is larger than 30 MB'
+    try:
+        from PIL import Image
+        im = Image.open(io.BytesIO(data))
+        im.verify()                      # decodes headers; raises on anything else
+        fmt = (im.format or '').lower()
+    except Exception:
+        return None, 'is not a readable image'
+    mime = {'jpeg': 'image/jpeg', 'png': 'image/png',
+            'webp': 'image/webp', 'gif': 'image/gif'}.get(fmt)
+    if mime not in ALLOWED_IMAGE_MIMES:
+        return None, 'is not a JPG, PNG, WEBP or GIF'
+    return (data, mime, _clean_filename(f.filename, f'photo.{fmt}')), None
+
+
+def _read_pdf_upload(f, fallback='document.pdf'):
+    """Return (data, filename) for a genuine PDF, or (None, reason)."""
+    data = f.read(MAX_UPLOAD_BYTES + 1)
+    if len(data) > MAX_UPLOAD_BYTES:
+        return None, 'is larger than 30 MB'
+    if not data.startswith(b'%PDF-'):
+        return None, 'is not a PDF'
+    return (data, _clean_filename(f.filename, fallback)), None
+
+
 @app.route('/listings/<int:id>/photos/upload', methods=['POST'])
 def listing_photo_upload(id):
     listing = Listing.query.get_or_404(id)
     files = request.files.getlist('photos')
-    count = 0
+    count, rejected = 0, []
     for f in files:
-        if f and f.filename:
-            data = f.read()
-            ph = ListingPhoto(
-                listing_id=id,
-                file_data=data,
-                filename=f.filename,
-                file_mime=f.content_type or 'image/jpeg',
-                file_size=len(data),
-                sort_order=len(listing.photos),
-            )
-            db.session.add(ph)
-            count += 1
+        if not (f and f.filename):
+            continue
+        ok, why = _read_image_upload(f)
+        if not ok:
+            rejected.append(f'{f.filename} {why}')
+            continue
+        data, mime, name = ok
+        ph = ListingPhoto(
+            listing_id=id,
+            file_data=data,
+            filename=name,
+            file_mime=mime,
+            file_size=len(data),
+            sort_order=len(listing.photos) + count,
+        )
+        db.session.add(ph)
+        count += 1
     db.session.commit()
-    flash(f'{count} photo(s) uploaded.', 'success')
+    if count:
+        flash(f'{count} photo(s) uploaded.', 'success')
+    for why in rejected:
+        flash(f'Not uploaded — {why}.', 'warning')
     return redirect(_listing_media_return(listing))
 
 
@@ -2231,9 +2409,12 @@ def listing_brochure_upload(id):
     listing = Listing.query.get_or_404(id)
     f = request.files.get('brochure')
     if f and f.filename:
-        listing.brochure_data     = f.read()
-        listing.brochure_filename = f.filename
-        listing.brochure_size     = len(listing.brochure_data)
+        ok, why = _read_pdf_upload(f, 'brochure.pdf')
+        if not ok:
+            flash(f'Brochure not uploaded — the file {why}.', 'warning')
+            return _listing_media_back(id)
+        listing.brochure_data, listing.brochure_filename = ok
+        listing.brochure_size = len(listing.brochure_data)
         db.session.commit()
         flash('Brochure uploaded.', 'success')
     return _listing_media_back(id)
@@ -2267,9 +2448,12 @@ def listing_epc_upload(id):
     f = request.files.get('epc')
     if f and f.filename:
         # Uploading again simply replaces what is there — same as the brochure.
-        listing.epc_data     = f.read()
-        listing.epc_filename = f.filename
-        listing.epc_size     = len(listing.epc_data)
+        ok, why = _read_pdf_upload(f, 'epc.pdf')
+        if not ok:
+            flash(f'EPC not uploaded — the file {why}.', 'warning')
+            return _listing_media_back(id)
+        listing.epc_data, listing.epc_filename = ok
+        listing.epc_size = len(listing.epc_data)
         db.session.commit()
         flash('EPC uploaded.', 'success')
     return _listing_media_back(id)
@@ -2304,9 +2488,18 @@ def listing_floorplan_upload(id):
     listing = Listing.query.get_or_404(id)
     f = request.files.get('floor_plan')
     if f and f.filename:
-        listing.floor_plan_data     = f.read()
-        listing.floor_plan_filename = f.filename
-        listing.floor_plan_size     = len(listing.floor_plan_data)
+        # A floor plan may be a PDF or an image.
+        ok, why = _read_pdf_upload(f, 'floorplan.pdf')
+        if not ok:
+            f.stream.seek(0)
+            img_ok, img_why = _read_image_upload(f)
+            if not img_ok:
+                flash(f'Floor plan not uploaded — the file {why} and {img_why}.', 'warning')
+                return _listing_media_back(id)
+            data, _mime, name = img_ok
+            ok = (data, name)
+        listing.floor_plan_data, listing.floor_plan_filename = ok
+        listing.floor_plan_size = len(listing.floor_plan_data)
         db.session.commit()
         flash('Floor plan uploaded.', 'success')
     return _listing_media_back(id)
@@ -2483,6 +2676,10 @@ def project_enquiry_schedule(id):
 
 # ── Website → DB: inbound enquiry webhook ────────────────────────────────────
 
+# Submissions per address per hour on the public enquiry endpoint.
+_ENQUIRY_HITS = {}
+ENQUIRY_RATE_LIMIT = 12
+
 def match_property_from_text(ref):
     """Find the Property a free-text reference points at.
 
@@ -2512,6 +2709,24 @@ def api_enquiry():
         return '', 204
 
     data = request.get_json(force=True, silent=True) or request.form.to_dict()
+
+    # This endpoint is open to the internet so the website can post to it.
+    # Cap how often one address may submit, so nobody can flood the CRM with
+    # junk contacts and enquiries.
+    key = _login_key()
+    now = datetime.utcnow()
+    recent = [t for t in _ENQUIRY_HITS.get(key, []) if now - t < timedelta(hours=1)]
+    if len(recent) >= ENQUIRY_RATE_LIMIT:
+        return jsonify({'ok': False, 'error': 'Too many enquiries — please call us on 020 7349 6666.'}), 429
+    recent.append(now)
+    _ENQUIRY_HITS[key] = recent
+    if len(_ENQUIRY_HITS) > 5000:                     # keep the dict bounded
+        for k in [k for k, v in _ENQUIRY_HITS.items() if not v or now - v[-1] > timedelta(hours=2)]:
+            _ENQUIRY_HITS.pop(k, None)
+
+    # Honeypot: a field real people never see and never fill in.
+    if (data.get('company_website') or '').strip():
+        return jsonify({'ok': True}), 200
 
     raw_name     = (data.get('from_name')   or '').strip()
     email        = (data.get('from_email')  or '').strip() or None
@@ -2990,97 +3205,6 @@ def admin_zoopla_push():
 <p>{msg}</p>
 <p style="color:#6b7280;font-size:13px">Sent {len(live)} live listing(s). Zoopla ingests the feed on its own schedule, so changes appear on the portal after their next pickup — not instantly.</p>
 <p><a href="{url_for('admin_zoopla')}" style="display:inline-block;margin-top:10px;background:#0e1f44;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none">← Back to Zoopla feed</a></p>
-</body>'''
-
-
-@app.route('/admin/cleanup-keep-two', methods=['GET', 'POST'])
-def admin_cleanup_keep_two():
-    """One-click cleanup: keep ONE commercial + ONE residential website
-    listing (and their parent projects) and delete every other project and
-    listing. Properties, transactions, contacts and enquiries are left intact
-    (enquiries are simply unlinked from any deleted project). GET shows a
-    confirmation preview; POST performs the deletion."""
-
-    def pick(cat):
-        q = (Listing.query.filter_by(website_category=cat, website_listed=True)
-                          .order_by(Listing.id).first())
-        if not q:
-            q = Listing.query.filter_by(website_category=cat).order_by(Listing.id).first()
-        return q
-
-    keepers = [l for l in (pick('commercial'), pick('residential')) if l]
-    keep_listing_ids = {l.id for l in keepers}
-    keep_project_ids = {l.project_id for l in keepers if l.project_id}
-
-    def _title(l):
-        try:
-            return l.display_title
-        except Exception:
-            return f'Listing #{l.id}'
-
-    if request.method == 'POST':
-        del_projects = [p for p in Project.query.all() if p.id not in keep_project_ids]
-        del_project_ids = {p.id for p in del_projects}
-
-        # Unlink enquiries from projects we're about to delete (FK is nullable
-        # but has no cascade, so the DB would otherwise block the delete).
-        if del_project_ids:
-            Enquiry.query.filter(Enquiry.project_id.in_(del_project_ids)).update(
-                {'project_id': None}, synchronize_session=False)
-
-        # Delete listings that are not kept and would not already be removed by
-        # the project cascade (orphans, or listings under a kept project).
-        removed_listings = 0
-        for l in Listing.query.all():
-            if l.id not in keep_listing_ids and (l.project_id is None or l.project_id in keep_project_ids):
-                db.session.delete(l)
-                removed_listings += 1
-
-        # Delete the non-kept projects (cascades their own listings, photos,
-        # documents, tasks, applicants, services and notes).
-        for p in del_projects:
-            db.session.delete(p)
-
-        db.session.commit()
-
-        kept_html = ''.join(f'<li>{_title(l)} <span style="color:#6b7280">({l.website_category})</span></li>' for l in keepers)
-        return f'''<!doctype html><meta charset=utf-8>
-<body style="font-family:system-ui,Arial;max-width:640px;margin:60px auto;padding:0 20px;color:#111">
-<h2 style="color:#1b7a3f">Done — database cleaned up</h2>
-<p>Deleted <b>{len(del_projects)}</b> project(s) and a total of <b>{removed_listings}</b> stand-alone listing(s) (plus any listings under the deleted projects).</p>
-<p>Kept these listings:</p>
-<ul>{kept_html or '<li>(none found to keep)</li>'}</ul>
-<p style="color:#6b7280;font-size:14px">Properties, transactions, contacts and enquiries were left untouched.</p>
-<p><a href="{url_for('projects_list')}" style="display:inline-block;margin-top:10px;background:#1a2e4a;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none">← Back to projects</a></p>
-</body>'''
-
-    # GET — confirmation preview
-    total_projects = Project.query.count()
-    total_listings = Listing.query.count()
-    del_projects_n = total_projects - len(keep_project_ids)
-    kept_html = ''.join(
-        f'<li>{_title(l)} <span style="color:#6b7280">({l.website_category})</span></li>'
-        for l in keepers) or '<li style="color:#b91c1c">No commercial/residential listing found to keep!</li>'
-    return f'''<!doctype html><meta charset=utf-8>
-<body style="font-family:system-ui,Arial;max-width:640px;margin:60px auto;padding:0 20px;color:#111">
-<h2 style="color:#b91c1c">⚠ Clean up database — please confirm</h2>
-<p>This will <b>keep just two listings</b> (one commercial, one residential) and their projects, and <b>permanently delete</b> everything else.</p>
-<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:14px 18px;margin:18px 0">
-  <div style="font-weight:700;color:#1b7a3f;margin-bottom:6px">Will be KEPT</div>
-  <ul style="margin:0">{kept_html}</ul>
-</div>
-<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:14px 18px;margin:18px 0">
-  <div style="font-weight:700;color:#b91c1c;margin-bottom:6px">Will be DELETED</div>
-  <ul style="margin:0">
-    <li>{del_projects_n} of {total_projects} projects</li>
-    <li>{total_listings - len(keep_listing_ids)} of {total_listings} listings (and their uploaded photos)</li>
-  </ul>
-</div>
-<p style="color:#6b7280;font-size:14px">Properties, transactions, contacts and enquiries are left intact. This cannot be undone.</p>
-<form method="post" style="margin-top:24px">
-  <button type="submit" style="background:#b91c1c;color:#fff;border:none;padding:12px 22px;border-radius:6px;font-size:15px;font-weight:600;cursor:pointer">Yes, delete everything except those two</button>
-  <a href="{url_for('projects_list')}" style="margin-left:14px;color:#374151">Cancel</a>
-</form>
 </body>'''
 
 
