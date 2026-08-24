@@ -271,6 +271,7 @@ class Enquiry(db.Model):
     subject = db.Column(db.String(255), nullable=False)
     enquiry_type = db.Column(db.String(50))
     status = db.Column(db.String(20), default='Open')  # Open, Won, Lost, On Hold
+    source = db.Column(db.String(30))  # Website / Zoopla / Rightmove / Email / Manual
     property_id = db.Column(db.Integer, db.ForeignKey('properties.id'), nullable=True)
     contact_id = db.Column(db.Integer, db.ForeignKey('contacts.id'), nullable=True)
     organisation_id = db.Column(db.Integer, db.ForeignKey('organisations.id'), nullable=True)
@@ -1752,8 +1753,17 @@ def email_sync_trigger():
         flash('Email not configured — set MS_TENANT_ID, MS_CLIENT_ID, MS_CLIENT_SECRET in Railway variables.', 'warning')
         return redirect(request.referrer or url_for('dashboard'))
     try:
-        count = sync_inbox(db, Contact, Enquiry, EnquiryNote)
-        flash(f'Synced {count} new email(s).', 'success' if count else 'info')
+        counts = sync_inbox(db, Contact, Enquiry, EnquiryNote)
+        leads, emails = counts['leads'], counts['emails']
+        if leads and emails:
+            msg = f'Synced {emails} new email(s) and {leads} portal lead(s).'
+        elif leads:
+            msg = f'Synced {leads} new portal lead(s).'
+        elif emails:
+            msg = f'Synced {emails} new email(s).'
+        else:
+            msg = 'No new emails.'
+        flash(msg, 'success' if (leads or emails) else 'info')
     except Exception as ex:
         flash(f'Email sync failed: {ex}', 'danger')
     return redirect(request.referrer or url_for('enquiries_list'))
@@ -2232,6 +2242,29 @@ def listing_floorplan_download(id):
 
 # ── Website → DB: inbound enquiry webhook ────────────────────────────────────
 
+def match_property_from_text(ref):
+    """Find the Property a free-text reference points at.
+
+    Used by the website enquiry form ("Title — Address, POSTCODE") and by portal
+    lead emails, whose property line is similar but not identical. Postcode is
+    tried first because it is the only part that is reliably exact.
+    """
+    ref = (ref or '').strip()
+    if not ref:
+        return None
+    pc = re.search(r'[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}', ref.upper())
+    if pc:
+        prop = Property.query.filter(Property.postcode.ilike(pc.group(0))).first()
+        if prop:
+            return prop
+    tail = ref.split('—')[-1].strip()
+    if tail:
+        prop = Property.query.filter(Property.address.ilike(f'%{tail[:40]}%')).first()
+        if prop:
+            return prop
+    return Property.query.filter(Property.address.ilike(f'%{ref[:40]}%')).first()
+
+
 @app.route('/api/enquiry', methods=['POST', 'OPTIONS'])
 def api_enquiry():
     if request.method == 'OPTIONS':
@@ -2292,19 +2325,7 @@ def api_enquiry():
     # The website sends "Title — Address, POSTCODE", so match on the postcode
     # first (most reliable), then the address portion after the dash, then a
     # final loose fallback on the whole string.
-    prop = None
-    if property_ref:
-        import re
-        ref = property_ref.strip()
-        pc = re.search(r'[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}', ref.upper())
-        if pc:
-            prop = Property.query.filter(Property.postcode.ilike(pc.group(0))).first()
-        if not prop:
-            tail = ref.split('—')[-1].strip()
-            if tail:
-                prop = Property.query.filter(Property.address.ilike(f'%{tail[:40]}%')).first()
-        if not prop:
-            prop = Property.query.filter(Property.address.ilike(f'%{ref[:40]}%')).first()
+    prop = match_property_from_text(property_ref) if property_ref else None
 
     # Find the active project for that property (if any)
     proj = None
@@ -2329,6 +2350,7 @@ def api_enquiry():
         subject=subject,
         enquiry_type=etype_map.get(interest, 'Other'),
         status='Open',
+        source='Website',
         contact_id=contact.id if contact else None,
         property_id=prop.id if prop else None,
         project_id=proj.id if proj else None,
@@ -2953,6 +2975,7 @@ def _migrate_enquiry_columns():
             ('req_budget_min','REAL'),('req_budget_max','REAL'),
             ('req_budget_unit','TEXT'),('req_use_class','TEXT'),('req_category','TEXT'),
             ('last_contact_date','TEXT'),('next_follow_up','TEXT'),
+            ('source','TEXT'),
         ]
         with db.engine.connect() as conn:
             for col_name, col_def in new_cols:

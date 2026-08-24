@@ -6,6 +6,12 @@
 
 {% block topbar_actions %}
 
+  <form method="post" action="{{ url_for('email_sync_trigger') }}" style="display:inline;margin:0">
+
+    <button type="submit" class="btn btn-secondary btn-sm" title="Check the mailbox now for Zoopla leads and client emails">Check Inbox</button>
+
+  </form>
+
   <a href="{{ url_for('enquiry_new') }}" class="btn btn-primary btn-sm">+ New Enquiry</a>
 
 {% endblock %}
@@ -58,6 +64,8 @@
 
         <th>Subject</th>
 
+        <th>Source</th>
+
         <th>Type</th>
 
         <th>Property</th>
@@ -85,6 +93,8 @@
       <tr>
 
         <td><strong>{{ e.subject }}</strong></td>
+
+        <td><span class="badge badge-{{ 'portal' if e.source in ['Zoopla','Rightmove','OnTheMarket'] else 'muted' }}">{{ e.source or '—' }}</span></td>
 
         <td>{{ e.enquiry_type or '—' }}</td>
 

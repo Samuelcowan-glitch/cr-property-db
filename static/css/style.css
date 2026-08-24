@@ -188,6 +188,8 @@ a:hover { text-decoration: underline; color: var(--blue-l); }
 .badge-complete { background: #e8eaed; color: #5f6368; }
 .badge-hold     { background: #fff3e0; color: #e65100; }
 .badge-capital  { background: #e8f0fe; color: #1a73e8; }
+.badge-portal   { background: #eae6f7; color: #4b2ea8; }  /* Zoopla / Rightmove lead */
+.badge-muted    { background: #f1f3f4; color: #80868b; }
 .badge-leasehold{ background: #fce8e6; color: #c62828; }
 .badge-open     { background: var(--orange-bg); color: var(--orange); }
 .badge-won      { background: #e6f4ea; color: #1b7a3f; }

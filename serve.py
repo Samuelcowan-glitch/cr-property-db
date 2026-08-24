@@ -1,12 +1,18 @@
 import os
 from waitress import serve
-from app import app, db, _migrate_project_columns, _migrate_listing_columns, _migrate_listings_table_columns, _migrate_email_columns, _migrate_crm_columns, _ensure_default_user, _seed_project_listings, Property
+from app import (app, db, _migrate_project_columns, _migrate_listing_columns,
+                 _migrate_listings_table_columns, _migrate_email_columns,
+                 _migrate_enquiry_columns, _migrate_document_columns,
+                 _migrate_crm_columns, _ensure_default_user, _seed_project_listings,
+                 Property, Contact, Enquiry, EnquiryNote)
 
 with app.app_context():
     db.create_all()
     _migrate_project_columns()
     _migrate_listing_columns()
     _migrate_listings_table_columns()
+    _migrate_document_columns()
+    _migrate_enquiry_columns()
     _migrate_email_columns()
     _migrate_crm_columns()
     _ensure_default_user()
@@ -21,6 +27,14 @@ with app.app_context():
             _seed_project_listings()
         except Exception as e:
             print(f"Seed warning: {e}")
+
+# Poll the mailbox for portal leads (Zoopla etc.) and client emails. Silent
+# no-op when the Microsoft 365 variables are not set.
+try:
+    from email_sync import start_background_sync
+    start_background_sync(app, db, Contact, Enquiry, EnquiryNote)
+except Exception as e:
+    print(f'Email sync not started: {e}')
 
 port = int(os.environ.get('PORT', 8080))
 print("=" * 50)
