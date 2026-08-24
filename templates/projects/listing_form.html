@@ -257,7 +257,7 @@
 </div>
 
 <!-- ══ MEDIA — always visible ══ -->
-{{ sec('media', 'Photos, Brochure & Floor Plan') }}
+{{ sec('media', 'Photos, Brochure, Floor Plan & EPC') }}
 <div style="padding:14px 0">
 
   {% if l %}
@@ -319,12 +319,32 @@
       </div>
     </form>
   </div>
+  <!-- EPC -->
+  <div style="border:1px solid #e5e7eb;border-radius:6px;padding:12px;margin-top:10px">
+    <div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:6px">📊 EPC (PDF)</div>
+    {% if l.epc_filename %}
+    <div style="display:flex;align-items:center;gap:8px;background:#f0fdf4;border:1px solid #86efac;border-radius:5px;padding:8px;margin-bottom:8px;flex-wrap:wrap">
+      <span style="flex:1;min-width:120px;font-size:12.5px;word-break:break-word">{{ l.epc_filename }}</span>
+      <a href="{{ url_for('listing_epc_download', id=l.id, inline=1) }}" class="btn btn-sm btn-outline" target="_blank">View</a>
+      <a href="{{ url_for('listing_epc_download', id=l.id) }}" class="btn btn-sm btn-outline">Download</a>
+      <form method="post" action="{{ url_for('listing_epc_delete', id=l.id) }}" class="confirm-delete" style="display:inline">
+        <button type="submit" class="btn btn-sm btn-danger">Remove</button>
+      </form>
+    </div>
+    {% endif %}
+    <form method="post" action="{{ url_for('listing_epc_upload', id=l.id) }}" enctype="multipart/form-data">
+      <div style="display:flex;gap:8px">
+        <input type="file" name="epc" accept=".pdf,application/pdf" style="flex:1;font-size:12px">
+        <button type="submit" class="btn btn-primary btn-sm">{{ 'Replace' if l.epc_filename else 'Upload' }}</button>
+      </div>
+    </form>
+  </div>
 
   {% else %}
   <!-- New listing — explain photos after save -->
   <div style="border:2px dashed #f5c2c7;border-radius:8px;padding:24px;text-align:center;background:#fdecee">
     <div style="font-size:28px;margin-bottom:8px">📷</div>
-    <div style="font-size:13px;font-weight:600;color:#e0303f;margin-bottom:4px">Photos, brochure and floor plan</div>
+    <div style="font-size:13px;font-weight:600;color:#e0303f;margin-bottom:4px">Photos, brochure, floor plan and EPC</div>
     <div style="font-size:12px;color:#c52532">Save the listing first using the button below — you can then upload all media from the edit screen.</div>
   </div>
   {% endif %}

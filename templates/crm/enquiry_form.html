@@ -21,7 +21,14 @@
     <div class="form-grid" style="margin-bottom:16px">
 
       <div class="form-group span-2">
-        <label for="subject">Subject *</label>
+        <label for="subject" style="display:flex;align-items:center;gap:8px">
+          Subject *
+          <span id="subject-auto-hint" style="font-weight:400;font-size:11.5px;color:#9aa0a6" hidden>
+            filled in from Enquiry Type and Property — edit freely
+          </span>
+          <button type="button" id="subject-regen" class="btn btn-sm btn-outline"
+                  style="margin-left:auto;font-size:11px;padding:2px 8px" hidden>Regenerate</button>
+        </label>
         <input type="text" id="subject" name="subject" required
                value="{{ enquiry.subject if enquiry else '' }}"
                placeholder="e.g. Rent Review enquiry — Unit 4 Industrial Estate">
@@ -218,4 +225,70 @@
   <form id="enquiry-delete-form" method="post" action="{{ url_for('enquiry_delete', id=enquiry.id) }}" class="confirm-delete"></form>
   {% endif %}
 </div>
+<script>
+/* Subject auto-fill — "Enquiry Type – Property".
+   Only fills once both values exist, and never overwrites something the user
+   has typed: editing the field marks it manual, clearing it hands control back,
+   and Regenerate forces a rebuild. */
+(function () {
+  var subject = document.getElementById('subject');
+  var typeSel = document.getElementById('enquiry_type');
+  var propSel = document.getElementById('property_id');
+  var hint    = document.getElementById('subject-auto-hint');
+  var regen   = document.getElementById('subject-regen');
+  if (!subject || !typeSel || !propSel) return;
+
+  // A subject saved earlier belongs to the user until they clear it.
+  var manual = subject.value.trim() !== '';
+  var lastAuto = null;
+
+  function propertyLabel() {
+    var opt = propSel.options[propSel.selectedIndex];
+    if (!propSel.value || !opt) return '';
+    // Option text is "address, postcode" — tidy up a missing half rather than
+    // producing "Subject – , SW6 4SE" or a trailing comma.
+    var parts = opt.text.split(',').map(function (p) { return p.trim(); })
+                   .filter(function (p) { return p.length; });
+    return parts.join(', ');
+  }
+
+  function build() {
+    var type = typeSel.value.trim();
+    var prop = propertyLabel();
+    if (!type || !prop) return null;
+    return type + ' \u2013 ' + prop;
+  }
+
+  function apply(force) {
+    var next = build();
+    regen.hidden = !next;
+    if (!next) { hint.hidden = true; return; }
+    if (!force && manual) { hint.hidden = true; return; }
+    subject.value = next;
+    lastAuto = next;
+    manual = false;
+    hint.hidden = false;
+  }
+
+  typeSel.addEventListener('change', function () { apply(false); });
+  propSel.addEventListener('change', function () { apply(false); });
+
+  subject.addEventListener('input', function () {
+    var v = subject.value.trim();
+    if (v === '') {          // cleared — let the auto-fill take over again
+      manual = false;
+      apply(false);
+    } else if (v !== lastAuto) {
+      manual = true;
+      hint.hidden = true;
+    }
+  });
+
+  regen.addEventListener('click', function () { apply(true); });
+
+  // Show Regenerate straight away when an edit already has both values.
+  regen.hidden = !build();
+})();
+</script>
+
 {% endblock %}

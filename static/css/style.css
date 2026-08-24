@@ -484,3 +484,62 @@ textarea { resize: vertical; min-height: 76px; }
 /* Type toggle */
 .type-toggle { display: flex; gap: 10px; margin-bottom: 4px; }
 .type-toggle label { display: flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: normal; cursor: pointer; }
+
+/* ── Searchable dropdowns (static/js/searchable-select.js) ──────────────────
+   The native <select> stays in the DOM holding the value; it is hidden and the
+   button below stands in for it, so form posts and existing scripts are
+   unaffected. Sized to match the other form controls exactly. */
+.ss-wrap { position: relative; width: 100%; }
+select.ss-native {
+  position: absolute; opacity: 0; pointer-events: none;
+  width: 100%; height: 1px; padding: 0; border: 0; margin: 0;
+}
+.ss-button {
+  width: 100%; text-align: left; cursor: pointer;
+  border: 1px solid var(--grey-200); border-radius: 5px; padding: 7px 26px 7px 10px;
+  font-size: 12.5px; font-family: inherit; color: var(--text);
+  background: var(--white); transition: border-color .12s;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  position: relative; line-height: 1.45;
+}
+.ss-button::after {
+  content: ""; position: absolute; right: 10px; top: 50%; margin-top: -2px;
+  border: 4px solid transparent; border-top-color: var(--grey-400);
+}
+.ss-button:hover { border-color: var(--grey-400); }
+.ss-button:focus-visible,
+.ss-wrap .ss-button[aria-expanded="true"] {
+  outline: none; border-color: var(--orange); box-shadow: 0 0 0 2px rgba(224,48,63,.12);
+}
+.ss-button.ss-placeholder { color: var(--grey-400); }
+
+.ss-panel {
+  position: absolute; z-index: 60; left: 0; right: 0; top: calc(100% + 4px);
+  background: var(--white); border: 1px solid var(--grey-200); border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(14,31,68,.14); overflow: hidden;
+}
+.ss-panel.ss-up { top: auto; bottom: calc(100% + 4px); }
+.ss-search { padding: 8px; border-bottom: 1px solid var(--grey-100); background: var(--grey-50); }
+.ss-input {
+  width: 100%; border: 1px solid var(--grey-200); border-radius: 5px; padding: 6px 9px;
+  font-size: 12.5px; font-family: inherit; color: var(--text); background: var(--white);
+}
+.ss-input:focus { outline: none; border-color: var(--orange); box-shadow: 0 0 0 2px rgba(224,48,63,.12); }
+.ss-list { max-height: 240px; overflow-y: auto; }
+.ss-option {
+  padding: 7px 10px; font-size: 12.5px; cursor: pointer; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ss-option.is-active { background: var(--grey-50); }
+.ss-option.is-selected { font-weight: 600; color: var(--navy); }
+.ss-option.is-disabled { color: var(--grey-400); cursor: default; }
+.ss-group {
+  padding: 6px 10px 3px; font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .4px; color: var(--grey-400);
+}
+.ss-empty, .ss-more { padding: 10px; font-size: 12px; color: var(--grey-400); }
+.ss-more { border-top: 1px solid var(--grey-100); background: var(--grey-50); }
+
+/* .btn sets display:inline-flex, which beat the browser's own [hidden] rule and
+   left hidden buttons on screen. */
+[hidden] { display: none !important; }

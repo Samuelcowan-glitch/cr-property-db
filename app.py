@@ -475,6 +475,9 @@ class Listing(db.Model):
     floor_plan_data    = db.Column(db.LargeBinary)
     floor_plan_filename= db.Column(db.String(255))
     floor_plan_size    = db.Column(db.Integer)
+    epc_data           = db.Column(db.LargeBinary)
+    epc_filename       = db.Column(db.String(255))
+    epc_size           = db.Column(db.Integer)
 
     project  = db.relationship('Project',  backref=db.backref('project_listings', lazy=True, cascade='all, delete-orphan'))
     prop     = db.relationship('Property', backref=db.backref('unit_listings', lazy=True))
@@ -2206,6 +2209,44 @@ def listing_brochure_download(id):
                      download_name=listing.brochure_filename or 'brochure.pdf')
 
 
+@app.route('/listings/<int:id>/epc/upload', methods=['POST'])
+def listing_epc_upload(id):
+    listing = Listing.query.get_or_404(id)
+    f = request.files.get('epc')
+    if f and f.filename:
+        # Uploading again simply replaces what is there — same as the brochure.
+        listing.epc_data     = f.read()
+        listing.epc_filename = f.filename
+        listing.epc_size     = len(listing.epc_data)
+        db.session.commit()
+        flash('EPC uploaded.', 'success')
+    return _listing_media_back(id)
+
+
+@app.route('/listings/<int:id>/epc/delete', methods=['POST'])
+def listing_epc_delete(id):
+    listing = Listing.query.get_or_404(id)
+    listing.epc_data = listing.epc_filename = listing.epc_size = None
+    db.session.commit()
+    flash('EPC removed.', 'info')
+    return _listing_media_back(id)
+
+
+@app.route('/listings/<int:id>/epc/download')
+def listing_epc_download(id):
+    from flask import send_file
+    import io
+    listing = Listing.query.get_or_404(id)
+    if not listing.epc_data:
+        flash('No EPC uploaded.', 'warning')
+        return redirect(url_for('listing_edit', id=id))
+    # ?inline=1 opens it in the browser (the View button); otherwise download.
+    inline = request.args.get('inline') == '1'
+    return send_file(io.BytesIO(listing.epc_data),
+                     mimetype='application/pdf', as_attachment=not inline,
+                     download_name=listing.epc_filename or 'epc.pdf')
+
+
 @app.route('/listings/<int:id>/floorplan/upload', methods=['POST'])
 def listing_floorplan_upload(id):
     listing = Listing.query.get_or_404(id)
@@ -2635,7 +2676,10 @@ def api_listings():
                 'lat':           l.lat or p.lat,
                 'lng':           l.lng or p.lng,
                 'added':         l.created_at.strftime('%Y-%m-%d'),
-                'photo':         l.photo_id or p.photo_id or 'photo-1497366216548-37526070297c',
+                # Deliberately null when nothing has been uploaded. This used to
+                # fall back to a stock Unsplash id, so a listing with no
+                # photographs showed a stranger's building on the website.
+                'photo':         None,
                 'photos':        photos,
                 'blurb':         l.blurb or p.blurb or p.description or '',
                 'beds':          l.beds or p.beds,
@@ -3069,6 +3113,9 @@ def _migrate_listings_table_columns():
         ('floor_plan_data',      'BYTEA'),
         ('floor_plan_filename',  'TEXT'),
         ('floor_plan_size',      'INTEGER'),
+        ('epc_data',             'BYTEA'),
+        ('epc_filename',         'TEXT'),
+        ('epc_size',             'INTEGER'),
     ]
     with db.engine.connect() as conn:
         for col_name, col_def in new_cols:
