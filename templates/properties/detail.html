@@ -26,20 +26,52 @@
 <div class="overview-grid" style="margin-bottom:24px">
 
   <!-- Left: property details (mirrors 04.04 General) -->
+  <form method="post" action="{{ url_for('property_edit', id=prop.id) }}" data-inline-edit>
+  <input type="hidden" name="next" value="{{ url_for('property_detail', id=prop.id) }}">
   <div class="box">
     <div class="box-head">
       <span class="box-title">04.04 General</span>
-      <a href="{{ url_for('property_edit', id=prop.id) }}" class="btn btn-sm btn-outline">Edit</a>
+      <span class="rec-save">
+        <span data-save-status></span>
+        <button type="submit" class="btn btn-sm btn-primary btn-save" data-save>Save</button>
+      </span>
     </div>
-    <table class="detail-table">
-      <tr><td>Address</td><td>{{ prop.address }}</td></tr>
-      <tr><td>Postcode</td><td>{{ prop.postcode }}</td></tr>
-      <tr><td>Property Type</td><td>{{ prop.property_type or '—' }}</td></tr>
-      <tr><td>Floor Area</td><td>{{ prop.display_size }}</td></tr>
-      <tr><td>Description</td><td>{{ prop.description or '—' }}</td></tr>
-      <tr><td>Added</td><td>{{ prop.created_at.strftime('%d %b %Y') }}</td></tr>
-    </table>
+    <div class="frow">
+      <div class="fcell fcell--label">Address</div>
+      <div class="fcell fcell--edit"><input type="text" name="address" value="{{ prop.address }}" required></div>
+    </div>
+    <div class="frow">
+      <div class="fcell fcell--label">Postcode</div>
+      <div class="fcell fcell--edit"><input type="text" name="postcode" value="{{ prop.postcode }}" required></div>
+    </div>
+    <div class="frow">
+      <div class="fcell fcell--label">Property type</div>
+      <div class="fcell fcell--edit"><input type="text" name="property_type" value="{{ prop.property_type or '' }}" placeholder="Not set"></div>
+    </div>
+    <div class="frow">
+      <div class="fcell fcell--label">Floor area</div>
+      <div class="fcell fcell--edit"><input type="number" step="any" name="size" value="{{ prop.size|int if prop.size else '' }}" placeholder="sq ft"></div>
+      <div class="fcell fcell--label w-narrow">Basis</div>
+      <div class="fcell fcell--edit">
+        <select name="measurement_type">
+          <option value="">—</option>
+          {% for m in ['NIA','GIA','GEA'] %}
+          <option value="{{ m }}" {{ 'selected' if prop.measurement_type == m else '' }}>{{ m }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="frow">
+      <div class="fcell fcell--label fcell--top">Description</div>
+      <div class="fcell fcell--edit"><textarea name="description" placeholder="Not set">{{ prop.description or '' }}</textarea></div>
+    </div>
+    <div class="frow">
+      {# System-generated: shown, never editable. #}
+      <div class="fcell fcell--label">Added</div>
+      <div class="fcell is-empty">{{ prop.created_at.strftime('%d %b %Y') }}</div>
+    </div>
   </div>
+  </form>
 
   <!-- Right: key documents placeholder + quick stats -->
   <div>

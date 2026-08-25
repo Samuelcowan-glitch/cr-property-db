@@ -964,19 +964,16 @@ def property_detail(id):
 def property_edit(id):
     prop = Property.query.get_or_404(id)
     if request.method == 'POST':
-        prop.address = request.form['address']
-        prop.postcode = request.form['postcode'].upper()
-        prop.property_type = request.form.get('property_type')
-        size_raw = request.form.get('size', '').strip()
-        prop.size = float(size_raw) if size_raw else None
-        prop.measurement_type = request.form.get('measurement_type')
-        prop.description = request.form.get('description')
-        prop.residential_use = request.form.get('residential_use') or None
+        # Presence-guarded so the property record page, which shows part of the
+        # record, cannot blank what it does not display.
         # Website listing details (category/price/photos/brochure) are managed per
         # instruction on the project's Website Listing tab — not on the Property.
+        apply_form_fields(prop, request.form, PROPERTY_FIELDS)
+        if 'postcode' in request.form:
+            prop.postcode = (request.form.get('postcode') or '').upper()
         db.session.commit()
         flash('Property updated.', 'success')
-        return redirect(url_for('property_detail', id=prop.id))
+        return _back_to('property_detail', id=prop.id)
     return render_template('properties/form.html', prop=prop)
 
 
@@ -1762,6 +1759,16 @@ CONTACT_FIELDS = [
     ('assigned_agent',    'assigned_agent',    _ftext),
     ('last_contact_date', 'last_contact_date', _parse_date),
     ('next_follow_up',    'next_follow_up',    _parse_date),
+]
+
+
+PROPERTY_FIELDS = [
+    ('address',          'address',          None),
+    ('property_type',    'property_type',    _ftext),
+    ('size',             'size',             _fnum),
+    ('measurement_type', 'measurement_type', _ftext),
+    ('description',      'description',      _ftext),
+    ('residential_use',  'residential_use',  _ftext),
 ]
 
 
