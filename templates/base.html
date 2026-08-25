@@ -4,6 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Property DB{% endblock %} — Cowan & Rutter</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/crm-grid.css') }}">
 </head>
@@ -21,57 +24,37 @@
     </div>
 
     <div class="sidebar-nav">
+      {# Primary navigation, in the order the organiser reference uses. #}
       <a href="{{ url_for('dashboard') }}" class="{{ 'active' if request.endpoint == 'dashboard' else '' }}">
-        <span class="nav-icon">⊞</span> Dashboard
+        <span class="nav-icon">▦</span> Organiser
       </a>
-
-      <div class="nav-divider"></div>
-      <div class="nav-section-label">Property</div>
-
-      <a href="{{ url_for('properties_list') }}" class="{{ 'active' if 'propert' in request.endpoint and request.endpoint != 'property_new' else '' }}">
+      <a href="{{ url_for('diary') }}" class="{{ 'active' if request.endpoint == 'diary' else '' }}">
+        <span class="nav-icon">🗓</span> Diary
+      </a>
+      <a href="{{ url_for('contacts_list', type='Tenant') }}" class="{{ 'active' if request.endpoint == 'contacts_list' and request.args.get('type') == 'Tenant' else '' }}">
+        <span class="nav-icon">👤</span> Applicants
+      </a>
+      <a href="{{ url_for('properties_list') }}" class="{{ 'active' if request.endpoint and 'propert' in request.endpoint else '' }}">
         <span class="nav-icon">🏢</span> Properties
       </a>
-      <a href="{{ url_for('property_new') }}" class="{{ 'active' if request.endpoint == 'property_new' else '' }}">
-        <span class="nav-icon">＋</span> Add Property
-      </a>
-      <a href="{{ url_for('transactions_list') }}" class="{{ 'active' if 'transaction' in request.endpoint and request.endpoint != 'transaction_new' else '' }}">
-        <span class="nav-icon">📋</span> Transactions
-      </a>
-      <a href="{{ url_for('transaction_new') }}" class="{{ 'active' if request.endpoint == 'transaction_new' else '' }}">
-        <span class="nav-icon">＋</span> Record Transaction
-      </a>
-
-      <div class="nav-divider"></div>
-      <div class="nav-section-label">Instructions</div>
-
-      <a href="{{ url_for('projects_list') }}" class="{{ 'active' if 'project' in request.endpoint and request.endpoint not in ['project_new','document_add','document_delete'] else '' }}">
+      <a href="{{ url_for('projects_list') }}" class="{{ 'active' if request.endpoint and 'project' in request.endpoint else '' }}">
         <span class="nav-icon">📁</span> Projects
       </a>
-      <a href="{{ url_for('project_new') }}" class="{{ 'active' if request.endpoint == 'project_new' else '' }}">
-        <span class="nav-icon">＋</span> New Project
+      <a href="{{ url_for('transactions_list') }}" class="{{ 'active' if request.endpoint and 'transaction' in request.endpoint else '' }}">
+        <span class="nav-icon">📋</span> Transactions
       </a>
 
+      {# Everything else stays reachable, just out of the main list. #}
       <div class="nav-divider"></div>
-      <div class="nav-section-label">CRM</div>
-
-      <a href="{{ url_for('contacts_list') }}" class="{{ 'active' if 'contact' in request.endpoint and not request.args.get('type') else '' }}">
-        <span class="nav-icon">👤</span> Contacts
-      </a>
-      <a href="{{ url_for('contacts_list', type='Landlord') }}" class="{{ 'active' if request.args.get('type') == 'Landlord' else '' }}">
-        <span class="nav-icon">🔑</span> Landlords
-      </a>
-      <a href="{{ url_for('contacts_list', type='Tenant') }}" class="{{ 'active' if request.args.get('type') == 'Tenant' else '' }}">
-        <span class="nav-icon">🏠</span> Tenants
-      </a>
-      <a href="{{ url_for('organisations_list') }}" class="{{ 'active' if 'organisation' in request.endpoint else '' }}">
-        <span class="nav-icon">🏛️</span> Organisations
-      </a>
-      <a href="{{ url_for('enquiries_list') }}" class="{{ 'active' if 'enquir' in request.endpoint else '' }}">
-        <span class="nav-icon">📩</span> Enquiries
-      </a>
-      <a href="{{ url_for('admin_zoopla') }}" class="{{ 'active' if request.endpoint and 'zoopla' in request.endpoint else '' }}">
-        <span class="nav-icon">🏷️</span> Zoopla feed
-      </a>
+      <div class="nav-section-label">More</div>
+      <a href="{{ url_for('contacts_list') }}" class="nav-more {{ 'active' if request.endpoint == 'contacts_list' and not request.args.get('type') else '' }}">Contacts</a>
+      <a href="{{ url_for('contacts_list', type='Landlord') }}" class="nav-more {{ 'active' if request.args.get('type') == 'Landlord' else '' }}">Landlords &amp; clients</a>
+      <a href="{{ url_for('organisations_list') }}" class="nav-more {{ 'active' if request.endpoint and 'organisation' in request.endpoint else '' }}">Companies</a>
+      <a href="{{ url_for('enquiries_list') }}" class="nav-more {{ 'active' if request.endpoint and 'enquir' in request.endpoint else '' }}">Enquiries</a>
+      <a href="{{ url_for('property_new') }}" class="nav-more">Add property</a>
+      <a href="{{ url_for('project_new') }}" class="nav-more">New project</a>
+      <a href="{{ url_for('transaction_new') }}" class="nav-more">Record transaction</a>
+      <a href="{{ url_for('admin_zoopla') }}" class="nav-more">Zoopla feed</a>
     </div>
 
     <div class="sidebar-footer" style="display:flex;align-items:center;justify-content:space-between;gap:8px">

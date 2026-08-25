@@ -1163,6 +1163,53 @@ def logout():
 
 # ── Properties ─────────────────────────────────────────────────────────────
 
+def _available_listings(instruction_type):
+    """Live listings for an instruction type that are still available.
+
+    Drives the To Let / For Sale panels on the organiser. Reads the existing
+    fields — no new columns — so what is shown always matches the project and
+    listing records themselves.
+    """
+    return (Listing.query
+            .join(Project, Listing.project_id == Project.id)
+            .filter(Project.instruction_type == instruction_type,
+                    Project.status == 'Active',
+                    db.func.lower(db.func.coalesce(Listing.listing_status, 'available')) == 'available')
+            .order_by(Listing.id.desc())
+            .all())
+
+
+def _diary_items(limit_days=60):
+    """Everything with a date attached, from the records that already hold them."""
+    today = date.today()
+    items = []
+    for t in ProjectTask.query.filter(ProjectTask.due_date.isnot(None),
+                                      ProjectTask.completed.is_(False)).all():
+        items.append({'on': t.due_date, 'kind': 'Task', 'what': t.title,
+                      'who': t.created_by, 'url': url_for('project_detail', id=t.project_id)})
+    for p in Project.query.filter(Project.next_call.isnot(None)).all():
+        items.append({'on': p.next_call, 'kind': 'Call', 'what': f'Call on {p.name}',
+                      'who': p.fee_earner, 'url': url_for('project_detail', id=p.id)})
+    for c in Contact.query.filter(Contact.next_follow_up.isnot(None)).all():
+        items.append({'on': c.next_follow_up, 'kind': 'Follow-up', 'what': c.full_name,
+                      'who': c.assigned_agent, 'url': url_for('contact_detail', id=c.id)})
+    for e in Enquiry.query.filter(Enquiry.next_follow_up.isnot(None),
+                                  Enquiry.status == 'Open').all():
+        items.append({'on': e.next_follow_up, 'kind': 'Enquiry', 'what': e.subject,
+                      'who': e.fee_earner, 'url': url_for('enquiry_detail', id=e.id)})
+    items.sort(key=lambda i: i['on'])
+    return items
+
+
+@app.route('/diary')
+def diary():
+    """Calls, tasks and follow-ups already recorded across the CRM, by date."""
+    items = _diary_items()
+    today = date.today()
+    return render_template('diary.html', items=items, today=today,
+                           overdue=[i for i in items if i['on'] < today])
+
+
 @app.route('/')
 def dashboard():
     prop_count = Property.query.count()
@@ -1202,11 +1249,23 @@ def dashboard():
                                 Contact.status.notin_(ARCHIVED_STATUSES + ['Inactive']))
                         .order_by(Contact.next_follow_up).all())
 
+    to_let = _available_listings('Letting')
+    for_sale = _available_listings('Sale')
+    # Landlords and clients with a call due — the third column of the organiser.
+    landlords_to_call = (Contact.query
+                         .filter(Contact.contact_type.in_(['Landlord', 'Client']),
+                                 Contact.status.notin_(ARCHIVED_STATUSES))
+                         .order_by(Contact.next_follow_up.is_(None), Contact.next_follow_up)
+                         .limit(25).all())
+    diary_items = _diary_items()[:12]
+
     recent_transactions = Transaction.query.order_by(Transaction.created_at.desc()).limit(10).all()
     enq_count = Enquiry.query.filter(Enquiry.status == 'Open').count()
     contact_count = Contact.query.count()
 
     return render_template('dashboard.html',
+                           to_let=to_let, for_sale=for_sale,
+                           landlords_to_call=landlords_to_call, diary_items=diary_items,
                            prop_count=prop_count,
                            trans_count=trans_count,
                            proj_count=proj_count,

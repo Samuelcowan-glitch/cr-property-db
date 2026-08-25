@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Diary{% endblock %}
+{% block topbar_title %}Diary{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+  <a href="{{ url_for('dashboard') }}">Organiser</a><span class="sep">/</span>
+  <span class="current">Diary</span>
+</div>
+
+{# Calls, tasks and follow-ups already held on projects, contacts and enquiries,
+   gathered by date. Nothing new is stored for this page. #}
+<div class="org-grid" style="grid-template-columns:1fr 340px">
+  <section class="org-panel">
+    <header><span>Coming up <span class="count">({{ items|length }})</span></span></header>
+    <div class="rec-table-wrap" style="border:0">
+      <table class="rec-table">
+        <thead>
+          <tr><th style="width:110px">Date</th><th style="width:110px">Type</th><th>What</th><th style="width:130px">Who</th></tr>
+        </thead>
+        <tbody>
+          {% for i in items %}
+          <tr>
+            <td class="{{ 'org-due' if i.on < today }}">{{ i.on.strftime('%d/%m/%Y') }}</td>
+            <td>{{ i.kind }}</td>
+            <td><a href="{{ i.url }}">{{ i.what }}</a></td>
+            <td>{{ i.who or '—' }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4" class="org-empty">Nothing is scheduled.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="org-panel">
+    <header><span>Overdue <span class="count">({{ overdue|length }})</span></span></header>
+    <div class="org-body">
+      {% for i in overdue %}
+      <div class="org-row">
+        <div class="org-main">
+          <a class="org-title" href="{{ i.url }}">{{ i.what }}</a>
+          <div class="org-sub">{{ i.kind }} &middot; <span class="org-due">due {{ i.on.strftime('%d/%m/%Y') }}</span></div>
+        </div>
+      </div>
+      {% else %}
+      <div class="org-empty">Nothing overdue.</div>
+      {% endfor %}
+    </div>
+  </section>
+</div>
+{% endblock %}

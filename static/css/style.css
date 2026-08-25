@@ -31,7 +31,8 @@
 
 html, body {
   height: 100%;
-  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-feature-settings: 'cv02', 'cv03', 'cv04';   /* clearer digits and letterforms */
   font-size: 13px;
   color: var(--text);
   background: var(--grey-50);
@@ -573,3 +574,72 @@ select.ss-native {
 }
 .pipeline-step.is-done .pipeline-label { color: var(--navy); }
 .pipeline-step.is-here .pipeline-label { color: var(--orange); font-weight: 700; }
+
+/* ── Typography weights, applied once for the whole CRM ────────────────────
+   Page and section headings 600, labels 500, body 400. */
+body, input, select, textarea, button, table { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif; }
+h1, h2, h3, .topbar-title, .card-title, .box-head, .form-section, .rec-title h2 { font-weight: 600; }
+label, .flab, .fcell--label, th, .nav-section-label, .badge { font-weight: 500; }
+body, td, p, .fcell, .fval { font-weight: 400; }
+
+/* ── Organiser (dashboard) ─────────────────────────────────────────────────
+   Three columns of panels, each with a coloured title bar and its own scroll
+   area, following the reference layout. */
+.org-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; align-items: start; }
+.org-col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+@media (max-width: 1250px) { .org-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 820px)  { .org-grid { grid-template-columns: 1fr; } }
+
+.org-panel { border: 1px solid var(--grey-200); background: var(--white); border-radius: 3px; overflow: hidden; }
+.org-panel > header {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  background: linear-gradient(#f0a94b, #e08e2a);
+  color: #fff; padding: 6px 10px; font-size: 12.5px; font-weight: 600;
+  border-bottom: 1px solid #c97d20;
+}
+.org-panel > header .count { font-weight: 500; opacity: .9; }
+.org-panel > header a { color: #fff; font-size: 11.5px; font-weight: 500; text-decoration: none; opacity: .92; }
+.org-panel > header a:hover { text-decoration: underline; }
+.org-body { max-height: 330px; overflow-y: auto; }
+.org-body.short { max-height: 210px; }
+
+.org-row { display: flex; gap: 9px; padding: 8px 10px; border-bottom: 1px solid var(--grey-100); }
+.org-row:last-child { border-bottom: 0; }
+.org-row:hover { background: #f7f9fc; }
+.org-thumb { width: 54px; height: 42px; flex-shrink: 0; object-fit: cover; border: 1px solid var(--grey-200); background: var(--grey-100); }
+.org-thumb.is-empty { display: flex; align-items: center; justify-content: center; font-size: 15px; color: var(--grey-400); }
+.org-main { min-width: 0; flex: 1; }
+.org-title { font-size: 12.5px; font-weight: 500; color: var(--blue); line-height: 1.35; }
+.org-title:hover { text-decoration: underline; }
+.org-meta { font-size: 11.5px; color: var(--text); margin-top: 1px; }
+.org-sub { font-size: 11.5px; color: var(--grey-600); margin-top: 1px; }
+.org-line { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--grey-600); margin-top: 2px; }
+.org-empty { padding: 18px 10px; text-align: center; color: var(--grey-400); font-size: 12px; }
+.org-due { color: var(--danger); font-weight: 500; }
+
+/* the secondary sidebar links sit quieter than the six primary ones */
+.sidebar-nav a.nav-more { font-size: 12px; padding: 6px 16px 6px 34px; color: rgba(255,255,255,.55); }
+.sidebar-nav a.nav-more:hover { color: #fff; }
+
+/* ── Narrow screens ────────────────────────────────────────────────────────
+   The sidebar is fixed at 220px, which leaves almost nothing for the record
+   on a phone. Below tablet width it becomes a strip across the top with the
+   primary items scrolling horizontally. */
+@media (max-width: 820px) {
+  /* the shell is a flex row on desktop; stack it so the strip sits on top */
+  .shell { flex-direction: column; }
+  .sidebar {
+    position: static; width: 100%; min-height: 0;
+    flex-direction: row; align-items: center; gap: 8px;
+    padding: 0 8px; overflow-x: auto; flex: 0 0 auto; height: auto;
+  }
+  .sidebar-profile { border-bottom: 0; padding: 8px; flex-shrink: 0; }
+  .sidebar-profile-info { display: none; }
+  .sidebar-nav { display: flex; flex: 1; padding: 0; overflow-x: auto; }
+  .sidebar-nav a { border-left: 0; border-bottom: 3px solid transparent; white-space: nowrap; padding: 12px 12px; }
+  .sidebar-nav a.active { border-left: 0; border-bottom-color: var(--orange); }
+  .sidebar-nav a.nav-more, .nav-divider, .nav-section-label, .sidebar-footer { display: none; }
+  .main { margin-left: 0; }
+  .stat-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .content { padding: 12px; }
+}
