@@ -105,8 +105,11 @@
       body.append('order', order);
       if (status) status.textContent = 'Saving order…';
       fetch('/listings/' + listingId + '/photos/order', {
-        method: 'POST', body: body, headers: {'X-Requested-With': 'fetch'},
-        credentials: 'same-origin'
+        method: 'POST', body: body, credentials: 'same-origin',
+        headers: {
+          'X-Requested-With': 'fetch',
+          'X-CSRF-Token': (document.querySelector('meta[name=csrf-token]') || {}).content || ''
+        },
       }).then(function (r) {
         if (status) status.textContent = r.ok ? 'Order saved' : 'Could not save the order';
         if (status) setTimeout(function () { status.textContent = ''; }, 2000);

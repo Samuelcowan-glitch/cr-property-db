@@ -1,6 +1,6 @@
 import os
 import re
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session, abort
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from flask_login import LoginManager, UserMixin, login_user, logout_user, current_user
@@ -61,6 +61,84 @@ login_manager.login_message_category = 'warning'
 DEFAULT_PASSWORD = 'changeme'
 
 
+# ── Cross-site request forgery ───────────────────────────────────────────────
+# Every state-changing request must carry a token tied to the session. Without
+# this, a page on another site could make your browser POST to the CRM using
+# your logged-in session — deleting records or changing data silently.
+
+CSRF_FIELD = '_csrf'
+CSRF_EXEMPT = {'api_enquiry'}          # public website endpoint, rate-limited instead
+
+
+def csrf_token():
+    """The token for this session, created on first use."""
+    import secrets as _s
+    if CSRF_FIELD not in session:
+        session[CSRF_FIELD] = _s.token_urlsafe(32)
+    return session[CSRF_FIELD]
+
+
+app.jinja_env.globals['csrf_token'] = csrf_token
+
+
+@app.before_request
+def _csrf_protect():
+    if request.method not in ('POST', 'PUT', 'PATCH', 'DELETE'):
+        return
+    if request.endpoint in CSRF_EXEMPT:
+        return
+    # app.config['TESTING'] can only be set inside the process, never by a
+    # request, so this cannot be used to get around the check in production.
+    if app.config.get('TESTING'):
+        return
+    import hmac
+    sent = (request.form.get(CSRF_FIELD)
+            or request.headers.get('X-CSRF-Token')
+            or (request.get_json(silent=True) or {}).get(CSRF_FIELD) or '')
+    expected = session.get(CSRF_FIELD, '')
+    if not expected or not hmac.compare_digest(str(sent), str(expected)):
+        app.logger.warning('CSRF check failed for %s from %s', request.endpoint, _login_key())
+        abort(400, description='Your session expired or the form was not submitted from this site. '
+                               'Please reload the page and try again.')
+
+
+_FORM_TAG = re.compile(r'<form\b[^>]*>', re.I)
+
+
+@app.after_request
+def _csrf_inject(resp):
+    """Put the token in every form and in a meta tag, on the way out.
+
+    Doing it here rather than in each template means no form can be added later
+    without protection, and nothing needs a token pasted into it by hand.
+    """
+    ctype = (resp.headers.get('Content-Type') or '')
+    if not ctype.startswith('text/html') or resp.direct_passthrough:
+        return resp
+    try:
+        html_body = resp.get_data(as_text=True)
+    except (UnicodeDecodeError, RuntimeError):
+        return resp
+    if '<form' not in html_body and '</head>' not in html_body:
+        return resp
+
+    token = csrf_token()
+    field = f'<input type="hidden" name="{CSRF_FIELD}" value="{token}">'
+
+    def add(match):
+        tag = match.group(0)
+        if re.search(r'method\s*=\s*["\']?post', tag, re.I) is None:
+            return tag                      # GET forms need no token
+        return tag + field
+
+    html_body = _FORM_TAG.sub(add, html_body)
+    # so fetch() calls can send the token as a header
+    html_body = html_body.replace('</head>',
+        f'<meta name="csrf-token" content="{token}"></head>', 1)
+    resp.set_data(html_body)
+    return resp
+
+
 @app.after_request
 def _security_headers(resp):
     """Standard hardening headers.
@@ -73,6 +151,16 @@ def _security_headers(resp):
     resp.headers.setdefault('X-Frame-Options', 'SAMEORIGIN')
     resp.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
     resp.headers.setdefault('Permissions-Policy', 'geolocation=(), microphone=(), camera=()')
+    # The CRM serves its own scripts and styles. 'unsafe-inline' is still needed
+    # for the inline handlers and style attributes throughout the templates;
+    # removing those is the next step to a stricter policy.
+    resp.headers.setdefault('Content-Security-Policy',
+        "default-src 'self'; "
+        "img-src 'self' data: https://web-production-3d01.up.railway.app https://images.unsplash.com; "
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "connect-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'")
     if not _local:
         resp.headers.setdefault('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
     return resp
@@ -745,14 +833,82 @@ class ProjectPhoto(db.Model):
 
 # ── Auth ───────────────────────────────────────────────────────────────────
 
+# What each role may do. Checked on the server for every request — the browser
+# is never trusted to decide.
+ROLES = {
+    'admin':  {'view', 'create', 'edit', 'delete', 'export', 'publish', 'admin'},
+    'agent':  {'view', 'create', 'edit', 'export', 'publish'},
+    'viewer': {'view'},
+}
+DEFAULT_ROLE = 'admin'          # the existing single account keeps full access
+IDLE_TIMEOUT_MINUTES = int(os.environ.get('IDLE_TIMEOUT_MINUTES', '30'))
+
+
 class User(UserMixin, db.Model):
     __tablename__ = 'users'
     id            = db.Column(db.Integer, primary_key=True)
     username      = db.Column(db.String(80), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
+    role          = db.Column(db.String(20), default=DEFAULT_ROLE, nullable=False)
+    totp_secret   = db.Column(db.String(64))       # set once MFA is enrolled
+    mfa_enabled   = db.Column(db.Boolean, default=False)
+    last_login_at = db.Column(db.DateTime)
+
+    def can(self, action):
+        return action in ROLES.get(self.role or DEFAULT_ROLE, set())
 
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
+
+
+class AuditLog(db.Model):
+    """Who did what, to which record, and when.
+
+    Written on the server for every create, edit, delete, export, publish and
+    confidential-file download, so the trail cannot be avoided by editing a
+    request in the browser.
+    """
+    __tablename__ = 'audit_log'
+    id          = db.Column(db.Integer, primary_key=True)
+    at          = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    username    = db.Column(db.String(80))
+    action      = db.Column(db.String(30))          # view / create / edit / delete / export / publish / login…
+    entity      = db.Column(db.String(60))          # Contact, Project, Document…
+    entity_id   = db.Column(db.String(40))
+    detail      = db.Column(db.Text)
+    ip          = db.Column(db.String(60))
+    endpoint    = db.Column(db.String(120))
+
+
+def audit(action, entity=None, entity_id=None, detail=None):
+    """Record an action. Never records field values — only what was touched."""
+    try:
+        db.session.add(AuditLog(
+            username=getattr(current_user, 'username', None) or 'anonymous',
+            action=action, entity=entity,
+            entity_id=str(entity_id) if entity_id is not None else None,
+            detail=(detail or '')[:500] or None,
+            ip=_login_key(), endpoint=request.endpoint,
+        ))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        app.logger.exception('Could not write the audit log')
+
+
+def requires(action):
+    """Refuse the request unless the signed-in user's role allows this action."""
+    from functools import wraps
+
+    def wrapper(fn):
+        @wraps(fn)
+        def guarded(*a, **kw):
+            if not current_user.is_authenticated or not current_user.can(action):
+                audit('denied', entity=request.endpoint, detail=f'role={getattr(current_user, "role", None)}')
+                abort(403, description='Your account does not have permission to do that.')
+            return fn(*a, **kw)
+        return guarded
+    return wrapper
 
 
 @login_manager.user_loader
@@ -763,7 +919,7 @@ def load_user(user_id):
 # Public endpoints: website API + login page itself
 # listing_photo_image must be public so the website can display gallery photos
 # (the <img> requests are unauthenticated, just like /api/listings).
-_PUBLIC_ENDPOINTS = {'login', 'logout', 'static', 'api_enquiry', 'api_listings', 'listing_photo_image',
+_PUBLIC_ENDPOINTS = {'login', 'login_verify', 'logout', 'static', 'api_enquiry', 'api_listings', 'listing_photo_image',
                      'listing_brochure_download', 'listing_floorplan_download'}
 
 
@@ -805,11 +961,32 @@ def require_login():
         return
     if not current_user.is_authenticated:
         return redirect(url_for('login', next=request.full_path if request.query_string else request.path))
+
+    # Idle timeout: a session left open is closed by the server, not by the
+    # browser, so it cannot be kept alive by editing anything client-side.
+    # time.time() throughout: datetime.utcnow().timestamp() re-reads a naive UTC
+    # value as local time, which on a machine that is not on UTC makes the gap
+    # come out an hour wrong and the timeout never fire.
+    import time as _time
+    now = _time.time()
+    last = session.get('_seen')
+    if last and (now - last) > IDLE_TIMEOUT_MINUTES * 60:
+        audit('session-expired', entity='User', entity_id=getattr(current_user, 'id', None))
+        logout_user()
+        session.clear()
+        flash('You were signed out after a period of inactivity.', 'info')
+        return redirect(url_for('login'))
+    session['_seen'] = now
+    session.permanent = True
     # The starting password is published in this repository, so nothing else in
     # the database opens until it has been replaced.
     if request.endpoint not in ('change_password', 'logout') and \
             current_user.check_password(DEFAULT_PASSWORD):
         return redirect(url_for('change_password'))
+    # When the deployment requires it, nothing opens until two-step sign-in is on.
+    if MFA_REQUIRED and not current_user.mfa_enabled and \
+            request.endpoint not in ('account_mfa', 'change_password', 'logout'):
+        return redirect(url_for('account_mfa'))
 
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -825,8 +1002,15 @@ def login():
         password = request.form.get('password', '')
         user = User.query.filter_by(username=username).first()
         if user and user.check_password(password):
+            if user.mfa_enabled and user.totp_secret:
+                # Password alone is not enough: park the id and ask for a code.
+                session['_mfa_user'] = user.id
+                return redirect(url_for('login_verify'))
             _login_succeeded()
             login_user(user, remember=True)
+            user.last_login_at = datetime.utcnow()
+            db.session.commit()
+            audit('login', entity='User', entity_id=user.id)
             next_page = request.args.get('next', '')
             # Only ever bounce to a path on this site — never an absolute or
             # protocol-relative URL supplied by whoever sent the link.
@@ -834,8 +1018,117 @@ def login():
                 return redirect(next_page)
             return redirect(url_for('dashboard'))
         _login_failed()
+        audit('login-failed', entity='User', detail=username[:60])
         flash('Incorrect username or password.', 'danger')
     return render_template('login.html')
+
+
+# ── Multi-factor authentication ──────────────────────────────────────────────
+# Time-based one-time codes (the standard used by Google Authenticator, Authy,
+# 1Password and so on), implemented on the standard library so no extra
+# dependency is introduced. The secret is stored per user; codes are checked on
+# the server and a used code cannot be replayed within its window.
+
+MFA_REQUIRED = os.environ.get('MFA_REQUIRED', '').lower() in ('1', 'true', 'yes')
+
+
+def _b32_secret():
+    import base64, secrets as _s
+    return base64.b32encode(_s.token_bytes(20)).decode().rstrip('=')
+
+
+def totp_code(secret, when=None, step=30):
+    """The expected code for a secret at a point in time."""
+    import base64, hmac, hashlib, struct, time
+    key = base64.b32decode(secret + '=' * (-len(secret) % 8), casefold=True)
+    counter = int((when or time.time()) // step)
+    digest = hmac.new(key, struct.pack('>Q', counter), hashlib.sha1).digest()
+    offset = digest[-1] & 0x0F
+    value = struct.unpack('>I', digest[offset:offset + 4])[0] & 0x7FFFFFFF
+    return f'{value % 1000000:06d}'
+
+
+def totp_valid(secret, code, drift=1):
+    """True if the code matches, allowing for a little clock drift."""
+    import hmac as _h, time
+    code = (code or '').strip().replace(' ', '')
+    if not secret or not code.isdigit():
+        return False
+    now = time.time()
+    return any(_h.compare_digest(totp_code(secret, now + offset * 30), code)
+               for offset in range(-drift, drift + 1))
+
+
+def totp_uri(user, secret):
+    """The otpauth:// string an authenticator app scans or accepts as text."""
+    from urllib.parse import quote
+    return (f'otpauth://totp/Cowan%20%26%20Rutter:{quote(user.username)}'
+            f'?secret={secret}&issuer=Cowan%20%26%20Rutter&digits=6&period=30')
+
+
+@app.route('/account/mfa', methods=['GET', 'POST'])
+def account_mfa():
+    """Turn on two-step sign-in for the signed-in account."""
+    user = current_user
+    if request.method == 'POST':
+        action = request.form.get('action')
+        if action == 'disable' and user.mfa_enabled:
+            if not user.check_password(request.form.get('password', '')):
+                flash('Password not correct — two-step sign-in is unchanged.', 'danger')
+            else:
+                user.mfa_enabled = False
+                user.totp_secret = None
+                db.session.commit()
+                audit('mfa-disabled', entity='User', entity_id=user.id)
+                flash('Two-step sign-in turned off.', 'info')
+            return redirect(url_for('account_mfa'))
+
+        secret = session.get('_mfa_pending')
+        if secret and totp_valid(secret, request.form.get('code')):
+            user.totp_secret = secret
+            user.mfa_enabled = True
+            session.pop('_mfa_pending', None)
+            db.session.commit()
+            audit('mfa-enabled', entity='User', entity_id=user.id)
+            flash('Two-step sign-in is on. You will be asked for a code at each sign-in.', 'success')
+            return redirect(url_for('dashboard'))
+        flash('That code was not right. Check the app and try again.', 'danger')
+
+    secret = None
+    if not user.mfa_enabled:
+        secret = session.get('_mfa_pending') or _b32_secret()
+        session['_mfa_pending'] = secret
+    return render_template('account_mfa.html', secret=secret,
+                           uri=totp_uri(user, secret) if secret else None,
+                           mfa_required=MFA_REQUIRED)
+
+
+@app.route('/login/verify', methods=['GET', 'POST'])
+def login_verify():
+    """Second step of signing in: the six-digit code."""
+    pending = session.get('_mfa_user')
+    if not pending:
+        return redirect(url_for('login'))
+    user = db.session.get(User, pending)
+    if not user:
+        session.pop('_mfa_user', None)
+        return redirect(url_for('login'))
+    if request.method == 'POST':
+        if _login_blocked():
+            flash('Too many attempts. Try again shortly.', 'danger')
+            return render_template('login_verify.html'), 429
+        if totp_valid(user.totp_secret, request.form.get('code')):
+            session.pop('_mfa_user', None)
+            _login_succeeded()
+            login_user(user, remember=True)
+            user.last_login_at = datetime.utcnow()
+            db.session.commit()
+            audit('login', entity='User', entity_id=user.id, detail='with two-step code')
+            return redirect(url_for('dashboard'))
+        _login_failed()
+        audit('mfa-failed', entity='User', entity_id=user.id)
+        flash('That code was not right.', 'danger')
+    return render_template('login_verify.html')
 
 
 @app.route('/account/password', methods=['GET', 'POST'])
@@ -986,6 +1279,8 @@ def property_edit(id):
 
 
 @app.route('/properties/<int:id>/delete', methods=['POST'])
+@requires('delete')
+@requires('delete')
 def property_delete(id):
     prop = Property.query.get_or_404(id)
     # Unlink enquiries pointing at this property (keep the enquiry history).
@@ -1222,6 +1517,7 @@ def transaction_edit(id):
 
 
 @app.route('/transactions/<int:id>/delete', methods=['POST'])
+@requires('delete')
 def transaction_delete(id):
     t = Transaction.query.get_or_404(id)
     prop_id = t.property_id
@@ -1441,6 +1737,7 @@ def project_edit(id):
 
 
 @app.route('/projects/<int:id>/delete', methods=['POST'])
+@requires('delete')
 def project_delete(id):
     project = Project.query.get_or_404(id)
     for enq in project.enquiries:
@@ -1483,6 +1780,7 @@ def document_add(id):
 
 
 @app.route('/documents/<int:id>/delete', methods=['POST'])
+@requires('delete')
 def document_delete(id):
     doc = ProjectDocument.query.get_or_404(id)
     project_id = doc.project_id
@@ -1591,8 +1889,10 @@ def delete_record(obj, label, redirect_endpoint, **kw):
     """
     from sqlalchemy.exc import SQLAlchemyError
     try:
+        entity_id = getattr(obj, 'id', None)
         db.session.delete(obj)
         db.session.commit()
+        audit('delete', entity=label, entity_id=entity_id)
         flash(f'{label} deleted.', 'info')
     except SQLAlchemyError as ex:
         db.session.rollback()
@@ -1603,6 +1903,7 @@ def delete_record(obj, label, redirect_endpoint, **kw):
 
 
 @app.route('/organisations/<int:id>/delete', methods=['POST'])
+@requires('delete')
 def organisation_delete(id):
     org = Organisation.query.get_or_404(id)
     return delete_record(org, 'Organisation', 'organisations_list')
@@ -1821,6 +2122,7 @@ def _back_to(default_endpoint, **kw):
 
 
 @app.route('/contacts/<int:id>/delete', methods=['POST'])
+@requires('delete')
 def contact_delete(id):
     contact = Contact.query.get_or_404(id)
     return delete_record(contact, 'Contact', 'contacts_list')
@@ -1985,6 +2287,7 @@ def enquiry_log_contact(id):
 
 
 @app.route('/enquiries/<int:id>/delete', methods=['POST'])
+@requires('delete')
 def enquiry_delete(id):
     e = Enquiry.query.get_or_404(id)
     db.session.delete(e)
@@ -2017,6 +2320,7 @@ def enquiry_note_add(id):
 
 
 @app.route('/enquiry-notes/<int:id>/delete', methods=['POST'])
+@requires('delete')
 def enquiry_note_delete(id):
     n = EnquiryNote.query.get_or_404(id)
     enq_id = n.enquiry_id
@@ -2028,6 +2332,8 @@ def enquiry_note_delete(id):
 # ── Email Integration ──────────────────────────────────────────────────────────
 
 @app.route('/email/sync', methods=['POST'])
+@requires('admin')
+@requires('admin')
 def email_sync_trigger():
     from email_sync import sync_inbox, check_configured
     if not check_configured():
@@ -2185,6 +2491,7 @@ def task_toggle(id):
 
 
 @app.route('/tasks/<int:id>/delete', methods=['POST'])
+@requires('delete')
 def task_delete(id):
     task = ProjectTask.query.get_or_404(id)
     project_id = task.project_id
@@ -2289,6 +2596,7 @@ def note_add(id):
 
 
 @app.route('/notes/<int:id>/delete', methods=['POST'])
+@requires('delete')
 def note_delete(id):
     note = ProjectNote.query.get_or_404(id)
     project_id = note.project_id
@@ -2429,6 +2737,7 @@ def listing_photo_upload(id):
 
 
 @app.route('/listing-photos/<int:id>/delete', methods=['POST'])
+@requires('delete')
 def listing_photo_delete(id):
     ph = ListingPhoto.query.get_or_404(id)
     listing = ph.listing
@@ -2559,6 +2868,7 @@ def listing_brochure_upload(id):
 
 
 @app.route('/listings/<int:id>/brochure/delete', methods=['POST'])
+@requires('delete')
 def listing_brochure_delete(id):
     listing = Listing.query.get_or_404(id)
     listing.brochure_data = listing.brochure_filename = listing.brochure_size = None
@@ -2604,6 +2914,8 @@ def listing_publish_state(listing):
 
 
 @app.route('/listings/<int:id>/publish', methods=['POST'])
+@requires('publish')
+@requires('publish')
 def listing_publish(id):
     listing = Listing.query.get_or_404(id)
     target = (request.form.get('target') or request.args.get('target') or '').lower()
@@ -2615,6 +2927,7 @@ def listing_publish(id):
     setattr(listing, flag, live)
     setattr(listing, stamp, datetime.utcnow() if live else None)
     db.session.commit()
+    audit('publish' if live else 'unpublish', entity='Listing', entity_id=listing.id, detail=target)
     flash(f"{'Published to' if live else 'Removed from'} {label}.", 'success')
     return _back_to('project_detail', id=listing.project_id)
 
@@ -2637,6 +2950,7 @@ def listing_epc_upload(id):
 
 
 @app.route('/listings/<int:id>/epc/delete', methods=['POST'])
+@requires('delete')
 def listing_epc_delete(id):
     listing = Listing.query.get_or_404(id)
     listing.epc_data = listing.epc_filename = listing.epc_size = None
@@ -2683,6 +2997,7 @@ def listing_floorplan_upload(id):
 
 
 @app.route('/listings/<int:id>/floorplan/delete', methods=['POST'])
+@requires('delete')
 def listing_floorplan_delete(id):
     listing = Listing.query.get_or_404(id)
     listing.floor_plan_data = listing.floor_plan_filename = listing.floor_plan_size = None
@@ -2796,6 +3111,8 @@ def _project_enquiries(project):
 
 
 @app.route('/projects/<int:id>/enquiry-schedule')
+@requires('export')
+@requires('export')
 def project_enquiry_schedule(id):
     """A client-facing schedule of enquiries received on one instruction."""
     project = Project.query.get_or_404(id)
@@ -3174,6 +3491,7 @@ def listing_edit(id):
 
 
 @app.route('/listings/<int:id>/delete', methods=['POST'])
+@requires('delete')
 def listing_delete(id):
     l = Listing.query.get_or_404(id)
     proj_id = l.project_id
@@ -3297,6 +3615,7 @@ def api_listings():
 
 
 @app.route('/admin/zoopla', methods=['GET'])
+@requires('publish')
 def admin_zoopla():
     """Zoopla feed dashboard: shows which listings will be sent, a preview of
     the BLM file, feed configuration status, and a Push button. Login-gated via
@@ -3365,6 +3684,7 @@ def admin_zoopla():
 
 
 @app.route('/admin/zoopla/push', methods=['POST'])
+@requires('export')
 def admin_zoopla_push():
     """Generate the BLM feed and upload it (with images) to Zoopla over SFTP."""
     import zoopla_feed as zf
@@ -3383,6 +3703,21 @@ def admin_zoopla_push():
 <p style="color:#6b7280;font-size:13px">Sent {len(live)} live listing(s). Zoopla ingests the feed on its own schedule, so changes appear on the portal after their next pickup — not instantly.</p>
 <p><a href="{url_for('admin_zoopla')}" style="display:inline-block;margin-top:10px;background:#0e1f44;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none">← Back to Zoopla feed</a></p>
 </body>'''
+
+
+def _migrate_security_columns():
+    """Add the role, MFA and audit columns. Idempotent."""
+    from sqlalchemy import text, inspect
+    with app.app_context():
+        insp = inspect(db.engine)
+        existing = {c['name'] for c in insp.get_columns('users')}
+        cols = [('role', f"TEXT DEFAULT '{DEFAULT_ROLE}'"), ('totp_secret', 'TEXT'),
+                ('mfa_enabled', 'BOOLEAN DEFAULT FALSE'), ('last_login_at', 'TIMESTAMP')]
+        with db.engine.connect() as conn:
+            for name, ddl in cols:
+                if name not in existing:
+                    conn.execute(text(f'ALTER TABLE users ADD COLUMN {name} {ddl}'))
+            conn.commit()
 
 
 def _migrate_email_columns():

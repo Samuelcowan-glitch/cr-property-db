@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Two-step sign-in{% endblock %}
+{% block topbar_title %}Two-step sign-in{% endblock %}
+
+{% block content %}
+<div style="max-width:560px">
+
+  {% if mfa_required and not current_user.mfa_enabled %}
+  <div style="background:#fce8e6;border-left:4px solid #c62828;padding:12px 16px;margin-bottom:12px">
+    <div style="font-weight:700;color:#c62828;font-size:13px">Set this up to continue</div>
+    <div style="font-size:12.5px;color:#5f6368;line-height:1.6">
+      This system requires two-step sign-in. The database holds client personal data,
+      so a password on its own is not enough.
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="box">
+    <div class="box-head">Two-step sign-in</div>
+
+    {% if current_user.mfa_enabled %}
+    <div class="frow">
+      <div class="fcell fcell--label">Status</div>
+      <div class="fcell"><span class="badge badge-active">On</span></div>
+    </div>
+    <div class="box-body pad">
+      <p style="font-size:12.5px;color:#5f6368;line-height:1.6;margin-bottom:10px">
+        You are asked for a six-digit code from your authenticator app each time you sign in.
+      </p>
+      <form method="post" style="display:flex;gap:6px;align-items:flex-end;flex-wrap:wrap">
+        <input type="hidden" name="action" value="disable">
+        <div class="form-group" style="flex:1;min-width:200px">
+          <label for="password">Confirm your password to turn it off</label>
+          <input type="password" id="password" name="password" class="fin" autocomplete="current-password" required>
+        </div>
+        <button type="submit" class="btn btn-sm btn-danger">Turn off</button>
+      </form>
+    </div>
+
+    {% else %}
+    <div class="box-body pad">
+      <ol style="font-size:12.5px;color:#3a4560;line-height:1.8;padding-left:18px;margin-bottom:12px">
+        <li>Open your authenticator app (Google Authenticator, Authy, 1Password, iPhone Passwords).</li>
+        <li>Add an account and paste the key below, or scan it if your app takes a link.</li>
+        <li>Type the six-digit code it shows to confirm.</li>
+      </ol>
+
+      <div class="frow" style="border:1px solid var(--cell-edge)">
+        <div class="fcell fcell--label">Setup key</div>
+        <div class="fcell" style="font-family:ui-monospace,Menlo,monospace;letter-spacing:1px">{{ secret }}</div>
+      </div>
+      <div class="frow" style="border:1px solid var(--cell-edge);border-top:0">
+        <div class="fcell fcell--label">Or this link</div>
+        <div class="fcell" style="font-size:11px;word-break:break-all;color:#5f6368">{{ uri }}</div>
+      </div>
+
+      <form method="post" style="display:flex;gap:6px;align-items:flex-end;margin-top:12px">
+        <div class="form-group" style="width:160px">
+          <label for="code">Six-digit code</label>
+          <input type="text" id="code" name="code" class="fin" inputmode="numeric"
+                 autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required>
+        </div>
+        <button type="submit" class="btn btn-primary">Turn on</button>
+      </form>
+
+      <p style="font-size:11.5px;color:#9aa0a6;margin-top:10px;line-height:1.6">
+        Keep the setup key somewhere safe. Without it, and without the app, you will
+        need an administrator to clear two-step sign-in on your account.
+      </p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
