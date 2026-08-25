@@ -43,7 +43,6 @@
 <!-- ── Tabs ── -->
 <div class="tabs" data-group="proj">
   <button class="tab-btn active" data-tab="overview">Project Overview</button>
-  <button class="tab-btn" data-tab="listing">Website Listing</button>
   {% if project.property %}
   {% endif %}
   <button class="tab-btn" data-tab="documents">Documents</button>
@@ -252,226 +251,41 @@
     </div>
     {% endif %}
 
-  </div>
-
-  <!-- ════ RIGHT: Enquiries ════ -->
-  <div style="position:sticky;top:68px;display:flex;flex-direction:column;gap:12px">
-
-    <!-- ════ Notes ════ -->
-    <div class="box">
-      <div class="box-head">
-        <span style="font-size:12.5px;font-weight:700">Notes</span>
-        <button type="button" onclick="toggleAddNote()" class="btn btn-sm"
-                style="background:#e0303f;border-color:#e0303f;color:#fff;padding:3px 10px;font-size:11px">+ Add Note</button>
-      </div>
-
-      <form id="add-note-form" method="post" action="{{ url_for('note_add', id=project.id) }}"
-            style="display:none;padding:12px 14px;border-bottom:1px solid #eef0f2;background:#f8f9fb">
-        <textarea name="content" rows="4" required placeholder="What happened, what was agreed, what happens next…"
-                  style="width:100%;font-size:12.5px;padding:8px;border:1px solid #dde0e4;border-radius:5px;font-family:inherit;resize:vertical"></textarea>
-        <div style="display:flex;gap:6px;margin-top:8px;align-items:center">
-          <button type="submit" class="btn btn-primary btn-sm">Save Note</button>
-          <button type="button" class="btn btn-secondary btn-sm" onclick="toggleAddNote()">Cancel</button>
-          <span style="font-size:11px;color:#9aa0a6;margin-left:auto">Saved as {{ current_user.username }}</span>
-        </div>
-      </form>
-
-      <div style="max-height:420px;overflow-y:auto">
-        {# Notes and to-do tasks in one timeline. Tasks are read from the to-do
-           list itself, so ticking one off there shows through here. #}
-        {% for item in notes_timeline %}
-        <div style="padding:11px 14px;border-bottom:1px solid #f1f3f4{% if item.kind == 'task' and item.completed %};opacity:.6{% endif %}">
-          <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:3px;flex-wrap:wrap">
-            <span style="font-size:11.5px;font-weight:700;color:#0e1f44">{{ item.at.strftime('%d %b %Y') if item.at else '' }}</span>
-            <span style="font-size:11.5px;color:#5f6368">{{ item.author or 'Unknown' }}</span>
-            {% if item.kind == 'task' %}
-            <span class="badge" style="background:{{ '#e6f4ea' if item.completed else '#fdecee' }};color:{{ '#1b7a3f' if item.completed else '#e0303f' }}">
-              {{ 'To-Do · Done' if item.completed else 'To-Do' }}
-            </span>
-            {% endif %}
-            {% if item.kind == 'note' %}
-            <form method="post" action="{{ url_for('note_delete', id=item.id) }}" class="confirm-delete" style="margin-left:auto">
-              <button type="submit" title="Delete note"
-                      style="background:none;border:none;color:#c8ccd1;cursor:pointer;font-size:12px;line-height:1;padding:0">&times;</button>
-            </form>
-            {% endif %}
-          </div>
-          <div style="font-size:12.5px;line-height:1.6;color:#1a202c;white-space:pre-wrap{% if item.kind == 'task' and item.completed %};text-decoration:line-through;color:#9aa0a6{% endif %}">{{ item.body }}</div>
-          {% if item.kind == 'task' and item.due %}
-          <div style="font-size:10.5px;margin-top:3px;color:{{ '#c62828' if (not item.completed and item.due < today) else '#9aa0a6' }}">
-            Due {{ item.due.strftime('%d %b %Y') }}{% if not item.completed and item.due < today %} · overdue{% endif %}
-          </div>
-          {% endif %}
-        </div>
-        {% else %}
-        <div style="padding:18px 14px;text-align:center;color:#9aa0a6;font-size:12px;font-style:italic">
-          No notes yet. Use <strong>+ Add Note</strong> to record a call, viewing or update.
-        </div>
-        {% endfor %}
-      </div>
-
-      <!-- Free-text project description — unchanged, kept alongside the dated notes -->
-      <div style="border-top:1px solid #eef0f2">
-        <div style="padding:8px 14px 0;display:flex;align-items:center;justify-content:space-between">
-          <span style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#5f6368">Description</span>
-          <button onclick="toggleNotes()" style="background:none;border:none;color:#5f6368;cursor:pointer;font-size:11px">Edit</button>
-        </div>
-<div style="padding:12px 14px">
-        <div id="notes-view">
-          {% if project.notes %}
-          <p style="font-size:12.5px;line-height:1.65;color:#1a202c;white-space:pre-wrap;margin:0">{{ project.notes }}</p>
-          {% else %}
-          <p style="font-size:12px;color:#9aa0a6;font-style:italic;margin:0">No notes yet.</p>
-          {% endif %}
-        </div>
-        <form id="notes-form" method="post" action="{{ url_for('project_edit', id=project.id) }}" style="display:none">
-          <input type="hidden" name="name" value="{{ project.name }}">
-          <input type="hidden" name="status" value="{{ project.status }}">
-          <input type="hidden" name="project_ref" value="{{ project.project_ref or '' }}">
-          <input type="hidden" name="client" value="{{ project.client or '' }}">
-          <input type="hidden" name="fee_earner" value="{{ project.fee_earner or '' }}">
-          <input type="hidden" name="instruction_date" value="{{ project.instruction_date.strftime('%Y-%m-%d') if project.instruction_date else '' }}">
-          <input type="hidden" name="location_description" value="{{ project.location_description or '' }}">
-          {% if project.property_id %}<input type="hidden" name="property_id" value="{{ project.property_id }}">{% endif %}
-          <textarea name="notes" rows="6" style="width:100%;font-size:12.5px;padding:7px;border:1px solid #dde0e4;border-radius:5px;font-family:inherit;resize:vertical">{{ project.notes or '' }}</textarea>
-          <div style="display:flex;gap:6px;margin-top:6px">
-            <button type="submit" class="btn btn-primary btn-sm">Save</button>
-            <button type="button" class="btn btn-secondary btn-sm" onclick="toggleNotes()">Cancel</button>
-          </div>
-        </form>
-      </div>
-      </div>
-    </div>
-
-    <!-- Direct enquiries for this property/project -->
-    <div class="box">
-      <div class="box-head">
-        <span style="font-size:13px;font-weight:700">Direct Enquiries</span>
-        <a href="{{ url_for('enquiry_new') }}" style="font-size:11px">+ Add</a>
-      </div>
-      <div style="max-height:260px;overflow-y:auto">
-        {# Enquiries linked to this project by EITHER its property or the project
-           itself (website enquiries may link either way) — combined + deduped. #}
-        {% set ns = namespace(items=[], ids=[]) %}
-        {% if project.property %}
-          {% for e in project.property.enquiries %}
-            {% if e.id not in ns.ids %}{% set _ = ns.items.append(e) %}{% set _ = ns.ids.append(e.id) %}{% endif %}
-          {% endfor %}
-        {% endif %}
-        {% for e in project.enquiries %}
-          {% if e.id not in ns.ids %}{% set _ = ns.items.append(e) %}{% set _ = ns.ids.append(e.id) %}{% endif %}
-        {% endfor %}
-        {% set direct_enqs = ns.items %}
-        {% if direct_enqs %}
-          {% for e in direct_enqs | sort(attribute='created_at', reverse=True) %}
-          <div style="padding:10px 12px;border-bottom:1px solid #f1f3f4">
-            {% if e.contact %}
-            <div style="font-size:13px;font-weight:600;color:#e0303f;margin-bottom:3px">
-              <a href="{{ url_for('contact_detail', id=e.contact.id) }}" style="color:#e0303f">{{ e.contact.full_name }}</a>
-            </div>
-            {% if e.contact.phone %}
-            <div style="font-size:11.5px;color:#5f6368;margin-bottom:2px">{{ e.contact.phone }}</div>
-            {% endif %}
-            {% if e.contact.email %}
-            <div style="font-size:11.5px;color:#5f6368;margin-bottom:2px">{{ e.contact.email }}</div>
-            {% endif %}
-            {% endif %}
-            <div style="font-size:11px;color:#0e1f44;font-weight:600;margin-top:3px">{{ e.subject }}</div>
-            <div style="font-size:10.5px;color:#9aa0a6;margin-top:2px;display:flex;gap:8px">
-              <span>{{ e.enquiry_type or 'Enquiry' }}</span>
-              <span>{{ e.received_date.strftime('%d %b %Y') if e.received_date else '' }}</span>
-              <span style="color:{{ '#1b7a3f' if e.status == 'Open' else '#9aa0a6' }};font-weight:600">{{ e.status }}</span>
-            </div>
-            {% if e.notes %}
-            <div style="font-size:11px;color:#5f6368;margin-top:4px;background:#f8f9fa;padding:5px 8px;border-radius:4px">{{ e.notes[:120] }}{% if e.notes|length > 120 %}...{% endif %}</div>
-            {% endif %}
-          </div>
-          {% endfor %}
-        {% else %}
-        <div style="padding:20px;text-align:center;color:#9aa0a6;font-size:12px">
-          No direct enquiries yet.<br>
-          <a href="{{ url_for('enquiry_new') }}" style="color:#e0303f;margin-top:4px;display:inline-block">Record an enquiry</a>
-        </div>
-        {% endif %}
-      </div>
-    </div>
-
-    <!-- Matched applicants (similar properties) -->
-    <div class="box">
-      <div class="box-head">
-        <span>Matched Applicants</span>
-        <span style="font-size:11px;opacity:.75">{{ matches|length if matches else 0 }}</span>
-      </div>
-      <div style="max-height:320px;overflow-y:auto">
-        {% if matches %}
-          {% for score, reasons, contact in matches %}
-          {% set pa = registered_ids.get(contact.id) if registered_ids else None %}
-          <div style="padding:10px 12px;border-bottom:1px solid #f1f3f4">
-            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:6px">
-              <div style="flex:1;min-width:0">
-                <a href="{{ url_for('contact_detail', id=contact.id) }}" style="font-size:12.5px;font-weight:600;color:#e0303f;display:block">{{ contact.full_name }}</a>
-                {% if contact.organisation %}<div style="font-size:11px;color:#5f6368">{{ contact.organisation.name }}</div>{% endif %}
-                {% if contact.phone %}<div style="font-size:11.5px;color:#5f6368;margin-top:2px">{{ contact.phone }}</div>{% endif %}
-                {% if contact.email %}<div style="font-size:11.5px;color:#5f6368">{{ contact.email }}</div>{% endif %}
-                <!-- Requirements chips -->
-                <div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:5px">
-                  {% if contact.req_area %}<span style="background:#e8f0fe;color:#1c3160;font-size:9.5px;padding:1px 6px;border-radius:8px">{{ contact.req_area }}</span>{% endif %}
-                  {% if contact.req_size_max %}<span style="background:#e6f4ea;color:#1b7a3f;font-size:9.5px;padding:1px 6px;border-radius:8px">to {{ '{:,.0f}'.format(contact.req_size_max) }} sq ft</span>{% endif %}
-                  {% if contact.req_budget_max %}<span style="background:#fdecee;color:#c52532;font-size:9.5px;padding:1px 6px;border-radius:8px">&#163;{{ '{:,.0f}'.format(contact.req_budget_max) }} max</span>{% endif %}
-                </div>
-              </div>
-              <!-- Score badge -->
-              <div style="flex-shrink:0;width:28px;height:28px;border-radius:50%;background:{{ '#1b7a3f' if score >= 8 else '#e0303f' if score >= 5 else '#9aa0a6' }};color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">{{ score }}</div>
-            </div>
-            <!-- Register / status -->
-            {% if pa %}
-            <div style="margin-top:6px;display:flex;align-items:center;gap:6px">
-              <span style="font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:8px;background:#e6f4ea;color:#1b7a3f">&#10003; {{ pa.status }}</span>
-              <form method="post" action="{{ url_for('applicant_status', id=pa.id) }}" style="display:flex;gap:4px;align-items:center">
-                <select name="status" style="font-size:10px;padding:2px 4px;border:1px solid #dde0e4;border-radius:4px">
-                  {% for s in ['Active Applicant','Viewing Arranged','Offer Made','Declined','Let/Sold'] %}
-                  <option value="{{ s }}" {{ 'selected' if pa.status == s else '' }}>{{ s }}</option>
-                  {% endfor %}
-                </select>
-                <button type="submit" style="font-size:10px;padding:2px 6px;background:#0e1f44;color:#fff;border:none;border-radius:3px;cursor:pointer">&#10003;</button>
-              </form>
-            </div>
-            {% else %}
-            <div style="margin-top:6px">
-              <form method="post" action="{{ url_for('applicant_register', proj_id=project.id, contact_id=contact.id) }}">
-                <button type="submit" style="width:100%;font-size:10.5px;padding:4px;background:#0e1f44;color:#fff;border:none;border-radius:4px;cursor:pointer">+ Register as Applicant</button>
-              </form>
-            </div>
-            {% endif %}
-          </div>
-          {% endfor %}
-        {% else %}
-        <div style="padding:20px;text-align:center;color:#9aa0a6;font-size:12px">
-          No matching applicants.<br>
-          <a href="{{ url_for('contact_new') }}" style="color:#e0303f;margin-top:4px;display:inline-block">Add a contact with requirements</a>
-        </div>
-        {% endif %}
-      </div>
-    </div>
-
-  </div></div>
-</div>
-
-
-<!-- ══════════════════════════════════════════════════════════════
-     TAB 3: WEBSITE LISTING
-══════════════════════════════════════════════════════════════ -->
-<div class="tab-panel" data-tab-group="proj" data-tab="listing">
-{% set lst = project.project_listings[0] if project.project_listings else None %}
-{% if lst %}
-<!-- Existing listing — edit inline -->
-<div class="rec-cols-narrow">
+  
+  <!-- ══ Marketing & publishing — moved here from the old Website Listing tab ══ -->
+  {% set lst = project.project_listings[0] if project.project_listings else None %}
+  {% if lst %}
   <div>
     <div class="box">
-      <div style="background:{% if lst.website_listed %}#1b7a3f{% else %}#9aa0a6{% endif %};color:#fff;padding:10px 16px;display:flex;align-items:center;justify-content:space-between">
-        <span style="font-size:13px;font-weight:700">&#127758; Website Listing — {% if lst.website_listed %}LIVE{% else %}HIDDEN{% endif %}</span>
-        <span style="font-size:11px;opacity:.8">{{ lst.listing_status|replace('-',' ')|title if lst.listing_status else '' }}</span>
+      <div class="box-head">Marketing &amp; Publishing</div>
+
+      {# The listing record is what the website and the Zoopla feed read, so
+         publishing sets a flag on it — nothing is copied anywhere. #}
+      {% for t, label in [('website', 'Website'), ('zoopla', 'Zoopla')] %}
+      <div class="frow">
+        <div class="fcell fcell--label">{{ label }}</div>
+        <div class="fcell">
+          {% if pub[t].live %}
+            <span class="badge badge-active">Live</span>
+            {% if pub[t].stale %}<span class="badge badge-hold">Unpublished changes</span>{% endif %}
+            <span style="color:#9aa0a6;font-size:11px">since {{ pub[t].at.strftime('%d %b %Y') if pub[t].at else '—' }}</span>
+          {% else %}
+            <span class="badge badge-muted">Draft</span>
+          {% endif %}
+        </div>
+        <div class="fcell" style="flex:0 0 200px;justify-content:flex-end;gap:6px">
+          <form method="post" action="{{ url_for('listing_publish', id=lst.id) }}" style="margin:0">
+            <input type="hidden" name="target" value="{{ t }}">
+            <input type="hidden" name="next" value="{{ url_for('project_detail', id=project.id) }}">
+            <input type="hidden" name="live" value="{{ '0' if pub[t].live else '1' }}">
+            <button type="submit" class="btn btn-sm {{ 'btn-outline' if pub[t].live else 'btn-primary' }}">
+              {{ ('Remove from ' ~ label) if pub[t].live else ('Publish to ' ~ label) }}
+            </button>
+          </form>
+          {% if t == 'zoopla' %}<a href="{{ url_for('admin_zoopla') }}" class="btn btn-sm btn-outline">Feed</a>{% endif %}
+        </div>
       </div>
+      {% endfor %}
       <form method="post" action="{{ url_for('listing_edit', id=lst.id) }}" class="listing-edit-form" style="padding:16px">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
 
@@ -846,8 +660,221 @@
       </div>
     </div>
   </div>
+  {% else %}
 
-  <!-- RIGHT: Live preview info -->
+<!-- No listing yet -->
+<div style="text-align:center;padding:60px 20px">
+  <div style="font-size:40px;margin-bottom:16px">&#127758;</div>
+  <h3 style="font-size:18px;color:#0e1f44;margin-bottom:8px">No website listing for this project</h3>
+  <p style="color:#5f6368;font-size:14px;margin-bottom:24px">Create a listing to show this property on the Cowan &amp; Rutter website.</p>
+  <a href="{{ url_for('listing_new_for_project', proj_id=project.id) }}" class="btn btn-primary">+ Create Website Listing</a>
+</div>
+  {% endif %}
+
+</div>
+
+  <!-- ════ RIGHT: Enquiries ════ -->
+  <div style="position:sticky;top:68px;display:flex;flex-direction:column;gap:12px">
+
+    <!-- ════ Notes ════ -->
+    <div class="box">
+      <div class="box-head">
+        <span style="font-size:12.5px;font-weight:700">Notes</span>
+        <button type="button" onclick="toggleAddNote()" class="btn btn-sm"
+                style="background:#e0303f;border-color:#e0303f;color:#fff;padding:3px 10px;font-size:11px">+ Add Note</button>
+      </div>
+
+      <form id="add-note-form" method="post" action="{{ url_for('note_add', id=project.id) }}"
+            style="display:none;padding:12px 14px;border-bottom:1px solid #eef0f2;background:#f8f9fb">
+        <textarea name="content" rows="4" required placeholder="What happened, what was agreed, what happens next…"
+                  style="width:100%;font-size:12.5px;padding:8px;border:1px solid #dde0e4;border-radius:5px;font-family:inherit;resize:vertical"></textarea>
+        <div style="display:flex;gap:6px;margin-top:8px;align-items:center">
+          <button type="submit" class="btn btn-primary btn-sm">Save Note</button>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="toggleAddNote()">Cancel</button>
+          <span style="font-size:11px;color:#9aa0a6;margin-left:auto">Saved as {{ current_user.username }}</span>
+        </div>
+      </form>
+
+      <div style="max-height:420px;overflow-y:auto">
+        {# Notes and to-do tasks in one timeline. Tasks are read from the to-do
+           list itself, so ticking one off there shows through here. #}
+        {% for item in notes_timeline %}
+        <div style="padding:11px 14px;border-bottom:1px solid #f1f3f4{% if item.kind == 'task' and item.completed %};opacity:.6{% endif %}">
+          <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:3px;flex-wrap:wrap">
+            <span style="font-size:11.5px;font-weight:700;color:#0e1f44">{{ item.at.strftime('%d %b %Y') if item.at else '' }}</span>
+            <span style="font-size:11.5px;color:#5f6368">{{ item.author or 'Unknown' }}</span>
+            {% if item.kind == 'task' %}
+            <span class="badge" style="background:{{ '#e6f4ea' if item.completed else '#fdecee' }};color:{{ '#1b7a3f' if item.completed else '#e0303f' }}">
+              {{ 'To-Do · Done' if item.completed else 'To-Do' }}
+            </span>
+            {% endif %}
+            {% if item.kind == 'note' %}
+            <form method="post" action="{{ url_for('note_delete', id=item.id) }}" class="confirm-delete" style="margin-left:auto">
+              <button type="submit" title="Delete note"
+                      style="background:none;border:none;color:#c8ccd1;cursor:pointer;font-size:12px;line-height:1;padding:0">&times;</button>
+            </form>
+            {% endif %}
+          </div>
+          <div style="font-size:12.5px;line-height:1.6;color:#1a202c;white-space:pre-wrap{% if item.kind == 'task' and item.completed %};text-decoration:line-through;color:#9aa0a6{% endif %}">{{ item.body }}</div>
+          {% if item.kind == 'task' and item.due %}
+          <div style="font-size:10.5px;margin-top:3px;color:{{ '#c62828' if (not item.completed and item.due < today) else '#9aa0a6' }}">
+            Due {{ item.due.strftime('%d %b %Y') }}{% if not item.completed and item.due < today %} · overdue{% endif %}
+          </div>
+          {% endif %}
+        </div>
+        {% else %}
+        <div style="padding:18px 14px;text-align:center;color:#9aa0a6;font-size:12px;font-style:italic">
+          No notes yet. Use <strong>+ Add Note</strong> to record a call, viewing or update.
+        </div>
+        {% endfor %}
+      </div>
+
+      <!-- Free-text project description — unchanged, kept alongside the dated notes -->
+      <div style="border-top:1px solid #eef0f2">
+        <div style="padding:8px 14px 0;display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#5f6368">Description</span>
+          <button onclick="toggleNotes()" style="background:none;border:none;color:#5f6368;cursor:pointer;font-size:11px">Edit</button>
+        </div>
+<div style="padding:12px 14px">
+        <div id="notes-view">
+          {% if project.notes %}
+          <p style="font-size:12.5px;line-height:1.65;color:#1a202c;white-space:pre-wrap;margin:0">{{ project.notes }}</p>
+          {% else %}
+          <p style="font-size:12px;color:#9aa0a6;font-style:italic;margin:0">No notes yet.</p>
+          {% endif %}
+        </div>
+        <form id="notes-form" method="post" action="{{ url_for('project_edit', id=project.id) }}" style="display:none">
+          <input type="hidden" name="name" value="{{ project.name }}">
+          <input type="hidden" name="status" value="{{ project.status }}">
+          <input type="hidden" name="project_ref" value="{{ project.project_ref or '' }}">
+          <input type="hidden" name="client" value="{{ project.client or '' }}">
+          <input type="hidden" name="fee_earner" value="{{ project.fee_earner or '' }}">
+          <input type="hidden" name="instruction_date" value="{{ project.instruction_date.strftime('%Y-%m-%d') if project.instruction_date else '' }}">
+          <input type="hidden" name="location_description" value="{{ project.location_description or '' }}">
+          {% if project.property_id %}<input type="hidden" name="property_id" value="{{ project.property_id }}">{% endif %}
+          <textarea name="notes" rows="6" style="width:100%;font-size:12.5px;padding:7px;border:1px solid #dde0e4;border-radius:5px;font-family:inherit;resize:vertical">{{ project.notes or '' }}</textarea>
+          <div style="display:flex;gap:6px;margin-top:6px">
+            <button type="submit" class="btn btn-primary btn-sm">Save</button>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="toggleNotes()">Cancel</button>
+          </div>
+        </form>
+      </div>
+      </div>
+    </div>
+
+    <!-- Direct enquiries for this property/project -->
+    <div class="box">
+      <div class="box-head">
+        <span style="font-size:13px;font-weight:700">Direct Enquiries</span>
+        <a href="{{ url_for('enquiry_new') }}" style="font-size:11px">+ Add</a>
+      </div>
+      <div style="max-height:260px;overflow-y:auto">
+        {# Enquiries linked to this project by EITHER its property or the project
+           itself (website enquiries may link either way) — combined + deduped. #}
+        {% set ns = namespace(items=[], ids=[]) %}
+        {% if project.property %}
+          {% for e in project.property.enquiries %}
+            {% if e.id not in ns.ids %}{% set _ = ns.items.append(e) %}{% set _ = ns.ids.append(e.id) %}{% endif %}
+          {% endfor %}
+        {% endif %}
+        {% for e in project.enquiries %}
+          {% if e.id not in ns.ids %}{% set _ = ns.items.append(e) %}{% set _ = ns.ids.append(e.id) %}{% endif %}
+        {% endfor %}
+        {% set direct_enqs = ns.items %}
+        {% if direct_enqs %}
+          {% for e in direct_enqs | sort(attribute='created_at', reverse=True) %}
+          <div style="padding:10px 12px;border-bottom:1px solid #f1f3f4">
+            {% if e.contact %}
+            <div style="font-size:13px;font-weight:600;color:#e0303f;margin-bottom:3px">
+              <a href="{{ url_for('contact_detail', id=e.contact.id) }}" style="color:#e0303f">{{ e.contact.full_name }}</a>
+            </div>
+            {% if e.contact.phone %}
+            <div style="font-size:11.5px;color:#5f6368;margin-bottom:2px">{{ e.contact.phone }}</div>
+            {% endif %}
+            {% if e.contact.email %}
+            <div style="font-size:11.5px;color:#5f6368;margin-bottom:2px">{{ e.contact.email }}</div>
+            {% endif %}
+            {% endif %}
+            <div style="font-size:11px;color:#0e1f44;font-weight:600;margin-top:3px">{{ e.subject }}</div>
+            <div style="font-size:10.5px;color:#9aa0a6;margin-top:2px;display:flex;gap:8px">
+              <span>{{ e.enquiry_type or 'Enquiry' }}</span>
+              <span>{{ e.received_date.strftime('%d %b %Y') if e.received_date else '' }}</span>
+              <span style="color:{{ '#1b7a3f' if e.status == 'Open' else '#9aa0a6' }};font-weight:600">{{ e.status }}</span>
+            </div>
+            {% if e.notes %}
+            <div style="font-size:11px;color:#5f6368;margin-top:4px;background:#f8f9fa;padding:5px 8px;border-radius:4px">{{ e.notes[:120] }}{% if e.notes|length > 120 %}...{% endif %}</div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        {% else %}
+        <div style="padding:20px;text-align:center;color:#9aa0a6;font-size:12px">
+          No direct enquiries yet.<br>
+          <a href="{{ url_for('enquiry_new') }}" style="color:#e0303f;margin-top:4px;display:inline-block">Record an enquiry</a>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Matched applicants (similar properties) -->
+    <div class="box">
+      <div class="box-head">
+        <span>Matched Applicants</span>
+        <span style="font-size:11px;opacity:.75">{{ matches|length if matches else 0 }}</span>
+      </div>
+      <div style="max-height:320px;overflow-y:auto">
+        {% if matches %}
+          {% for score, reasons, contact in matches %}
+          {% set pa = registered_ids.get(contact.id) if registered_ids else None %}
+          <div style="padding:10px 12px;border-bottom:1px solid #f1f3f4">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:6px">
+              <div style="flex:1;min-width:0">
+                <a href="{{ url_for('contact_detail', id=contact.id) }}" style="font-size:12.5px;font-weight:600;color:#e0303f;display:block">{{ contact.full_name }}</a>
+                {% if contact.organisation %}<div style="font-size:11px;color:#5f6368">{{ contact.organisation.name }}</div>{% endif %}
+                {% if contact.phone %}<div style="font-size:11.5px;color:#5f6368;margin-top:2px">{{ contact.phone }}</div>{% endif %}
+                {% if contact.email %}<div style="font-size:11.5px;color:#5f6368">{{ contact.email }}</div>{% endif %}
+                <!-- Requirements chips -->
+                <div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:5px">
+                  {% if contact.req_area %}<span style="background:#e8f0fe;color:#1c3160;font-size:9.5px;padding:1px 6px;border-radius:8px">{{ contact.req_area }}</span>{% endif %}
+                  {% if contact.req_size_max %}<span style="background:#e6f4ea;color:#1b7a3f;font-size:9.5px;padding:1px 6px;border-radius:8px">to {{ '{:,.0f}'.format(contact.req_size_max) }} sq ft</span>{% endif %}
+                  {% if contact.req_budget_max %}<span style="background:#fdecee;color:#c52532;font-size:9.5px;padding:1px 6px;border-radius:8px">&#163;{{ '{:,.0f}'.format(contact.req_budget_max) }} max</span>{% endif %}
+                </div>
+              </div>
+              <!-- Score badge -->
+              <div style="flex-shrink:0;width:28px;height:28px;border-radius:50%;background:{{ '#1b7a3f' if score >= 8 else '#e0303f' if score >= 5 else '#9aa0a6' }};color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">{{ score }}</div>
+            </div>
+            <!-- Register / status -->
+            {% if pa %}
+            <div style="margin-top:6px;display:flex;align-items:center;gap:6px">
+              <span style="font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:8px;background:#e6f4ea;color:#1b7a3f">&#10003; {{ pa.status }}</span>
+              <form method="post" action="{{ url_for('applicant_status', id=pa.id) }}" style="display:flex;gap:4px;align-items:center">
+                <select name="status" style="font-size:10px;padding:2px 4px;border:1px solid #dde0e4;border-radius:4px">
+                  {% for s in ['Active Applicant','Viewing Arranged','Offer Made','Declined','Let/Sold'] %}
+                  <option value="{{ s }}" {{ 'selected' if pa.status == s else '' }}>{{ s }}</option>
+                  {% endfor %}
+                </select>
+                <button type="submit" style="font-size:10px;padding:2px 6px;background:#0e1f44;color:#fff;border:none;border-radius:3px;cursor:pointer">&#10003;</button>
+              </form>
+            </div>
+            {% else %}
+            <div style="margin-top:6px">
+              <form method="post" action="{{ url_for('applicant_register', proj_id=project.id, contact_id=contact.id) }}">
+                <button type="submit" style="width:100%;font-size:10.5px;padding:4px;background:#0e1f44;color:#fff;border:none;border-radius:4px;cursor:pointer">+ Register as Applicant</button>
+              </form>
+            </div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        {% else %}
+        <div style="padding:20px;text-align:center;color:#9aa0a6;font-size:12px">
+          No matching applicants.<br>
+          <a href="{{ url_for('contact_new') }}" style="color:#e0303f;margin-top:4px;display:inline-block">Add a contact with requirements</a>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if lst %}
+<!-- RIGHT: Live preview info -->
   <div>
     <div class="box">
       <div class="box-head">Live Preview</div>
@@ -876,19 +903,15 @@
       </div>
     </div>
   </div>
+    {% endif %}
+
+  </div></div>
 </div>
 
-{% else %}
-<!-- No listing yet -->
-<div style="text-align:center;padding:60px 20px">
-  <div style="font-size:40px;margin-bottom:16px">&#127758;</div>
-  <h3 style="font-size:18px;color:#0e1f44;margin-bottom:8px">No website listing for this project</h3>
-  <p style="color:#5f6368;font-size:14px;margin-bottom:24px">Create a listing to show this property on the Cowan &amp; Rutter website.</p>
-  <a href="{{ url_for('listing_new_for_project', proj_id=project.id) }}" class="btn btn-primary">+ Create Website Listing</a>
-</div>
-{% endif %}
-</div>
 
+<!-- ══════════════════════════════════════════════════════════════
+     TAB 3: WEBSITE LISTING
+══════════════════════════════════════════════════════════════ -->
 <!-- ══════════════════════════════════════════════════════════════
      TAB: DOCUMENTS
 ══════════════════════════════════════════════════════════════ -->

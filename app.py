@@ -538,6 +538,9 @@ class Listing(db.Model):
     lat                = db.Column(db.Float)
     lng                = db.Column(db.Float)
     created_at         = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at           = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    website_published_at = db.Column(db.DateTime)
+    zoopla_published_at  = db.Column(db.DateTime)
 
     # ── Commercial: Define the Space ──
     min_size           = db.Column(db.Float)
@@ -1407,11 +1410,14 @@ def project_detail(id):
                         'due': t.due_date} for t in (project.tasks or [])]
     notes_timeline.sort(key=lambda x: x['at'], reverse=True)
 
+    listing = project.project_listings[0] if project.project_listings else None
+    pub = listing_publish_state(listing) if listing else None
+
     return render_template('projects/detail.html', project=project,
                            folder_labels=FOLDER_LABELS, today=date.today(),
                            matches=matches, registered_ids=registered_ids,
                            activity=activity, enquiries=enquiries,
-                           notes_timeline=notes_timeline)
+                           notes_timeline=notes_timeline, pub=pub)
 
 
 @app.route('/projects/<int:id>/edit', methods=['GET', 'POST'])
@@ -2522,6 +2528,45 @@ def listing_brochure_download(id):
                      download_name=listing.brochure_filename or 'brochure.pdf')
 
 
+# ── Publishing ───────────────────────────────────────────────────────────────
+# The listing record is the single source of truth: publishing sets a flag on
+# it rather than copying the property anywhere. The website reads /api/listings
+# (website_listed) and the Zoopla feed reads zoopla_listed.
+
+PUBLISH_TARGETS = {
+    'website': ('website_listed', 'website_published_at', 'the website'),
+    'zoopla':  ('zoopla_listed',  'zoopla_published_at',  'the Zoopla feed'),
+}
+
+
+def listing_publish_state(listing):
+    """What is live, and whether it matches what is on screen."""
+    state = {}
+    for target, (flag, stamp, _label) in PUBLISH_TARGETS.items():
+        live = bool(getattr(listing, flag, False))
+        published_at = getattr(listing, stamp, None)
+        changed = bool(live and published_at and listing.updated_at
+                       and listing.updated_at > published_at)
+        state[target] = {'live': live, 'at': published_at, 'stale': changed}
+    return state
+
+
+@app.route('/listings/<int:id>/publish', methods=['POST'])
+def listing_publish(id):
+    listing = Listing.query.get_or_404(id)
+    target = (request.form.get('target') or '').lower()
+    live = request.form.get('live') == '1'
+    if target not in PUBLISH_TARGETS:
+        flash('Unknown publishing target.', 'warning')
+        return _back_to('project_detail', id=listing.project_id)
+    flag, stamp, label = PUBLISH_TARGETS[target]
+    setattr(listing, flag, live)
+    setattr(listing, stamp, datetime.utcnow() if live else None)
+    db.session.commit()
+    flash(f"{'Published to' if live else 'Removed from'} {label}.", 'success')
+    return _back_to('project_detail', id=listing.project_id)
+
+
 @app.route('/listings/<int:id>/epc/upload', methods=['POST'])
 def listing_epc_upload(id):
     listing = Listing.query.get_or_404(id)
@@ -3518,6 +3563,9 @@ def _migrate_listings_table_columns():
         ('floor_plan_data',      'BYTEA'),
         ('floor_plan_filename',  'TEXT'),
         ('floor_plan_size',      'INTEGER'),
+        ('updated_at',           'TIMESTAMP'),
+        ('website_published_at', 'TIMESTAMP'),
+        ('zoopla_published_at',  'TIMESTAMP'),
         ('epc_data',             'BYTEA'),
         ('epc_filename',         'TEXT'),
         ('epc_size',             'INTEGER'),
