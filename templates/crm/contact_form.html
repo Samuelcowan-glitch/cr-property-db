@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 {% block title %}{{ 'Edit Contact' if contact else 'Add Contact' }}{% endblock %}
 {% block topbar_title %}{{ 'Edit Contact' if contact else 'Add Contact' }}{% endblock %}
 {% block topbar_actions %}
@@ -86,8 +86,7 @@
       </div>
     </div>
 
-    <hr class="divider">
-    <div style="font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#5f6368;margin-bottom:12px">
+    <div class="form-section">
       🔍 Applicant Requirements <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#9aa0a6">— used for automatic property matching</span>
     </div>
 
@@ -167,8 +166,7 @@
       </div>
     </div>
 
-    <hr class="divider">
-    <div style="font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#5f6368;margin-bottom:12px">
+    <div class="form-section">
       📅 Follow-up &amp; Ownership
     </div>
     <div class="form-grid" style="margin-bottom:16px">

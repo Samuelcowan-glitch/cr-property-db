@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 {% block title %}{{ e.subject }}{% endblock %}
 {% block topbar_title %}Enquiry{% endblock %}
 {% block topbar_actions %}
@@ -53,9 +53,9 @@
 {% endif %}
 
 <!-- ════ Pipeline: enquiry → heads of terms signed ════ -->
-<div class="card" style="margin-bottom:16px">
-  <div class="card-header">
-    <div class="card-title">Progress</div>
+<div class="box" style="margin-bottom:16px">
+  <div class="box-head">
+    <span class="box-title">Progress</span>
     <div style="font-size:11.5px;color:#5f6368">
       {% if e.stage_changed_on %}At this stage since {{ e.stage_changed_on.strftime('%d %b %Y') }}{% endif %}
     </div>
@@ -116,7 +116,7 @@
 
   {% if e.stage_events %}
   <div style="margin-top:14px;border-top:1px solid #eef0f2;padding-top:10px">
-    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#5f6368;margin-bottom:6px">History</div>
+    <div class="form-section">History</div>
     {% for ev in e.stage_events|reverse %}
     <div style="display:flex;gap:10px;font-size:12.5px;padding:4px 0;border-bottom:1px solid #f6f7f8">
       <span style="width:86px;color:#5f6368;flex-shrink:0">{{ ev.occurred_on.strftime('%d %b %Y') if ev.occurred_on else '' }}</span>
@@ -135,8 +135,8 @@
 
   <div style="display:flex;flex-direction:column;gap:16px">
 
-    <div class="card">
-      <div class="card-header"><div class="card-title">Linked Records</div></div>
+    <div class="box">
+      <div class="box-head"><span>Linked Records</span></div>
       <div style="padding:14px;display:flex;flex-direction:column;gap:8px;font-size:13px">
         {% if e.contact %}
         <div><span style="color:#5f6368;min-width:90px;display:inline-block">Contact</span>
@@ -159,8 +159,8 @@
     </div>
 
     {% if e.req_size_min or e.req_size_max or e.req_budget_min or e.req_budget_max or e.req_use_class %}
-    <div class="card">
-      <div class="card-header"><div class="card-title">Applicant Requirements</div></div>
+    <div class="box">
+      <div class="box-head"><span>Applicant Requirements</span></div>
       <div style="padding:14px;display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px">
         {% if e.req_use_class %}
         <div style="grid-column:span 2"><span style="color:#5f6368">Use Class</span><br><strong>{{ e.req_use_class|title }}</strong></div>{% endif %}
@@ -173,9 +173,9 @@
       </div>
     </div>{% endif %}
 
-    <div class="card">
-      <div class="card-header">
-        <div class="card-title">Correspondence &amp; Notes</div>
+    <div class="box">
+      <div class="box-head">
+        <span class="box-title">Correspondence &amp; Notes</span>
         <form method="post" action="{{ url_for('email_sync_trigger') }}" style="margin:0">
           <button type="submit" class="btn btn-outline btn-sm">&#8635; Sync Emails</button>
         </form>
@@ -240,9 +240,9 @@
   </div>
 
   <div>
-    <div class="card">
-      <div class="card-header">
-        <div class="card-title">Matched Properties</div>
+    <div class="box">
+      <div class="box-head">
+        <span class="box-title">Matched Properties</span>
         <div style="font-size:11px;color:#5f6368">Based on size, budget &amp; use class requirements</div>
       </div>
       <div style="padding:14px">

@@ -187,3 +187,101 @@ table.rec-table td.actions { white-space: nowrap; text-align: right; }
 .box-head a:hover { text-decoration: underline; text-underline-offset: 2px; }
 /* A heading strip carrying its own dark background keeps light-on-dark links. */
 .box-head[style*="#0e1f44"] a, .box-head[style*="#e0303f"] a { color: #fff; }
+
+/* ── Forms ─────────────────────────────────────────────────────────────────
+   Existing forms are built from .form-grid > .form-group > label + control.
+   Restyling those here converts every current and future form to the record
+   grid without touching a single template: the group becomes a label cell and
+   a field cell sharing borders with its neighbours, and the grid becomes one
+   continuous bordered panel rather than a set of floating inputs. */
+.form-grid {
+  gap: 0;
+  border: 1px solid var(--cell-edge);
+  background: var(--white);
+}
+.form-grid > .form-group {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr);
+  align-items: stretch;
+  gap: 0;
+  border-right: 1px solid var(--cell-line);
+  border-bottom: 1px solid var(--cell-line);
+  min-height: var(--cell-h);
+}
+.form-grid > .form-group > label {
+  display: flex; align-items: center;
+  margin: 0; padding: 6px 9px;
+  background: var(--cell-label);
+  border-right: 1px solid var(--cell-line);
+  font-size: 11.5px; font-weight: 500; color: var(--grey-600);
+  line-height: 1.3;
+}
+.form-grid > .form-group > input[type=text],
+.form-grid > .form-group > input[type=number],
+.form-grid > .form-group > input[type=date],
+.form-grid > .form-group > input[type=email],
+.form-grid > .form-group > input[type=password],
+.form-grid > .form-group > select,
+.form-grid > .form-group > textarea,
+.form-grid > .form-group > .ss-wrap > .ss-button {
+  border: 0; border-radius: 0;
+  padding: 6px 9px; min-height: var(--cell-h);
+  background: var(--white); width: 100%;
+}
+.form-grid > .form-group > textarea { padding: 7px 9px; }
+.form-grid > .form-group > input:focus,
+.form-grid > .form-group > select:focus,
+.form-grid > .form-group > textarea:focus {
+  outline: 2px solid rgba(224,48,63,.35); outline-offset: -2px; box-shadow: none;
+}
+/* Anything that is not a label or a control — help text, checkbox rows,
+   sub-grids — spans the whole group rather than being squeezed into the
+   value column. */
+.form-grid > .form-group > *:not(label):not(input):not(select):not(textarea):not(.ss-wrap) {
+  grid-column: 1 / -1; padding: 6px 9px;
+}
+.form-grid > .form-group.span-2,
+.form-grid > .form-group.span-3 { border-right: 0; }
+.form-grid > .form-group:last-child { border-bottom: 0; }
+
+/* A heading dropped inside a form grid becomes a full-width section strip. */
+.form-grid > .divider,
+.form-grid > hr.divider {
+  grid-column: 1 / -1; height: 0; margin: 0; border: 0;
+  border-top: 1px solid var(--cell-edge);
+}
+
+.form-actions {
+  display: flex; gap: 6px; align-items: center;
+  margin-top: 10px; padding: 0;
+}
+
+/* A section heading between two form grids reads as the heading of the panel
+   below it: same strip as .box-head, joined to the grid with no gap. */
+.form-section {
+  margin: 12px 0 0;
+  padding: 6px 10px;
+  background: var(--cell-head);
+  border: 1px solid var(--cell-edge);
+  border-bottom: 0;
+  font-size: 12px; font-weight: 700; color: var(--navy);
+  text-transform: none; letter-spacing: 0;
+}
+.form-section + .form-grid { border-top: 0; }
+.form-section span { font-weight: 400; color: var(--grey-600); }
+
+/* Record pages still built from .detail-table read as label/value cells. */
+.box .detail-table { border-collapse: collapse; width: 100%; }
+.box .detail-table td {
+  border-bottom: 1px solid var(--cell-line);
+  border-right: 1px solid var(--cell-line);
+  padding: 6px 9px; font-size: 12.5px;
+}
+.box .detail-table td:last-child { border-right: 0; }
+.box .detail-table tr:last-child td { border-bottom: 0; }
+.box .detail-table td:first-child {
+  width: 150px; background: var(--cell-label);
+  font-size: 11.5px; font-weight: 500; color: var(--grey-600);
+  text-transform: none; letter-spacing: 0;
+}
+.box .box-head .box-title, .box-head .box-title { font-weight: 700; }

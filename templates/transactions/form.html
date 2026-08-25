@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 {% block title %}{{ 'Edit Transaction' if trans else 'Record Transaction' }}{% endblock %}
 {% block topbar_title %}{{ 'Edit Transaction' if trans else 'Record Transaction' }}{% endblock %}
 {% block topbar_actions %}
@@ -94,7 +94,7 @@
 
     <!-- ══════════════ CAPITAL ══════════════ -->
     <div class="capital-only">
-      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#5f6368;margin-bottom:12px">Capital Transaction Details</div>
+      <div class="form-section">Capital Transaction Details</div>
       <div class="form-grid" style="margin-bottom:14px">
         <div class="form-group">
           <label>Sale Price (£)</label>
@@ -198,7 +198,7 @@
 
     <!-- ══════════════ LEASEHOLD ══════════════ -->
     <div class="lease-only">
-      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#5f6368;margin-bottom:14px">Leasehold / Letting Details</div>
+      <div class="form-section">Leasehold / Letting Details</div>
 
       <!-- Row 1: Parties + Source -->
       <div class="form-grid cols-3" style="margin-bottom:14px">
