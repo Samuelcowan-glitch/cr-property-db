@@ -618,7 +618,8 @@ class Listing(db.Model):
     epc_size           = db.Column(db.Integer)
 
     project  = db.relationship('Project',  backref=db.backref('project_listings', lazy=True, cascade='all, delete-orphan'))
-    prop     = db.relationship('Property', backref=db.backref('unit_listings', lazy=True))
+    prop     = db.relationship('Property', backref=db.backref(
+        'unit_listings', lazy=True, cascade='all, delete-orphan'))
 
     @property
     def display_title(self):
@@ -696,7 +697,11 @@ class ProjectApplicant(db.Model):
     auto_linked = db.Column(db.Boolean, default=False)
 
     project = db.relationship('Project', backref=db.backref('applicants', lazy=True, cascade='all, delete-orphan'))
-    contact = db.relationship('Contact', backref=db.backref('project_links', lazy=True))
+    # An applicant row only means something with its contact, and its contact_id
+    # is NOT NULL — without delete-orphan, deleting a contact tried to set that
+    # column to NULL and the delete failed with a 500.
+    contact = db.relationship('Contact', backref=db.backref(
+        'project_links', lazy=True, cascade='all, delete-orphan'))
 
     __table_args__ = (db.UniqueConstraint('project_id', 'contact_id', name='uq_proj_contact'),)
 
@@ -991,13 +996,9 @@ def property_delete(id):
     for project in prop.projects:
         for enq in project.enquiries:
             enq.project_id = None
-    # Listings tied to the property by property_id have no cascade — remove them.
-    for listing in list(prop.unit_listings):
-        db.session.delete(listing)
-    db.session.delete(prop)
-    db.session.commit()
-    flash('Property deleted.', 'info')
-    return redirect(url_for('properties_list'))
+    # Listings tied to the property by property_id go with it via the
+    # relationship's cascade.
+    return delete_record(prop, 'Property', 'properties_list')
 
 
 @app.route('/properties/<int:id>/brochure/upload', methods=['POST'])
@@ -1597,13 +1598,32 @@ def organisation_edit(id):
     return render_template('crm/organisation_form.html', org=org)
 
 
+# ── Deleting records ─────────────────────────────────────────────────────────
+
+def delete_record(obj, label, redirect_endpoint, **kw):
+    """Delete a record, rolling back and explaining if the database refuses.
+
+    The cascades on the models decide what goes with a record. This wrapper is
+    the backstop: if some future relationship is left without one, the person
+    gets a clear message and an intact database instead of a 500 page.
+    """
+    from sqlalchemy.exc import SQLAlchemyError
+    try:
+        db.session.delete(obj)
+        db.session.commit()
+        flash(f'{label} deleted.', 'info')
+    except SQLAlchemyError as ex:
+        db.session.rollback()
+        app.logger.exception('Delete failed for %s', label)
+        flash(f'{label} could not be deleted — it is still linked to other records. '
+              f'({type(ex).__name__})', 'danger')
+    return redirect(url_for(redirect_endpoint, **kw))
+
+
 @app.route('/organisations/<int:id>/delete', methods=['POST'])
 def organisation_delete(id):
     org = Organisation.query.get_or_404(id)
-    db.session.delete(org)
-    db.session.commit()
-    flash('Organisation deleted.', 'info')
-    return redirect(url_for('organisations_list'))
+    return delete_record(org, 'Organisation', 'organisations_list')
 
 
 # ── Contacts ─────────────────────────────────────────────────────────────────
@@ -1798,10 +1818,7 @@ def _back_to(default_endpoint, **kw):
 @app.route('/contacts/<int:id>/delete', methods=['POST'])
 def contact_delete(id):
     contact = Contact.query.get_or_404(id)
-    db.session.delete(contact)
-    db.session.commit()
-    flash('Contact deleted.', 'info')
-    return redirect(url_for('contacts_list'))
+    return delete_record(contact, 'Contact', 'contacts_list')
 
 
 @app.route('/contacts/<int:id>/status', methods=['POST'])
