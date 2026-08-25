@@ -1398,10 +1398,23 @@ def project_detail(id):
                          'author':e.contact.full_name if e.contact else 'Website',
                          'body':e.subject,'notes':e.notes or ''})
     activity.sort(key=lambda x: x['date'], reverse=True)
+
+    # One timeline for the Notes panel: the project's notes and its to-do tasks
+    # together, newest first. Both are read from their own tables — nothing is
+    # copied, so editing or completing a task shows through here immediately.
+    floor = datetime.min
+    notes_timeline = [{'kind': 'note', 'at': n.created_at or floor, 'author': n.author,
+                       'body': n.content, 'id': n.id} for n in (project.project_notes or [])]
+    notes_timeline += [{'kind': 'task', 'at': t.created_at or floor, 'author': t.created_by,
+                        'body': t.title, 'id': t.id, 'completed': t.completed,
+                        'due': t.due_date} for t in (project.tasks or [])]
+    notes_timeline.sort(key=lambda x: x['at'], reverse=True)
+
     return render_template('projects/detail.html', project=project,
                            folder_labels=FOLDER_LABELS, today=date.today(),
                            matches=matches, registered_ids=registered_ids,
-                           activity=activity, enquiries=enquiries)
+                           activity=activity, enquiries=enquiries,
+                           notes_timeline=notes_timeline)
 
 
 @app.route('/projects/<int:id>/edit', methods=['GET', 'POST'])
@@ -2064,7 +2077,11 @@ def task_add(id):
         due_raw = request.form.get('due_date', '')
         due = datetime.strptime(due_raw, '%Y-%m-%d').date() if due_raw else None
         t = ProjectTask(project_id=id, title=title, due_date=due,
-                        created_by=request.form.get('created_by', '').strip() or 'Unknown')
+                        # Falls back to whoever is signed in, so a task added
+                        # without typing a name is still attributed in the
+                        # Notes timeline. The Name field itself is unchanged.
+                        created_by=(request.form.get('created_by', '').strip()
+                                    or getattr(current_user, 'username', '') or 'Unknown'))
         db.session.add(t)
         db.session.commit()
     return redirect(url_for('project_detail', id=id))

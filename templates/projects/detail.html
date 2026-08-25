@@ -299,17 +299,31 @@
       </form>
 
       <div style="max-height:420px;overflow-y:auto">
-        {% for n in project.project_notes|sort(attribute='created_at', reverse=True) %}
-        <div style="padding:11px 14px;border-bottom:1px solid #f1f3f4">
-          <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:3px">
-            <span style="font-size:11.5px;font-weight:700;color:#0e1f44">{{ n.created_at.strftime('%d %b %Y') if n.created_at else '' }}</span>
-            <span style="font-size:11.5px;color:#5f6368">{{ n.author }}</span>
-            <form method="post" action="{{ url_for('note_delete', id=n.id) }}" class="confirm-delete" style="margin-left:auto">
+        {# Notes and to-do tasks in one timeline. Tasks are read from the to-do
+           list itself, so ticking one off there shows through here. #}
+        {% for item in notes_timeline %}
+        <div style="padding:11px 14px;border-bottom:1px solid #f1f3f4{% if item.kind == 'task' and item.completed %};opacity:.6{% endif %}">
+          <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:3px;flex-wrap:wrap">
+            <span style="font-size:11.5px;font-weight:700;color:#0e1f44">{{ item.at.strftime('%d %b %Y') if item.at else '' }}</span>
+            <span style="font-size:11.5px;color:#5f6368">{{ item.author or 'Unknown' }}</span>
+            {% if item.kind == 'task' %}
+            <span class="badge" style="background:{{ '#e6f4ea' if item.completed else '#fdecee' }};color:{{ '#1b7a3f' if item.completed else '#e0303f' }}">
+              {{ 'To-Do · Done' if item.completed else 'To-Do' }}
+            </span>
+            {% endif %}
+            {% if item.kind == 'note' %}
+            <form method="post" action="{{ url_for('note_delete', id=item.id) }}" class="confirm-delete" style="margin-left:auto">
               <button type="submit" title="Delete note"
                       style="background:none;border:none;color:#c8ccd1;cursor:pointer;font-size:12px;line-height:1;padding:0">&times;</button>
             </form>
+            {% endif %}
           </div>
-          <div style="font-size:12.5px;line-height:1.6;color:#1a202c;white-space:pre-wrap">{{ n.content }}</div>
+          <div style="font-size:12.5px;line-height:1.6;color:#1a202c;white-space:pre-wrap{% if item.kind == 'task' and item.completed %};text-decoration:line-through;color:#9aa0a6{% endif %}">{{ item.body }}</div>
+          {% if item.kind == 'task' and item.due %}
+          <div style="font-size:10.5px;margin-top:3px;color:{{ '#c62828' if (not item.completed and item.due < today) else '#9aa0a6' }}">
+            Due {{ item.due.strftime('%d %b %Y') }}{% if not item.completed and item.due < today %} · overdue{% endif %}
+          </div>
+          {% endif %}
         </div>
         {% else %}
         <div style="padding:18px 14px;text-align:center;color:#9aa0a6;font-size:12px;font-style:italic">
