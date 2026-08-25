@@ -18,14 +18,21 @@
   'Inactive': '#8a939f', 'Archived': '#5f6368' } %}
 
 <!-- ── Record toolbar ── -->
+<form method="post" action="{{ url_for('contact_edit', id=contact.id) }}" data-inline-edit>
+<input type="hidden" name="next" value="{{ url_for('contact_detail', id=contact.id) }}">
+
 <div class="rec-toolbar">
-  <a href="{{ url_for('contact_edit', id=contact.id) }}"><span class="ic">&#9998;</span>Edit</a>
   <a href="{{ url_for('enquiry_new') }}"><span class="ic">&#9993;</span>New Enquiry</a>
   <a href="#activity"><span class="ic">&#128220;</span>Journal</a>
   {% if contact.organisation %}
   <a href="{{ url_for('organisation_detail', id=contact.organisation.id) }}"><span class="ic">&#127970;</span>Company</a>
   {% endif %}
   <a href="{{ url_for('contacts_list') }}"><span class="ic">&#9776;</span>All Contacts</a>
+  <span class="sp"></span>
+  <span class="rec-save">
+    <span data-save-status></span>
+    <button type="submit" class="btn btn-primary btn-save" data-save>Save</button>
+  </span>
 </div>
 
 <div class="rec-title">
@@ -42,50 +49,59 @@
 
     <div class="box">
       <div class="frow">
-        <div class="fcell fcell--label">Name</div>
-        <div class="fcell"><strong>{{ contact.full_name }}</strong></div>
+        <div class="fcell fcell--label w-narrow">First name</div>
+        <div class="fcell fcell--edit"><input type="text" name="first_name" value="{{ contact.first_name }}" placeholder="First name" required></div>
+        <div class="fcell fcell--label w-narrow">Surname</div>
+        <div class="fcell fcell--edit"><input type="text" name="last_name" value="{{ contact.last_name }}" placeholder="Surname" required></div>
+      </div>
+      <div class="frow">
         <div class="fcell fcell--label w-narrow">Type</div>
-        <div class="fcell {{ 'is-empty' if not contact.contact_type }}">{{ contact.contact_type or 'Not set' }}</div>
+        <div class="fcell fcell--edit"><input type="text" name="contact_type" value="{{ contact.contact_type or '' }}" placeholder="Not set"></div>
+        <div class="fcell fcell--label w-narrow">Company</div>
+        <div class="fcell fcell--edit">
+          <select name="organisation_id">
+            <option value="">— None —</option>
+            {% for o in all_organisations %}
+            <option value="{{ o.id }}" {{ 'selected' if contact.organisation_id == o.id else '' }}>{{ o.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
       </div>
       <div class="frow">
         <div class="fcell fcell--label">Job title</div>
-        <div class="fcell {{ 'is-empty' if not contact.job_title }}">{{ contact.job_title or 'Not added' }}</div>
-        <div class="fcell fcell--label w-narrow">Company</div>
-        <div class="fcell {{ 'is-empty' if not contact.organisation }}">
-          {% if contact.organisation %}<a href="{{ url_for('organisation_detail', id=contact.organisation.id) }}">{{ contact.organisation.name }}</a>{% else %}Not added{% endif %}
-        </div>
+        <div class="fcell fcell--edit"><input type="text" name="job_title" value="{{ contact.job_title or '' }}" placeholder="Not added"></div>
+        <div class="fcell fcell--label w-narrow">Registered</div>
+        <div class="fcell is-empty">{{ contact.created_at.strftime('%d %b %Y') if contact.created_at else '—' }}</div>
       </div>
-      <form method="post" action="{{ url_for('contact_set_status', id=contact.id) }}">
+      <div>
         <div class="frow">
           <div class="fcell fcell--label">Status</div>
-          <div class="fcell fcell--flush">
-            <select name="status" class="fin" onchange="this.form.submit()">
+          <div class="fcell fcell--edit">
+            <select name="status">
               {% for s in CONTACT_STATUSES %}
               <option value="{{ s }}" {{ 'selected' if contact.status == s else '' }}>{{ s }}</option>
               {% endfor %}
             </select>
           </div>
           <div class="fcell fcell--label w-narrow">Agent</div>
-          <div class="fcell {{ 'is-empty' if not contact.assigned_agent }}">{{ contact.assigned_agent or 'Not set' }}</div>
+          <div class="fcell fcell--edit"><input type="text" name="assigned_agent" value="{{ contact.assigned_agent or '' }}" placeholder="Not set"></div>
         </div>
-      </form>
+      </div>
     </div>
 
     <div class="box">
       <div class="box-head">Contact Details</div>
       <div class="frow">
         <div class="fcell fcell--label w-narrow">Mobile</div>
-        <div class="fcell {{ 'is-empty' if not contact.mobile }}">{{ contact.mobile or 'Not added' }}</div>
+        <div class="fcell fcell--edit"><input type="text" name="mobile" value="{{ contact.mobile or '' }}" placeholder="Not added"></div>
       </div>
       <div class="frow">
         <div class="fcell fcell--label w-narrow">Telephone</div>
-        <div class="fcell {{ 'is-empty' if not contact.phone }}">{{ contact.phone or 'Not added' }}</div>
+        <div class="fcell fcell--edit"><input type="text" name="phone" value="{{ contact.phone or '' }}" placeholder="Not added"></div>
       </div>
       <div class="frow">
         <div class="fcell fcell--label w-narrow">E-mail</div>
-        <div class="fcell {{ 'is-empty' if not contact.email }}">
-          {% if contact.email %}<a href="mailto:{{ contact.email }}">{{ contact.email }}</a>{% else %}Not added{% endif %}
-        </div>
+        <div class="fcell fcell--edit"><input type="text" name="email" value="{{ contact.email or '' }}" placeholder="Not added"></div>
       </div>
     </div>
 
@@ -93,42 +109,49 @@
       <div class="box-head">Requirement</div>
       <div class="frow">
         <div class="fcell fcell--label">Category</div>
-        <div class="fcell {{ 'is-empty' if not contact.req_category }}">{{ contact.req_category|capitalize if contact.req_category else 'Not set' }}</div>
+        <div class="fcell fcell--edit">
+          <select name="req_category">
+            <option value="">— Any —</option>
+            <option value="commercial" {{ 'selected' if contact.req_category == 'commercial' else '' }}>Commercial</option>
+            <option value="residential" {{ 'selected' if contact.req_category == 'residential' else '' }}>Residential</option>
+          </select>
+        </div>
         <div class="fcell fcell--label w-narrow">Use</div>
-        <div class="fcell {{ 'is-empty' if not contact.req_use_class }}">{{ contact.req_use_class|capitalize if contact.req_use_class else 'Not set' }}</div>
+        <div class="fcell fcell--edit">
+          <select name="req_use_class">
+            <option value="">— Any —</option>
+            <option value="office" {{ 'selected' if contact.req_use_class == 'office' else '' }}>Office</option>
+            <option value="retail" {{ 'selected' if contact.req_use_class == 'retail' else '' }}>Retail</option>
+            <option value="industrial" {{ 'selected' if contact.req_use_class == 'industrial' else '' }}>Industrial</option>
+          </select>
+        </div>
       </div>
       <div class="frow">
         <div class="fcell fcell--label">Property type</div>
-        <div class="fcell {{ 'is-empty' if not contact.req_property_type }}">{{ contact.req_property_type or 'Not set' }}</div>
+        <div class="fcell fcell--edit"><input type="text" name="req_property_type" value="{{ contact.req_property_type or '' }}" placeholder="Not set"></div>
       </div>
       <div class="frow">
         <div class="fcell fcell--label">Preferred area</div>
-        <div class="fcell {{ 'is-empty' if not contact.req_area }}">{{ contact.req_area or 'Not set' }}</div>
+        <div class="fcell fcell--edit"><input type="text" name="req_area" value="{{ contact.req_area or '' }}" placeholder="e.g. Chelsea, Fulham"></div>
       </div>
       <div class="frow">
         <div class="fcell fcell--label">Size</div>
-        <div class="fcell {{ 'is-empty' if not (contact.req_size_min or contact.req_size_max) }}">
-          {% if contact.req_size_min or contact.req_size_max %}
-            {{ contact.req_size_min|int if contact.req_size_min else '?' }}&ndash;{{ contact.req_size_max|int if contact.req_size_max else '?' }} sq ft
-          {% else %}Not set{% endif %}
-        </div>
+        <div class="fcell fcell--edit"><input type="number" name="req_size_min" value="{{ contact.req_size_min|int if contact.req_size_min else '' }}" placeholder="Min sq ft"></div>
+        <div class="fcell fcell--label w-narrow">to</div>
+        <div class="fcell fcell--edit"><input type="number" name="req_size_max" value="{{ contact.req_size_max|int if contact.req_size_max else '' }}" placeholder="Max sq ft"></div>
         <div class="fcell fcell--label w-narrow">Budget</div>
-        <div class="fcell {{ 'is-empty' if not contact.req_budget_max }}">
-          {% if contact.req_budget_max %}&pound;{{ '{:,.0f}'.format(contact.req_budget_max) }} {{ contact.req_budget_unit or '' }}{% else %}Not set{% endif %}
-        </div>
+        <div class="fcell fcell--edit"><input type="number" name="req_budget_max" value="{{ contact.req_budget_max|int if contact.req_budget_max else '' }}" placeholder="Max £"></div>
       </div>
       <div class="frow">
         <div class="fcell fcell--label">Move-in</div>
-        <div class="fcell {{ 'is-empty' if not contact.preferred_move_in }}">{{ contact.preferred_move_in.strftime('%d %b %Y') if contact.preferred_move_in else 'Not set' }}</div>
+        <div class="fcell fcell--edit"><input type="date" name="preferred_move_in" value="{{ contact.preferred_move_in.isoformat() if contact.preferred_move_in else '' }}"></div>
         <div class="fcell fcell--label w-narrow">Lease</div>
-        <div class="fcell {{ 'is-empty' if not contact.lease_length }}">{{ contact.lease_length or 'Not set' }}</div>
+        <div class="fcell fcell--edit"><input type="text" name="lease_length" value="{{ contact.lease_length or '' }}" placeholder="e.g. 5 years"></div>
       </div>
-      {% if contact.req_notes %}
       <div class="frow">
         <div class="fcell fcell--label fcell--top">Requirement notes</div>
-        <div class="fcell fcell--top" style="white-space:pre-wrap">{{ contact.req_notes }}</div>
+        <div class="fcell fcell--edit"><textarea name="req_notes" placeholder="Anything else they need…">{{ contact.req_notes or '' }}</textarea></div>
       </div>
-      {% endif %}
     </div>
 
   </div>
@@ -143,13 +166,11 @@
       </div>
       <div class="frow">
         <div class="fcell fcell--label">Last contacted</div>
-        <div class="fcell {{ 'is-empty' if not contact.last_contact_date }}">{{ contact.last_contact_date.strftime('%d %b %Y') if contact.last_contact_date else 'Never' }}</div>
+        <div class="fcell fcell--edit"><input type="date" name="last_contact_date" value="{{ contact.last_contact_date.isoformat() if contact.last_contact_date else '' }}"></div>
       </div>
       <div class="frow">
         <div class="fcell fcell--label">Next follow-up</div>
-        <div class="fcell {{ 'is-empty' if not contact.next_follow_up }}" {% if contact.follow_up_overdue %}style="color:#c62828;font-weight:600"{% endif %}>
-          {{ contact.next_follow_up.strftime('%d %b %Y') if contact.next_follow_up else 'Not set' }}
-        </div>
+        <div class="fcell fcell--edit"><input type="date" name="next_follow_up" value="{{ contact.next_follow_up.isoformat() if contact.next_follow_up else '' }}"></div>
       </div>
       <div class="frow">
         <div class="fcell fcell--label">Last interaction</div>
@@ -157,17 +178,14 @@
           {% if contact.last_activity %}{{ contact.last_activity.created_at.strftime('%d %b %Y') }} &middot; {{ contact.last_activity.kind|replace('_',' ') }}{% else %}None{% endif %}
         </div>
       </div>
-      <form method="post" action="{{ url_for('contact_add_activity', id=contact.id) }}">
-        <input type="hidden" name="kind" value="interaction">
-        <div class="frow">
-          <div class="fcell fcell--flush grow-2">
-            <input type="text" name="body" class="fin" placeholder="Log a call, email or meeting…" required>
-          </div>
-          <div class="fcell" style="flex:0 0 74px;justify-content:center">
-            <button class="btn btn-sm btn-primary" style="width:100%">Log</button>
-          </div>
+      <div class="frow">
+        <div class="fcell fcell--edit grow-2">
+          <input type="text" name="body" form="log-form" placeholder="Log a call, email or meeting…" required>
         </div>
-      </form>
+        <div class="fcell" style="flex:0 0 74px;justify-content:center">
+          <button class="btn btn-sm btn-primary" form="log-form" style="width:100%">Log</button>
+        </div>
+      </div>
     </div>
 
     <div class="box">
@@ -193,17 +211,14 @@
 
     <div class="box" id="activity">
       <div class="box-head">Journal</div>
-      <form method="post" action="{{ url_for('contact_add_activity', id=contact.id) }}">
-        <input type="hidden" name="kind" value="note">
-        <div class="frow">
-          <div class="fcell fcell--flush grow-2">
-            <input type="text" name="body" class="fin" placeholder="Add a note…" required>
-          </div>
-          <div class="fcell" style="flex:0 0 74px;justify-content:center">
-            <button class="btn btn-sm btn-outline" style="width:100%">Add</button>
-          </div>
+      <div class="frow">
+        <div class="fcell fcell--edit grow-2">
+          <input type="text" name="body" form="note-form" placeholder="Add a note…" required>
         </div>
-      </form>
+        <div class="fcell" style="flex:0 0 74px;justify-content:center">
+          <button class="btn btn-sm btn-outline" form="note-form" style="width:100%">Add</button>
+        </div>
+      </div>
       {% for a in contact.activities %}
       <div class="frow">
         <div class="fcell fcell--label w-narrow fcell--top">{{ a.created_at.strftime('%d %b %Y') }}</div>
@@ -223,4 +238,14 @@
 
   </div>
 </div>
+</form>
+
+{# The journal forms sit outside the record form — a form cannot be nested
+   inside another — and their fields above point back here by id. #}
+<form id="log-form" method="post" action="{{ url_for('contact_add_activity', id=contact.id) }}">
+  <input type="hidden" name="kind" value="interaction">
+</form>
+<form id="note-form" method="post" action="{{ url_for('contact_add_activity', id=contact.id) }}">
+  <input type="hidden" name="kind" value="note">
+</form>
 {% endblock %}

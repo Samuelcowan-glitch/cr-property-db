@@ -285,3 +285,40 @@ table.rec-table td.actions { white-space: nowrap; text-align: right; }
   text-transform: none; letter-spacing: 0;
 }
 .box .box-head .box-title, .box-head .box-title { font-weight: 700; }
+
+/* ── Inline editing ────────────────────────────────────────────────────────
+   Record pages are editable in place: values sit in fields that fill their
+   cell, so an editable row is indistinguishable from a read-only one until
+   you click into it. */
+.fcell--edit { padding: 0; }
+.fcell--edit > input,
+.fcell--edit > select,
+.fcell--edit > textarea,
+.fcell--edit > .ss-wrap > .ss-button {
+  width: 100%; border: 0; border-radius: 0; background: transparent;
+  padding: 6px 9px; min-height: var(--cell-h);
+  font-family: inherit; font-size: 12.5px; color: var(--text);
+}
+.fcell--edit > textarea { padding: 7px 9px; min-height: 58px; resize: vertical; }
+.fcell--edit > input:hover,
+.fcell--edit > select:hover,
+.fcell--edit > textarea:hover { background: #fbfcfd; }
+.fcell--edit > input:focus,
+.fcell--edit > select:focus,
+.fcell--edit > textarea:focus {
+  outline: 2px solid rgba(224,48,63,.4); outline-offset: -2px;
+  background: #fff; box-shadow: none;
+}
+.fcell--edit > input::placeholder,
+.fcell--edit > textarea::placeholder { color: var(--grey-400); }
+.fcell--edit > input[readonly] { background: var(--cell-label); color: var(--grey-600); }
+
+/* Save bar — always in the same place at the top of a record. */
+.rec-save {
+  display: flex; align-items: center; gap: 10px;
+  margin-left: auto;
+}
+.rec-save [data-save-status] { font-size: 11.5px; color: var(--orange); font-weight: 600; }
+.btn-save { border-radius: 0; }
+.btn-save:disabled { opacity: .45; cursor: default; }
+.btn-save.is-dirty { background: var(--orange); border-color: var(--orange); color: #fff; }

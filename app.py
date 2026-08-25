@@ -1687,7 +1687,8 @@ def contact_new():
 @app.route('/contacts/<int:id>')
 def contact_detail(id):
     contact = Contact.query.get_or_404(id)
-    return render_template('crm/contact_detail.html', contact=contact)
+    return render_template('crm/contact_detail.html',
+                           all_organisations=Organisation.query.order_by(Organisation.name).all(), contact=contact)
 
 
 @app.route('/contacts/<int:id>/edit', methods=['GET', 'POST'])
@@ -1695,37 +1696,90 @@ def contact_edit(id):
     contact = Contact.query.get_or_404(id)
     organisations = Organisation.query.order_by(Organisation.name).all()
     if request.method == 'POST':
-        org_id_raw = request.form.get('organisation_id')
-        contact.first_name = request.form['first_name']
-        contact.last_name = request.form['last_name']
-        contact.job_title = request.form.get('job_title')
-        contact.organisation_id = int(org_id_raw) if org_id_raw else None
-        contact.phone = request.form.get('phone')
-        contact.mobile = request.form.get('mobile')
-        contact.email = request.form.get('email')
-        contact.contact_type = request.form.get('contact_type')
-        contact.notes             = request.form.get('notes')
-        contact.req_category      = request.form.get('req_category') or None
-        contact.req_property_type = request.form.get('req_property_type') or None
-        contact.req_use_class     = request.form.get('req_use_class') or None
-        contact.req_area          = request.form.get('req_area') or None
-        contact.req_size_min      = float(request.form.get('req_size_min')) if request.form.get('req_size_min','').strip() else None
-        contact.req_size_max      = float(request.form.get('req_size_max')) if request.form.get('req_size_max','').strip() else None
-        contact.req_budget_min    = float(request.form.get('req_budget_min')) if request.form.get('req_budget_min','').strip() else None
-        contact.req_budget_max    = float(request.form.get('req_budget_max')) if request.form.get('req_budget_max','').strip() else None
-        contact.req_budget_unit   = request.form.get('req_budget_unit') or 'pa'
-        contact.req_notes         = request.form.get('req_notes') or None
-        contact.preferred_move_in = _parse_date(request.form.get('preferred_move_in'))
-        contact.lease_length      = request.form.get('lease_length') or None
-        contact.assigned_agent    = request.form.get('assigned_agent') or None
-        contact.last_contact_date = _parse_date(request.form.get('last_contact_date'))
-        contact.next_follow_up    = _parse_date(request.form.get('next_follow_up'))
-        # Status: log to history only if it actually changed.
-        _apply_status(request.form.get('status'), contact=contact)
+        _save_contact_from_form(contact, request.form)
         db.session.commit()
         flash('Contact updated.', 'success')
-        return redirect(url_for('contact_detail', id=contact.id))
+        return _back_to('contact_detail', id=contact.id)
     return render_template('crm/contact_form.html', contact=contact, organisations=organisations)
+
+
+# ── Inline editing ───────────────────────────────────────────────────────────
+
+def _fnum(v):
+    v = (v or '').replace(',', '').strip()
+    try:
+        return float(v) if v else None
+    except ValueError:
+        return None
+
+
+def _fint(v):
+    v = (v or '').strip()
+    try:
+        return int(float(v)) if v else None
+    except ValueError:
+        return None
+
+
+def _ftext(v):
+    v = (v or '').strip()
+    return v or None
+
+
+def apply_form_fields(obj, form, fields):
+    """Write form values onto a record, skipping anything the form did not send.
+
+    Record pages are editable in place and post only the fields shown on that
+    page, so a save must never blank a column simply because this page does not
+    display it. Each entry is (attribute, form key, converter).
+    """
+    for attr, key, conv in fields:
+        if key in form:
+            setattr(obj, attr, conv(form.get(key)) if conv else form.get(key))
+
+
+CONTACT_FIELDS = [
+    ('first_name',        'first_name',        None),
+    ('last_name',         'last_name',         None),
+    ('job_title',         'job_title',         _ftext),
+    ('phone',             'phone',             _ftext),
+    ('mobile',            'mobile',            _ftext),
+    ('email',             'email',             _ftext),
+    ('contact_type',      'contact_type',      _ftext),
+    ('notes',             'notes',             _ftext),
+    ('req_category',      'req_category',      _ftext),
+    ('req_property_type', 'req_property_type', _ftext),
+    ('req_use_class',     'req_use_class',     _ftext),
+    ('req_area',          'req_area',          _ftext),
+    ('req_size_min',      'req_size_min',      _fnum),
+    ('req_size_max',      'req_size_max',      _fnum),
+    ('req_budget_min',    'req_budget_min',    _fnum),
+    ('req_budget_max',    'req_budget_max',    _fnum),
+    ('req_budget_unit',   'req_budget_unit',   _ftext),
+    ('req_notes',         'req_notes',         _ftext),
+    ('preferred_move_in', 'preferred_move_in', _parse_date),
+    ('lease_length',      'lease_length',      _ftext),
+    ('assigned_agent',    'assigned_agent',    _ftext),
+    ('last_contact_date', 'last_contact_date', _parse_date),
+    ('next_follow_up',    'next_follow_up',    _parse_date),
+]
+
+
+def _save_contact_from_form(contact, form):
+    apply_form_fields(contact, form, CONTACT_FIELDS)
+    if 'organisation_id' in form:
+        raw = form.get('organisation_id')
+        contact.organisation_id = int(raw) if raw else None
+    if 'status' in form:
+        _apply_status(form.get('status'), contact=contact)
+
+
+def _back_to(default_endpoint, **kw):
+    """Return to the page the form was submitted from, when it says where."""
+    nxt = request.form.get('next') or ''
+    if nxt.startswith('/') and not nxt.startswith('//'):
+        return redirect(nxt)
+    return redirect(url_for(default_endpoint, **kw))
 
 
 @app.route('/contacts/<int:id>/delete', methods=['POST'])
