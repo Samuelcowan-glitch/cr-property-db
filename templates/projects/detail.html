@@ -3,7 +3,6 @@
 {% block topbar_title %}{{ project.name }}{% endblock %}
 {% block topbar_actions %}
   <a href="{{ url_for('project_enquiry_schedule', id=project.id) }}" class="btn btn-orange btn-sm" target="_blank">Enquiry Schedule</a>
-  <a href="{{ url_for('project_edit', id=project.id) }}" class="btn btn-outline btn-sm">Edit</a>
   {% if project.property %}
   <a href="{{ url_for('property_detail', id=project.property.id) }}" class="btn btn-outline btn-sm">View Property</a>
   {% endif %}
@@ -53,6 +52,16 @@
      TAB 1: PROJECT OVERVIEW  (default — Reapit-style 3-col)
 ══════════════════════════════════════════════════════════════ -->
 <div class="tab-panel active" data-tab-group="proj" data-tab="overview">
+<div class="rec-toolbar">
+  <span style="border:0;background:none;padding:0 6px 0 0;font-weight:700;color:#0e1f44">Project</span>
+  <span class="sp"></span>
+  <span class="rec-save">
+    <span data-save-status></span>
+    <button type="submit" class="btn btn-primary btn-save" form="project-form" data-save>Save</button>
+  </span>
+</div>
+
+{% set lst = project.project_listings[0] if project.project_listings else None %}
 <div class="rec-cols-3">
 
   <!-- ════ LEFT: Address / Client / Landlord / Tasks ════ -->
@@ -85,21 +94,10 @@
         {% else %}
         <div style="font-size:12px;color:#9aa0a6">Not set</div>
         {% endif %}
-        <form method="post" action="{{ url_for('project_edit', id=project.id) }}" style="margin-top:8px">
-          <input type="hidden" name="name" value="{{ project.name }}">
-          <input type="hidden" name="status" value="{{ project.status }}">
-          <input type="hidden" name="project_ref" value="{{ project.project_ref or '' }}">
-          <input type="hidden" name="client" value="{{ project.client or '' }}">
-          <input type="hidden" name="fee_earner" value="{{ project.fee_earner or '' }}">
-          <input type="hidden" name="instruction_date" value="{{ project.instruction_date.strftime('%Y-%m-%d') if project.instruction_date else '' }}">
-          <input type="hidden" name="notes" value="{{ project.notes or '' }}">
-          <input type="hidden" name="location_description" value="{{ project.location_description or '' }}">
-          {% if project.property_id %}<input type="hidden" name="property_id" value="{{ project.property_id }}">{% endif %}
-          <div style="display:flex;gap:5px">
-            <input type="date" name="next_call" value="{{ project.next_call.strftime('%Y-%m-%d') if project.next_call else '' }}" style="flex:1;font-size:11px;padding:4px 6px;border:1px solid #dde0e4;border-radius:4px">
-            <button type="submit" class="btn btn-primary btn-sm" style="font-size:11px;padding:4px 8px">Set</button>
-          </div>
-        </form>
+        <div style="margin-top:8px">
+          <input type="date" name="next_call" class="fin"
+                 value="{{ project.next_call.isoformat() if project.next_call else '' }}" form="project-form">
+        </div>
       </div>
     </div>
 
@@ -110,16 +108,14 @@
         {% if project.tasks %}
           {% for task in project.tasks %}
           <div style="display:flex;align-items:flex-start;gap:7px;padding:6px 10px;border-bottom:1px solid #f1f3f4;{% if task.completed %}opacity:.5{% endif %}">
-            <form method="post" action="{{ url_for('task_toggle', id=task.id) }}" style="flex-shrink:0;margin-top:1px">
-              <button type="submit" style="background:none;border:2px solid {% if task.completed %}#1b7a3f{% else %}#dde0e4{% endif %};border-radius:3px;width:15px;height:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;font-size:9px;color:{% if task.completed %}#1b7a3f{% else %}transparent{% endif %}">&#10003;</button>
-            </form>
+            <span style="flex-shrink:0;margin-top:1px">
+              <button type="submit" form="task-action-form" formaction="{{ url_for('task_toggle', id=task.id) }}" style="background:none;border:2px solid {% if task.completed %}#1b7a3f{% else %}#dde0e4{% endif %};border-radius:3px;width:15px;height:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;font-size:9px;color:{% if task.completed %}#1b7a3f{% else %}transparent{% endif %}">&#10003;</button>
+            </span>
             <div style="flex:1;min-width:0">
               <div style="font-size:12px;{% if task.completed %}text-decoration:line-through;color:#9aa0a6{% else %}color:#1a202c{% endif %}">{{ task.title }}</div>
               {% if task.due_date %}<div style="font-size:10.5px;color:{% if not task.completed and task.due_date < today %}#c62828{% else %}#9aa0a6{% endif %}">{{ task.due_date.strftime('%d %b') }}</div>{% endif %}
             </div>
-            <form method="post" action="{{ url_for('task_delete', id=task.id) }}" class="confirm-delete">
-              <button type="submit" style="background:none;border:none;cursor:pointer;color:#c62828;font-size:10px;padding:2px">&#10005;</button>
-            </form>
+            <span><button type="submit" form="task-delete-form" formaction="{{ url_for('task_delete', id=task.id) }}" style="background:none;border:none;cursor:pointer;color:#c62828;font-size:10px;padding:2px">&#10005;</button></span>
           </div>
           {% endfor %}
         {% else %}
@@ -129,18 +125,67 @@
       <div style="padding:7px 10px;border-top:1px dashed #e8eaed;background:#fafafa">
         <button onclick="document.getElementById('task-form-ov').style.display=document.getElementById('task-form-ov').style.display==='none'?'block':'none'" style="background:none;border:none;color:#e0303f;font-size:12px;cursor:pointer;padding:0">+ Add task</button>
         <div id="task-form-ov" style="display:none;margin-top:6px">
-          <form method="post" action="{{ url_for('task_add', id=project.id) }}">
-            <input type="text" name="title" required placeholder="Task" style="width:100%;font-size:12px;padding:4px 7px;border:1px solid #dde0e4;border-radius:4px;margin-bottom:4px">
+          <div>
+            <input type="text" name="title" required placeholder="Task" style="width:100%;font-size:12px;padding:4px 7px;border:1px solid #dde0e4;border-radius:4px;margin-bottom:4px" form="task-add-form">
             <div style="display:flex;gap:5px">
-              <input type="date" name="due_date" style="flex:1;font-size:11px;padding:4px 6px;border:1px solid #dde0e4;border-radius:4px">
-              <input type="text" name="created_by" placeholder="Name" style="flex:1;font-size:11px;padding:4px 6px;border:1px solid #dde0e4;border-radius:4px">
-              <button type="submit" class="btn btn-primary btn-sm" style="font-size:11px;padding:4px 8px">Add</button>
+              <input type="date" name="due_date" style="flex:1;font-size:11px;padding:4px 6px;border:1px solid #dde0e4;border-radius:4px" form="task-add-form">
+              <input type="text" name="created_by" placeholder="Name" style="flex:1;font-size:11px;padding:4px 6px;border:1px solid #dde0e4;border-radius:4px" form="task-add-form">
+              <button type="submit" class="btn btn-primary btn-sm" style="font-size:11px;padding:4px 8px" form="task-add-form">Add</button>
             </div>
-          </form>
+          </div>
         </div>
       </div>
     </div>
-  </div>
+  
+    <!-- ══ Photos — bottom-left, collapsed until clicked ══ -->
+    {% if lst %}
+    <div class="box photo-box" data-photo-manager data-listing="{{ lst.id }}">
+      <div class="box-head">
+        <button type="button" data-photo-toggle aria-expanded="false">
+          Photos
+          <span style="font-weight:400;color:#5f6368">({{ lst.photos|length }})</span>
+          {% if lst.photos %}
+          <span class="photo-strip">
+            {% for ph in lst.photos[:3] %}
+            <img src="{{ url_for('listing_photo_image', id=ph.id, w=120) }}" alt="">
+            {% endfor %}
+          </span>
+          {% endif %}
+        </button>
+      </div>
+
+      <div data-photo-body>
+        <div class="photo-drop" data-drop>
+          <strong>Drop photos here</strong> or click to browse<br>
+          <span style="font-size:11px">JPG, PNG or WEBP &mdash; several at once</span>
+          <input type="file" name="photos" accept="image/*" multiple form="photo-upload-form">
+        </div>
+
+        {% if lst.photos %}
+        <div class="photo-grid" data-photo-grid>
+          {% for ph in lst.photos %}
+          <div class="photo-tile" draggable="true" data-photo-id="{{ ph.id }}"
+               data-full="{{ url_for('listing_photo_image', id=ph.id, w=1400) }}"
+               title="Drag to reorder &middot; click to view">
+            <img src="{{ url_for('listing_photo_image', id=ph.id, w=300) }}" alt="Photograph {{ loop.index }}">
+            <span data-pos>{{ 'Main Photo' if loop.first else loop.index }}</span>
+            <button type="button" class="photo-remove" title="Remove this photo"
+                    form="photo-delete-form"
+                    formaction="{{ url_for('listing_photo_delete', id=ph.id) }}">&times;</button>
+          </div>
+          {% endfor %}
+        </div>
+        <div class="photo-hint">
+          Drag a photo to change its position. The first photo leads the listing on the
+          website and Zoopla. <span data-photo-status></span>
+        </div>
+        {% else %}
+        <div class="empty">No photographs uploaded yet.</div>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+</div>
 
   <!-- ════ MIDDLE: Instruction Detail ════ -->
   <div>
@@ -149,16 +194,41 @@
     <div class="box">
       <div class="box-head">Instruction Detail</div>
       <div class="frow">
+        <div class="fcell fcell--label">Project name</div>
+        <div class="fcell fcell--edit"><input type="text" name="name" value="{{ project.name }}" required form="project-form"></div>
+        <div class="fcell fcell--label w-narrow">Reference</div>
+        <div class="fcell fcell--edit"><input type="text" name="project_ref" value="{{ project.project_ref or '' }}" placeholder="e.g. CR/2026/001" form="project-form"></div>
+      </div>
+      <div class="frow">
+        <div class="fcell fcell--label">Client</div>
+        <div class="fcell fcell--edit"><input type="text" name="client" value="{{ project.client or '' }}" placeholder="Not set" form="project-form"></div>
+        <div class="fcell fcell--label w-narrow">Landlord</div>
+        <div class="fcell fcell--edit"><input type="text" name="landlord_name" value="{{ project.landlord_name or '' }}" placeholder="Not set" form="project-form"></div>
+      </div>
+      <div class="frow">
         <div class="fcell fcell--label">Status</div>
-        <div class="fcell"><strong>{{ project.status or '—' }}</strong></div>
+        <div class="fcell fcell--edit">
+          <select name="status" form="project-form">
+            {% for st in ['Active','Complete','On Hold'] %}
+            <option value="{{ st }}" {{ 'selected' if project.status == st else '' }}>{{ st }}</option>
+            {% endfor %}
+          </select>
+        </div>
         <div class="fcell fcell--label">Instruction type</div>
-        <div class="fcell {{ 'is-empty' if not project.instruction_type }}">{{ project.instruction_type or 'Not set' }}</div>
+        <div class="fcell fcell--edit">
+          <select name="instruction_type" form="project-form">
+            <option value="">— Select —</option>
+            {% for it in ['Letting','Sale','Rent Review','Lease Renewal','Valuation','Building Survey','Lease Advisory','Business Rates','Other'] %}
+            <option value="{{ it }}" {{ 'selected' if project.instruction_type == it else '' }}>{{ it }}</option>
+            {% endfor %}
+          </select>
+        </div>
       </div>
       <div class="frow">
         <div class="fcell fcell--label">Available from</div>
-        <div class="fcell {{ 'is-empty' if not project.available_from }}">{{ project.available_from.strftime('%d %b %Y') if project.available_from else 'Not set' }}</div>
+        <div class="fcell fcell--edit"><input type="date" name="available_from" value="{{ project.available_from.isoformat() if project.available_from else '' }}" form="project-form"></div>
         <div class="fcell fcell--label">Fee earner</div>
-        <div class="fcell {{ 'is-empty' if not project.fee_earner }}">{{ project.fee_earner or 'Not set' }}</div>
+        <div class="fcell fcell--edit"><input type="text" name="fee_earner" value="{{ project.fee_earner or '' }}" placeholder="Not set" form="project-form"></div>
       </div>
       <div style="padding:0">
         <div style="display:grid;grid-template-columns:1fr 1fr">
@@ -212,21 +282,10 @@
           <p style="font-size:12px;color:#9aa0a6;font-style:italic;margin:0">No location description yet. Click Edit to add.</p>
           {% endif %}
         </div>
-        <form id="loc-form" method="post" action="{{ url_for('project_edit', id=project.id) }}" style="display:none">
-          <input type="hidden" name="name" value="{{ project.name }}">
-          <input type="hidden" name="status" value="{{ project.status }}">
-          <input type="hidden" name="project_ref" value="{{ project.project_ref or '' }}">
-          <input type="hidden" name="client" value="{{ project.client or '' }}">
-          <input type="hidden" name="fee_earner" value="{{ project.fee_earner or '' }}">
-          <input type="hidden" name="instruction_date" value="{{ project.instruction_date.strftime('%Y-%m-%d') if project.instruction_date else '' }}">
-          <input type="hidden" name="notes" value="{{ project.notes or '' }}">
-          {% if project.property_id %}<input type="hidden" name="property_id" value="{{ project.property_id }}">{% endif %}
-          <textarea name="location_description" rows="5" style="width:100%;font-size:12.5px;padding:7px;border:1px solid #dde0e4;border-radius:5px;font-family:inherit;resize:vertical">{{ project.location_description or '' }}</textarea>
-          <div style="display:flex;gap:6px;margin-top:6px">
-            <button type="submit" class="btn btn-primary btn-sm">Save</button>
-            <button type="button" class="btn btn-secondary btn-sm" onclick="toggleLocDesc()">Cancel</button>
-          </div>
-        </form>
+        <div style="margin-top:6px">
+          <textarea name="location_description" rows="4" class="fin"
+                    placeholder="Where the property sits, transport, local occupiers…" form="project-form">{{ project.location_description or '' }}</textarea>
+        </div>
       </div>
     </div>
 
@@ -253,7 +312,6 @@
 
   
   <!-- ══ Marketing & publishing — moved here from the old Website Listing tab ══ -->
-  {% set lst = project.project_listings[0] if project.project_listings else None %}
   {% if lst %}
   <div>
     <div class="box">
@@ -274,14 +332,11 @@
           {% endif %}
         </div>
         <div class="fcell" style="flex:0 0 200px;justify-content:flex-end;gap:6px">
-          <form method="post" action="{{ url_for('listing_publish', id=lst.id) }}" style="margin:0">
-            <input type="hidden" name="target" value="{{ t }}">
-            <input type="hidden" name="next" value="{{ url_for('project_detail', id=project.id) }}">
-            <input type="hidden" name="live" value="{{ '0' if pub[t].live else '1' }}">
-            <button type="submit" class="btn btn-sm {{ 'btn-outline' if pub[t].live else 'btn-primary' }}">
-              {{ ('Remove from ' ~ label) if pub[t].live else ('Publish to ' ~ label) }}
-            </button>
-          </form>
+          <button type="submit" form="publish-form"
+                  formaction="{{ url_for('listing_publish', id=lst.id, target=t, live=('0' if pub[t].live else '1'), next=url_for('project_detail', id=project.id)) }}"
+                  class="btn btn-sm {{ 'btn-outline' if pub[t].live else 'btn-primary' }}">
+            {{ ('Remove from ' ~ label) if pub[t].live else ('Publish to ' ~ label) }}
+          </button>
           {% if t == 'zoopla' %}<a href="{{ url_for('admin_zoopla') }}" class="btn btn-sm btn-outline">Feed</a>{% endif %}
         </div>
       </div>
@@ -432,7 +487,7 @@
           </div>
           <div style="grid-column:span 2">
             <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Location <span style="font-weight:400;text-transform:none">(small paragraph — shown on website)</span></label>
-            <textarea name="location_description" rows="2" placeholder="e.g. Moments from the King's Road, close to the river and excellent transport links" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px;resize:vertical;font-family:inherit">{{ lst.location_description or '' }}</textarea>
+            <textarea name="location_description" rows="2" placeholder="e.g. Moments from the King's Road, close to the river and excellent transport links" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px;resize:vertical;font-family:inherit" form="project-form">{{ lst.location_description or '' }}</textarea>
           </div>
 
 <div class="lst-let-com" style="grid-column:span 2;background:#0e1f44;color:#fff;padding:8px 14px;border-radius:5px;font-size:12px;font-weight:700;margin-top:4px">📋 Commercial Lease Detail <span style="font-size:10px;font-weight:400;opacity:.7">— internal records / brochure only</span></div>
@@ -743,21 +798,10 @@
           <p style="font-size:12px;color:#9aa0a6;font-style:italic;margin:0">No notes yet.</p>
           {% endif %}
         </div>
-        <form id="notes-form" method="post" action="{{ url_for('project_edit', id=project.id) }}" style="display:none">
-          <input type="hidden" name="name" value="{{ project.name }}">
-          <input type="hidden" name="status" value="{{ project.status }}">
-          <input type="hidden" name="project_ref" value="{{ project.project_ref or '' }}">
-          <input type="hidden" name="client" value="{{ project.client or '' }}">
-          <input type="hidden" name="fee_earner" value="{{ project.fee_earner or '' }}">
-          <input type="hidden" name="instruction_date" value="{{ project.instruction_date.strftime('%Y-%m-%d') if project.instruction_date else '' }}">
-          <input type="hidden" name="location_description" value="{{ project.location_description or '' }}">
-          {% if project.property_id %}<input type="hidden" name="property_id" value="{{ project.property_id }}">{% endif %}
-          <textarea name="notes" rows="6" style="width:100%;font-size:12.5px;padding:7px;border:1px solid #dde0e4;border-radius:5px;font-family:inherit;resize:vertical">{{ project.notes or '' }}</textarea>
-          <div style="display:flex;gap:6px;margin-top:6px">
-            <button type="submit" class="btn btn-primary btn-sm">Save</button>
-            <button type="button" class="btn btn-secondary btn-sm" onclick="toggleNotes()">Cancel</button>
-          </div>
-        </form>
+        <div style="padding:0 0 8px">
+          <textarea name="notes" rows="4" class="fin"
+                    placeholder="Background, scope of instruction, key dates…" form="project-form">{{ project.notes or '' }}</textarea>
+        </div>
       </div>
       </div>
     </div>
@@ -847,7 +891,7 @@
             <div style="margin-top:6px;display:flex;align-items:center;gap:6px">
               <span style="font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:8px;background:#e6f4ea;color:#1b7a3f">&#10003; {{ pa.status }}</span>
               <form method="post" action="{{ url_for('applicant_status', id=pa.id) }}" style="display:flex;gap:4px;align-items:center">
-                <select name="status" style="font-size:10px;padding:2px 4px;border:1px solid #dde0e4;border-radius:4px">
+                <select name="status" style="font-size:10px;padding:2px 4px;border:1px solid #dde0e4;border-radius:4px" form="project-form">
                   {% for s in ['Active Applicant','Viewing Arranged','Offer Made','Declined','Let/Sold'] %}
                   <option value="{{ s }}" {{ 'selected' if pa.status == s else '' }}>{{ s }}</option>
                   {% endfor %}
@@ -906,6 +950,25 @@
     {% endif %}
 
   </div></div>
+
+{# These forms sit outside the record form — a form cannot be nested inside
+   another — and the controls above target them by id. #}
+<form id="project-form" method="post" action="{{ url_for('project_edit', id=project.id) }}" data-inline-edit>
+  <input type="hidden" name="next" value="{{ url_for('project_detail', id=project.id) }}">
+</form>
+<form id="task-action-form" method="post"></form>
+<form id="task-delete-form" method="post" class="confirm-delete"></form>
+<form id="task-add-form" method="post" action="{{ url_for('task_add', id=project.id) }}"></form>
+{% if lst %}
+<form id="publish-form" method="post"></form>
+<form id="photo-upload-form" method="post" enctype="multipart/form-data" data-upload-form
+      action="{{ url_for('listing_photo_upload', id=lst.id) }}">
+  <input type="hidden" name="next" value="{{ url_for('project_detail', id=project.id) }}">
+</form>
+<form id="photo-delete-form" method="post" class="confirm-delete">
+  <input type="hidden" name="next" value="{{ url_for('project_detail', id=project.id) }}">
+</form>
+{% endif %}
 </div>
 
 
@@ -965,7 +1028,7 @@
         {% for key, label in folder_labels.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
       </select>
       <label style="font-size:12px;color:#5f6368;display:block;margin-bottom:4px">Notes <span style="color:#9aa0a6">(optional)</span></label>
-      <textarea name="notes" rows="2" placeholder="Optional notes" style="width:100%;font-size:13px;padding:7px 10px;border:1px solid #d1d5db;border-radius:5px;box-sizing:border-box;font-family:inherit;resize:vertical;margin-bottom:16px"></textarea>
+      <textarea name="notes" rows="2" placeholder="Optional notes" style="width:100%;font-size:13px;padding:7px 10px;border:1px solid #d1d5db;border-radius:5px;box-sizing:border-box;font-family:inherit;resize:vertical;margin-bottom:16px" form="project-form"></textarea>
       <button type="submit" class="btn btn-primary" style="width:100%">Upload Document</button>
     </form>
   </div>

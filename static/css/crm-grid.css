@@ -322,3 +322,52 @@ table.rec-table td.actions { white-space: nowrap; text-align: right; }
 .btn-save { border-radius: 0; }
 .btn-save:disabled { opacity: .45; cursor: default; }
 .btn-save.is-dirty { background: var(--orange); border-color: var(--orange); color: #fff; }
+
+/* ── Photo manager ─────────────────────────────────────────────────────────
+   Collapsed it is one row of the grid; expanded it becomes a drop area and a
+   sortable set of thumbnails. */
+.photo-box [data-photo-body] { display: none; }
+.photo-box.is-open [data-photo-body] { display: block; }
+.photo-box [data-photo-toggle] {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  background: none; border: 0; cursor: pointer; padding: 0; font: inherit; text-align: left;
+}
+.photo-box [data-photo-toggle]::after {
+  content: "▸"; margin-left: auto; color: var(--grey-400); font-size: 11px;
+}
+.photo-box.is-open [data-photo-toggle]::after { content: "▾"; }
+.photo-strip { display: flex; gap: 4px; align-items: center; }
+.photo-strip img { width: 34px; height: 26px; object-fit: cover; border: 1px solid var(--cell-line); }
+
+.photo-drop {
+  border: 1px dashed var(--cell-edge); background: var(--cell-label);
+  padding: 14px; text-align: center; cursor: pointer;
+  font-size: 12px; color: var(--grey-600);
+}
+.photo-drop.is-over { border-color: var(--orange); background: #fdf3f4; color: var(--navy); }
+.photo-drop input[type=file] { display: none; }
+
+.photo-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 6px; padding: 8px;
+}
+.photo-tile {
+  position: relative; border: 1px solid var(--cell-edge); background: #fff;
+  cursor: grab; line-height: 0;
+}
+.photo-tile img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; display: block; }
+.photo-tile.is-dragging { opacity: .35; outline: 2px dashed var(--orange); }
+.photo-tile.is-main { outline: 2px solid var(--orange); }
+.photo-tile [data-pos] {
+  position: absolute; top: 3px; left: 3px;
+  background: rgba(14,31,68,.82); color: #fff;
+  font-size: 9.5px; line-height: 1; padding: 3px 5px; letter-spacing: .3px;
+}
+.photo-tile.is-main [data-pos] { background: var(--orange); }
+.photo-tile .photo-remove {
+  position: absolute; top: 3px; right: 3px;
+  background: rgba(255,255,255,.9); border: 1px solid var(--cell-edge);
+  width: 18px; height: 18px; line-height: 1; padding: 0; cursor: pointer;
+  font-size: 11px; color: var(--danger);
+}
+.photo-hint { padding: 0 8px 8px; font-size: 11px; color: var(--grey-400); }

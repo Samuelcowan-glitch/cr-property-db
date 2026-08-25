@@ -1426,35 +1426,17 @@ def project_edit(id):
     project = Project.query.get_or_404(id)
     properties = Property.query.order_by(Property.address).all()
     if request.method == 'POST':
-        def parse_date(val):
-            return datetime.strptime(val, '%Y-%m-%d').date() if val else None
-        prop_id_raw = request.form.get('property_id')
-        project.property_id = int(prop_id_raw) if prop_id_raw else None
-        project.name = request.form['name']
-        project.project_ref = request.form.get('project_ref')
-        project.status = request.form.get('status', 'Active')
-        project.fee_earner = request.form.get('fee_earner')
-        project.client = request.form.get('client')
-        project.instruction_date  = parse_date(request.form.get('instruction_date'))
-        project.notes             = request.form.get('notes')
-        project.instruction_type  = request.form.get('instruction_type') or None
-        project.available_from    = parse_date(request.form.get('available_from'))
-        project.next_call         = parse_date(request.form.get('next_call'))
-        project.client_phone      = request.form.get('client_phone') or None
-        project.client_mobile     = request.form.get('client_mobile') or None
-        project.client_email      = request.form.get('client_email') or None
-        project.key_contact       = request.form.get('key_contact') or None
-        project.landlord_name     = request.form.get('landlord_name') or None
-        project.agent_assigned       = request.form.get('agent_assigned') or None
-        project.location_description = request.form.get('location_description') or None
-        fp = request.form.get('fee_percent', '').strip()
-        ff = request.form.get('fee_fixed', '').strip()
-        project.fee_percent       = float(fp) if fp else None
-        project.fee_fixed         = float(ff) if ff else None
-        _upsert_client_contact(request.form)   # keep CRM in sync with client details
+        # Presence-guarded: the Project Overview is editable in place and posts
+        # only the fields on screen, so a save must not blank the others.
+        apply_form_fields(project, request.form, PROJECT_FIELDS)
+        if 'property_id' in request.form:
+            raw = request.form.get('property_id')
+            project.property_id = int(raw) if raw else None
+        if any(k in request.form for k in ('client', 'client_email', 'client_phone', 'client_mobile')):
+            _upsert_client_contact(request.form)   # keep CRM in sync with client details
         db.session.commit()
         flash('Project updated.', 'success')
-        return redirect(url_for('project_detail', id=project.id))
+        return _back_to('project_detail', id=project.id)
     return render_template('projects/form.html', properties=properties, prop_id=project.property_id, project=project)
 
 
@@ -1788,6 +1770,29 @@ CONTACT_FIELDS = [
 ]
 
 
+PROJECT_FIELDS = [
+    ('name',                 'name',                 None),
+    ('project_ref',          'project_ref',          _ftext),
+    ('status',               'status',               _ftext),
+    ('fee_earner',           'fee_earner',           _ftext),
+    ('client',               'client',               _ftext),
+    ('instruction_date',     'instruction_date',     _parse_date),
+    ('notes',                'notes',                _ftext),
+    ('instruction_type',     'instruction_type',     _ftext),
+    ('available_from',       'available_from',       _parse_date),
+    ('next_call',            'next_call',            _parse_date),
+    ('client_phone',         'client_phone',         _ftext),
+    ('client_mobile',        'client_mobile',        _ftext),
+    ('client_email',         'client_email',         _ftext),
+    ('key_contact',          'key_contact',          _ftext),
+    ('landlord_name',        'landlord_name',        _ftext),
+    ('agent_assigned',       'agent_assigned',       _ftext),
+    ('location_description', 'location_description', _ftext),
+    ('fee_percent',          'fee_percent',          _fnum),
+    ('fee_fixed',            'fee_fixed',            _fnum),
+]
+
+
 PROPERTY_FIELDS = [
     ('address',          'address',          None),
     ('property_type',    'property_type',    _ftext),
@@ -1809,7 +1814,7 @@ def _save_contact_from_form(contact, form):
 
 def _back_to(default_endpoint, **kw):
     """Return to the page the form was submitted from, when it says where."""
-    nxt = request.form.get('next') or ''
+    nxt = request.form.get('next') or request.args.get('next') or ''
     if nxt.startswith('/') and not nxt.startswith('//'):
         return redirect(nxt)
     return redirect(url_for(default_endpoint, **kw))
@@ -2335,11 +2340,14 @@ def api_property_meta(id):
 # ── Listing Photo upload/delete ───────────────────────────────────────────────
 
 def _listing_media_return(listing):
-    """After a media (photo) change, return the user to the place they were
-    managing the listing. Photos are managed from the project's Website
-    Listing tab, so prefer that; fall back to the standalone edit page."""
+    """After a media change, go back to where it was being managed. Photos live
+    on the Project Overview now, so prefer that; fall back to the standalone
+    listing page for a listing with no project."""
+    nxt = request.form.get('next') or ''
+    if nxt.startswith('/') and not nxt.startswith('//'):
+        return nxt
     if listing.project_id:
-        return url_for('project_detail', id=listing.project_id) + '#tab-listing'
+        return url_for('project_detail', id=listing.project_id)
     return url_for('listing_edit', id=listing.id) + '#media'
 
 
@@ -2427,6 +2435,33 @@ def listing_photo_delete(id):
     db.session.delete(ph)
     db.session.commit()
     return redirect(_listing_media_return(listing))
+
+
+@app.route('/listings/<int:id>/photos/order', methods=['POST'])
+def listing_photos_order(id):
+    """Store the order the photos were dragged into.
+
+    The first photo leads the listing everywhere it is marketed — the website,
+    the Zoopla feed and the CRM gallery all read this same sort_order, so there
+    is one ordering rather than one per channel.
+    """
+    listing = Listing.query.get_or_404(id)
+    raw = (request.form.get('order') or '').strip()
+    wanted = [int(x) for x in raw.split(',') if x.strip().isdigit()]
+    by_id = {p.id: p for p in listing.photos}
+    position = 0
+    for pid in wanted:                       # dragged order first
+        if pid in by_id:
+            by_id.pop(pid).sort_order = position
+            position += 1
+    for leftover in by_id.values():          # anything not sent keeps its place at the end
+        leftover.sort_order = position
+        position += 1
+    db.session.commit()
+    if request.headers.get('X-Requested-With') == 'fetch':
+        return jsonify({'ok': True, 'count': position})
+    flash('Photo order saved.', 'success')
+    return _back_to('project_detail', id=listing.project_id)
 
 
 @app.route('/listing-photos/<int:id>/reorder', methods=['POST'])
@@ -2571,8 +2606,8 @@ def listing_publish_state(listing):
 @app.route('/listings/<int:id>/publish', methods=['POST'])
 def listing_publish(id):
     listing = Listing.query.get_or_404(id)
-    target = (request.form.get('target') or '').lower()
-    live = request.form.get('live') == '1'
+    target = (request.form.get('target') or request.args.get('target') or '').lower()
+    live = (request.form.get('live') or request.args.get('live')) == '1'
     if target not in PUBLISH_TARGETS:
         flash('Unknown publishing target.', 'warning')
         return _back_to('project_detail', id=listing.project_id)
