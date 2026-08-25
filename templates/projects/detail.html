@@ -471,7 +471,7 @@
           <div>
             <label style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Status</label>
             <select name="listing_status" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
-              {% for s in ['available','under-offer','let-agreed','sold'] %}
+              {% for s in ['available','under-offer','let-agreed','sold','withdrawn'] %}
               <option value="{{ s }}" {{ 'selected' if lst.listing_status == s else '' }}>{{ s|replace('-',' ')|title }}</option>
               {% endfor %}
             </select>
