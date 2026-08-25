@@ -2,52 +2,197 @@
 {% block title %}Diary{% endblock %}
 {% block topbar_title %}Diary{% endblock %}
 
+{% macro range_label() -%}
+  {% if view == 'day' %}{{ anchor.strftime('%A %d %B %Y') }}
+  {% elif view == 'month' %}{{ anchor.strftime('%B %Y') }}
+  {% else %}{{ start.strftime('%d %b') }} &ndash; {{ end.strftime('%d %b %Y') }}{% endif %}
+{%- endmacro %}
+
+{% set step = {'day': 1, 'week': 7, 'month': 30}[view] %}
+{% set prev_date = (anchor - timedelta(days=step)) %}
+{% set next_date = (anchor + timedelta(days=step)) %}
+
 {% block content %}
-<div class="breadcrumb">
-  <a href="{{ url_for('dashboard') }}">Organiser</a><span class="sep">/</span>
-  <span class="current">Diary</span>
+
+<!-- ── toolbar ── -->
+<div class="cal-bar">
+  <div class="cal-nav">
+    <a class="cal-btn" href="{{ url_for('diary', view=view, date=prev_date.isoformat(), type=selected_types, owner=owner) }}" title="Previous">&lsaquo;</a>
+    <a class="cal-btn" href="{{ url_for('diary', view=view, date=today.isoformat(), type=selected_types, owner=owner) }}">Today</a>
+    <a class="cal-btn" href="{{ url_for('diary', view=view, date=next_date.isoformat(), type=selected_types, owner=owner) }}" title="Next">&rsaquo;</a>
+  </div>
+
+  <div class="cal-range">{{ range_label() }}</div>
+
+  <div class="cal-views">
+    {% for v in ['day', 'week', 'month'] %}
+    <a class="cal-btn {{ 'is-on' if view == v }}"
+       href="{{ url_for('diary', view=v, date=anchor.isoformat(), type=selected_types, owner=owner) }}">{{ v|capitalize }}</a>
+    {% endfor %}
+  </div>
+
+  <form method="get" class="cal-filters">
+    <input type="hidden" name="view" value="{{ view }}">
+    <input type="hidden" name="date" value="{{ anchor.isoformat() }}">
+    <select name="type" class="fin" onchange="this.form.submit()" style="width:auto">
+      <option value="">All types</option>
+      {% for key, (label, colour) in event_types.items() %}
+      <option value="{{ key }}" {{ 'selected' if key in selected_types else '' }}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <select name="owner" class="fin" onchange="this.form.submit()" style="width:auto">
+      <option value="">Everyone</option>
+      {% for o in owners %}
+      <option value="{{ o }}" {{ 'selected' if owner == o else '' }}>{{ o }}</option>
+      {% endfor %}
+    </select>
+  </form>
 </div>
 
-{# Calls, tasks and follow-ups already held on projects, contacts and enquiries,
-   gathered by date. Nothing new is stored for this page. #}
-<div class="org-grid" style="grid-template-columns:1fr 340px">
-  <section class="org-panel">
-    <header><span>Coming up <span class="count">({{ items|length }})</span></span></header>
-    <div class="rec-table-wrap" style="border:0">
-      <table class="rec-table">
-        <thead>
-          <tr><th style="width:110px">Date</th><th style="width:110px">Type</th><th>What</th><th style="width:130px">Who</th></tr>
-        </thead>
-        <tbody>
-          {% for i in items %}
-          <tr>
-            <td class="{{ 'org-due' if i.on < today }}">{{ i.on.strftime('%d/%m/%Y') }}</td>
-            <td>{{ i.kind }}</td>
-            <td><a href="{{ i.url }}">{{ i.what }}</a></td>
-            <td>{{ i.who or '—' }}</td>
-          </tr>
-          {% else %}
-          <tr><td colspan="4" class="org-empty">Nothing is scheduled.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </section>
+{% if not outlook_connected %}
+<div class="cal-warn">
+  <strong>Outlook is not connected.</strong>
+  This diary is showing CRM appointments only. Synchronised Outlook events will appear here once the
+  calendar connection is set up.
+</div>
+{% endif %}
 
-  <section class="org-panel">
-    <header><span>Overdue <span class="count">({{ overdue|length }})</span></span></header>
-    <div class="org-body">
-      {% for i in overdue %}
-      <div class="org-row">
-        <div class="org-main">
-          <a class="org-title" href="{{ i.url }}">{{ i.what }}</a>
-          <div class="org-sub">{{ i.kind }} &middot; <span class="org-due">due {{ i.on.strftime('%d/%m/%Y') }}</span></div>
-        </div>
+{% set day_start = 7 * 60 %}
+{% set day_end = 21 * 60 %}
+
+{% if view == 'month' %}
+<!-- ══ month ══ -->
+<div class="cal-month">
+  {% for d in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] %}<div class="cal-mhead">{{ d }}</div>{% endfor %}
+  {% set days = ((end - start).days + 1) %}
+  {% for i in range(days) %}
+    {% set day = start + timedelta(days=i) %}
+    {% set on_day = events | selectattr('date', 'equalto', day.isoformat()) | list %}
+    <div class="cal-mcell {{ 'is-today' if day == today }} {{ 'is-outside' if day.month != anchor.month }}">
+      <div class="cal-mday">
+        <a href="{{ url_for('diary', view='day', date=day.isoformat()) }}">{{ day.day }}</a>
       </div>
-      {% else %}
-      <div class="org-empty">Nothing overdue.</div>
+      {% for e in on_day[:4] %}
+      <a class="cal-chip" href="{{ e.url }}" style="border-left-color:{{ e.colour }}">
+        {% if not e.all_day %}<span class="cal-chip-time">{{ e.start }}</span>{% endif %}{{ e.title }}
+      </a>
+      {% endfor %}
+      {% if on_day|length > 4 %}
+      <a class="cal-more" href="{{ url_for('diary', view='day', date=day.isoformat()) }}">+{{ on_day|length - 4 }} more</a>
+      {% endif %}
+    </div>
+  {% endfor %}
+</div>
+
+{% else %}
+<!-- ══ day / week ══ -->
+{% set days = ((end - start).days + 1) %}
+<div class="cal-wrap" data-calendar data-now-minutes="{{ now_minutes }}">
+
+  <div class="cal-headrow" style="--days:{{ days }}">
+    <div class="cal-gutter"></div>
+    {% for i in range(days) %}
+      {% set day = start + timedelta(days=i) %}
+      <div class="cal-dayhead {{ 'is-today' if day == today }}">
+        <span class="cal-dow">{{ day.strftime('%a') }}</span>
+        <span class="cal-dnum">{{ day.day }}</span>
+      </div>
+    {% endfor %}
+  </div>
+
+  {# all-day band: the CRM's own date-only reminders #}
+  {% set allday = events | selectattr('all_day') | list %}
+  {% if allday %}
+  <div class="cal-allday" style="--days:{{ days }}">
+    <div class="cal-gutter">All day</div>
+    {% for i in range(days) %}
+      {% set day = start + timedelta(days=i) %}
+      <div class="cal-adcol">
+        {% for e in allday if e.date == day.isoformat() %}
+        <a class="cal-chip" href="{{ e.url }}" style="border-left-color:{{ e.colour }}">{{ e.title }}</a>
+        {% endfor %}
+      </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="cal-body" style="--days:{{ days }}">
+    <div class="cal-gutter cal-times">
+      {% for m in range(day_start, day_end, 60) %}
+      <div class="cal-hour"><span>{{ '%02d:00'|format(m // 60) }}</span></div>
       {% endfor %}
     </div>
-  </section>
+
+    {% for i in range(days) %}
+      {% set day = start + timedelta(days=i) %}
+      <div class="cal-daycol {{ 'is-today' if day == today }}" data-date="{{ day.isoformat() }}">
+        {% for m in range(day_start, day_end, 30) %}
+        <div class="cal-slot {{ 'is-hour' if m % 60 == 0 }}"></div>
+        {% endfor %}
+
+        {% if day == today %}<div class="cal-now"></div>{% endif %}
+
+        {% for e in events if not e.all_day and e.date == day.isoformat() %}
+        <div class="cal-event" style="background:{{ e.colour }}"
+             data-id="{{ e.id }}" data-url="{{ e.url }}"
+             data-start-min="{{ e.start_min }}" data-end-min="{{ e.end_min }}"
+             title="{{ e.title }} — {{ e.start }}–{{ e.end }}{% if e.owner %} ({{ e.owner }}){% endif %}">
+          <span class="cal-time">{{ e.start }}&ndash;{{ e.end }}</span>
+          <span class="cal-title">{{ e.title }}</span>
+          {% if e.location %}<span class="cal-loc">{{ e.location }}</span>{% endif %}
+          {% if e.outlook %}<span class="cal-outlook" title="Synchronised from Outlook">&#9679;</span>{% endif %}
+          <span class="cal-grip" title="Drag to change the length"></span>
+        </div>
+        {% endfor %}
+      </div>
+    {% endfor %}
+  </div>
 </div>
+{% endif %}
+
+<!-- ── new appointment, opened by clicking an empty slot ── -->
+<dialog id="new-event" class="cal-dialog">
+  <form method="post" action="{{ url_for('diary_event_new') }}" id="new-event-form">
+    <input type="hidden" name="next" value="{{ request.full_path }}">
+    <div class="box-head">New appointment</div>
+    <div class="form-grid" style="grid-template-columns:1fr 1fr;border:0">
+      <div class="form-group span-2">
+        <label for="ev-title">Title</label>
+        <input type="text" id="ev-title" name="title" placeholder="e.g. Viewing — 57B New Kings Road" required>
+      </div>
+      <div class="form-group">
+        <label for="ev-start">Starts</label>
+        <input type="datetime-local" id="ev-start" name="start" required>
+      </div>
+      <div class="form-group">
+        <label for="ev-end">Ends</label>
+        <input type="datetime-local" id="ev-end" name="end" required>
+      </div>
+      <div class="form-group">
+        <label for="ev-type">Type</label>
+        <select id="ev-type" name="event_type">
+          {% for key, (label, colour) in event_types.items() %}
+          <option value="{{ key }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="ev-owner">Who</label>
+        <input type="text" id="ev-owner" name="owner" value="{{ current_user.username }}">
+      </div>
+      <div class="form-group span-2">
+        <label for="ev-location">Location</label>
+        <input type="text" id="ev-location" name="location" placeholder="Optional">
+      </div>
+    </div>
+    <div class="form-actions" style="padding:10px">
+      <button type="submit" class="btn btn-primary btn-sm">Add appointment</button>
+      <button type="button" class="btn btn-secondary btn-sm"
+              onclick="document.getElementById('new-event').close()">Cancel</button>
+      <span style="margin-left:auto;font-size:11.5px;color:#9aa0a6">Times are Europe/London</span>
+    </div>
+  </form>
+</dialog>
+
+<script src="{{ url_for('static', filename='js/diary.js') }}"></script>
 {% endblock %}

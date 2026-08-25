@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}{{ ev.title }}{% endblock %}
+{% block topbar_title %}Appointment{% endblock %}
+{% block topbar_actions %}
+  <a href="{{ url_for('diary', view='day', date=start_local.date().isoformat()) }}" class="btn btn-outline btn-sm">&larr; Diary</a>
+{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+  <a href="{{ url_for('diary') }}">Diary</a><span class="sep">/</span>
+  <span class="current">{{ ev.title }}</span>
+</div>
+
+<form method="post" data-inline-edit>
+  <input type="hidden" name="next" value="{{ url_for('diary', view='day', date=start_local.date().isoformat()) }}">
+  <div class="rec-toolbar">
+    <span style="border:0;background:none;padding:0 8px 0 0;font-weight:600;color:#0e1f44">
+      {{ ev.type_label }}{% if ev.from_outlook %} &middot; from Outlook{% endif %}
+    </span>
+    <span class="sp"></span>
+    <span class="rec-save">
+      <span data-save-status></span>
+      <button type="submit" class="btn btn-primary btn-save" data-save>Save</button>
+    </span>
+  </div>
+
+  <div class="rec-cols">
+    <div class="rec-col">
+      <div class="box">
+        <div class="box-head">Appointment</div>
+        <div class="frow">
+          <div class="fcell fcell--label">Title</div>
+          <div class="fcell fcell--edit"><input type="text" name="title" value="{{ ev.title }}" required></div>
+        </div>
+        <div class="frow">
+          <div class="fcell fcell--label">Starts</div>
+          <div class="fcell fcell--edit"><input type="datetime-local" name="start" value="{{ start_local.strftime('%Y-%m-%dT%H:%M') }}"></div>
+          <div class="fcell fcell--label w-narrow">Ends</div>
+          <div class="fcell fcell--edit"><input type="datetime-local" name="end" value="{{ end_local.strftime('%Y-%m-%dT%H:%M') }}"></div>
+        </div>
+        <div class="frow">
+          <div class="fcell fcell--label">Type</div>
+          <div class="fcell fcell--edit">
+            <select name="event_type">
+              {% for key, (label, colour) in event_types.items() %}
+              <option value="{{ key }}" {{ 'selected' if ev.event_type == key else '' }}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="fcell fcell--label w-narrow">Who</div>
+          <div class="fcell fcell--edit"><input type="text" name="owner" value="{{ ev.owner or '' }}"></div>
+        </div>
+        <div class="frow">
+          <div class="fcell fcell--label">Location</div>
+          <div class="fcell fcell--edit"><input type="text" name="location" value="{{ ev.location or '' }}" placeholder="Not set"></div>
+        </div>
+        <div class="frow">
+          <div class="fcell fcell--label fcell--top">Notes</div>
+          <div class="fcell fcell--edit"><textarea name="notes" placeholder="What this is about…">{{ ev.notes or '' }}</textarea></div>
+        </div>
+        <div class="frow">
+          <div class="fcell fcell--label">Time zone</div>
+          <div class="fcell is-empty">Europe/London</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="rec-col">
+      <div class="box">
+        <div class="box-head">Linked records</div>
+        <div class="frow">
+          <div class="fcell fcell--label">Contact</div>
+          <div class="fcell fcell--edit">
+            <select name="contact_id">
+              <option value="">— None —</option>
+              {% for c in contacts %}
+              <option value="{{ c.id }}" {{ 'selected' if ev.contact_id == c.id else '' }}>{{ c.full_name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="frow">
+          <div class="fcell fcell--label">Property</div>
+          <div class="fcell fcell--edit">
+            <select name="property_id">
+              <option value="">— None —</option>
+              {% for p in properties %}
+              <option value="{{ p.id }}" {{ 'selected' if ev.property_id == p.id else '' }}>{{ p.address }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="frow">
+          <div class="fcell fcell--label">Project</div>
+          <div class="fcell fcell--edit">
+            <select name="project_id">
+              <option value="">— None —</option>
+              {% for p in projects %}
+              <option value="{{ p.id }}" {{ 'selected' if ev.project_id == p.id else '' }}>{{ p.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {% if ev.from_outlook %}
+      <div class="box">
+        <div class="box-head">Outlook</div>
+        <div class="frow">
+          <div class="fcell fcell--label">Synchronised</div>
+          <div class="fcell">{{ ev.synced_at.strftime('%d %b %Y %H:%M') if ev.synced_at else 'Not yet' }}</div>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</form>
+
+<form method="post" action="{{ url_for('diary_event_delete', id=ev.id) }}" class="confirm-delete" style="margin-top:10px">
+  <button type="submit" class="btn btn-danger btn-sm">Delete appointment</button>
+</form>
+{% endblock %}

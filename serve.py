@@ -3,7 +3,7 @@ from waitress import serve
 from app import (app, db, _migrate_project_columns, _migrate_listing_columns,
                  _migrate_listings_table_columns, _migrate_email_columns,
                  _migrate_enquiry_columns, _migrate_document_columns,
-                 _migrate_crm_columns, _migrate_security_columns, _ensure_default_user, _seed_project_listings,
+                 _migrate_crm_columns, _migrate_security_columns, _migrate_diary_tables, _ensure_default_user, _seed_project_listings,
                  Property, Contact, Enquiry, EnquiryNote)
 
 with app.app_context():
@@ -16,6 +16,7 @@ with app.app_context():
     _migrate_email_columns()
     _migrate_crm_columns()
     _migrate_security_columns()
+    _migrate_diary_tables()
     _ensure_default_user()
 
     # First deploy only (empty DB): seed the 32 website properties, then give

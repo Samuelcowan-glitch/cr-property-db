@@ -79,6 +79,7 @@ def csrf_token():
 
 
 app.jinja_env.globals['csrf_token'] = csrf_token
+app.jinja_env.globals['timedelta'] = timedelta
 
 
 @app.before_request
@@ -861,6 +862,96 @@ class User(UserMixin, db.Model):
         return check_password_hash(self.password_hash, password)
 
 
+# ── Diary ────────────────────────────────────────────────────────────────────
+# Timed appointments. The rest of the CRM only holds dates (a task's due date, a
+# project's next call), so those still appear in the diary as all-day entries —
+# this table is what makes an 11:00–11:30 viewing possible.
+#
+# Times are stored in UTC and shown in Europe/London, so the hour on screen
+# stays right either side of the clocks changing.
+
+EVENT_TYPES = {
+    'viewing':     ('Viewing',     '#1a73e8'),
+    'call':        ('Call',        '#12805c'),
+    'meeting':     ('Meeting',     '#7b3fb5'),
+    'inspection':  ('Inspection',  '#b8860b'),
+    'reminder':    ('Reminder',    '#c2410c'),
+    'appointment': ('Appointment', '#5b6675'),
+}
+LONDON = 'Europe/London'
+
+
+class DiaryEvent(db.Model):
+    __tablename__ = 'diary_events'
+    id         = db.Column(db.Integer, primary_key=True)
+    title      = db.Column(db.String(255), nullable=False)
+    start_at   = db.Column(db.DateTime, nullable=False, index=True)   # UTC
+    end_at     = db.Column(db.DateTime, nullable=False)               # UTC
+    all_day    = db.Column(db.Boolean, default=False)
+    event_type = db.Column(db.String(20), default='appointment')
+    owner      = db.Column(db.String(100))
+    location   = db.Column(db.String(255))
+    notes      = db.Column(db.Text)
+
+    # What the appointment is about — any of these may be set.
+    contact_id     = db.Column(db.Integer, db.ForeignKey('contacts.id'), nullable=True)
+    property_id    = db.Column(db.Integer, db.ForeignKey('properties.id'), nullable=True)
+    project_id     = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=True)
+    enquiry_id     = db.Column(db.Integer, db.ForeignKey('enquiries.id'), nullable=True)
+    transaction_id = db.Column(db.Integer, db.ForeignKey('transactions.id'), nullable=True)
+
+    # Kept for the Outlook sync that comes next; unused until then.
+    ms_event_id = db.Column(db.String(255), unique=True, nullable=True)
+    ms_etag     = db.Column(db.String(255))
+    synced_at   = db.Column(db.DateTime)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_by = db.Column(db.String(100))
+
+    contact     = db.relationship('Contact', backref=db.backref('diary_events', lazy=True))
+    linked_prop = db.relationship('Property', backref=db.backref('diary_events', lazy=True))
+    project     = db.relationship('Project', backref=db.backref('diary_events', lazy=True))
+
+    @property
+    def type_label(self):
+        return EVENT_TYPES.get(self.event_type or 'appointment', ('Appointment', '#5b6675'))[0]
+
+    @property
+    def colour(self):
+        return EVENT_TYPES.get(self.event_type or 'appointment', ('Appointment', '#5b6675'))[1]
+
+    @property
+    def from_outlook(self):
+        return bool(self.ms_event_id)
+
+
+def london_tz():
+    from zoneinfo import ZoneInfo
+    return ZoneInfo(LONDON)
+
+
+def to_london(dt):
+    """A stored UTC time as London wall-clock time."""
+    from datetime import timezone
+    if dt is None:
+        return None
+    return dt.replace(tzinfo=timezone.utc).astimezone(london_tz())
+
+
+def from_london(dt_naive):
+    """A London wall-clock time as UTC, for storing."""
+    from datetime import timezone
+    if dt_naive is None:
+        return None
+    return dt_naive.replace(tzinfo=london_tz()).astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def _migrate_diary_tables():
+    """diary_events is created by create_all; nothing existing is altered."""
+    with app.app_context():
+        db.create_all()
+
+
 class AuditLog(db.Model):
     """Who did what, to which record, and when.
 
@@ -1201,13 +1292,181 @@ def _diary_items(limit_days=60):
     return items
 
 
+# ── Diary: views and editing ─────────────────────────────────────────────────
+
+def _range_for(view, anchor):
+    """The window a view covers, as London dates."""
+    from datetime import timedelta as _td
+    if view == 'day':
+        return anchor, anchor
+    if view == 'month':
+        import calendar as _cal
+        first = anchor.replace(day=1)
+        start = first - _td(days=first.weekday())               # grid starts Monday
+        last = anchor.replace(day=_cal.monthrange(anchor.year, anchor.month)[1])
+        end = last + _td(days=(6 - last.weekday()))
+        return start, end
+    start = anchor - _td(days=anchor.weekday())                 # week: Mon–Sun
+    return start, start + _td(days=6)
+
+
+def _events_between(start_date, end_date, types=None, owner=None):
+    """Timed appointments in the window, plus the CRM's own date-only items."""
+    from datetime import datetime as _dt, time as _time
+    lo = from_london(_dt.combine(start_date, _time.min))
+    hi = from_london(_dt.combine(end_date, _time.max))
+    q = DiaryEvent.query.filter(DiaryEvent.start_at <= hi, DiaryEvent.end_at >= lo)
+    if types:
+        q = q.filter(DiaryEvent.event_type.in_(types))
+    if owner:
+        q = q.filter(DiaryEvent.owner == owner)
+    events = []
+    for e in q.order_by(DiaryEvent.start_at).all():
+        s, t = to_london(e.start_at), to_london(e.end_at)
+        events.append({
+            'id': e.id, 'title': e.title, 'type': e.event_type or 'appointment',
+            'type_label': e.type_label, 'colour': e.colour, 'owner': e.owner,
+            'location': e.location, 'all_day': bool(e.all_day),
+            'date': s.date().isoformat(), 'start': s.strftime('%H:%M'), 'end': t.strftime('%H:%M'),
+            'start_min': s.hour * 60 + s.minute, 'end_min': t.hour * 60 + t.minute,
+            'outlook': e.from_outlook, 'url': url_for('diary_event', id=e.id),
+        })
+    # The date-only reminders the CRM already held, shown across the top.
+    for i in _diary_items():
+        if start_date <= i['on'] <= end_date:
+            events.append({
+                'id': None, 'title': i['what'], 'type': 'reminder', 'type_label': i['kind'],
+                'colour': EVENT_TYPES['reminder'][1], 'owner': i['who'], 'location': None,
+                'all_day': True, 'date': i['on'].isoformat(), 'start': '', 'end': '',
+                'start_min': 0, 'end_min': 0, 'outlook': False, 'url': i['url'],
+            })
+    return events
+
+
 @app.route('/diary')
 def diary():
-    """Calls, tasks and follow-ups already recorded across the CRM, by date."""
-    items = _diary_items()
-    today = date.today()
-    return render_template('diary.html', items=items, today=today,
-                           overdue=[i for i in items if i['on'] < today])
+    from datetime import datetime as _dt
+    view = request.args.get('view', 'week')
+    if view not in ('day', 'week', 'month'):
+        view = 'week'
+    try:
+        anchor = _dt.strptime(request.args.get('date', ''), '%Y-%m-%d').date()
+    except ValueError:
+        anchor = to_london(datetime.utcnow()).date()
+
+    types = [t for t in request.args.getlist('type') if t in EVENT_TYPES]
+    owner = request.args.get('owner') or None
+    start, end = _range_for(view, anchor)
+    events = _events_between(start, end, types or None, owner)
+
+    now_london = to_london(datetime.utcnow())
+    owners = sorted({o[0] for o in db.session.query(DiaryEvent.owner).distinct() if o[0]})
+    return render_template('diary.html',
+                           view=view, anchor=anchor, start=start, end=end,
+                           events=events, event_types=EVENT_TYPES,
+                           selected_types=types, owner=owner, owners=owners,
+                           today=now_london.date(),
+                           now_minutes=now_london.hour * 60 + now_london.minute,
+                           outlook_connected=False)
+
+
+@app.route('/diary/event/new', methods=['POST'])
+@requires('create')
+def diary_event_new():
+    from datetime import datetime as _dt
+    try:
+        start = _dt.strptime(request.form['start'], '%Y-%m-%dT%H:%M')
+        end = _dt.strptime(request.form['end'], '%Y-%m-%dT%H:%M')
+    except (KeyError, ValueError):
+        flash('That appointment needs a start and end time.', 'warning')
+        return _back_to('diary')
+    if end <= start:
+        flash('The end time must be after the start time.', 'warning')
+        return _back_to('diary')
+    ev = DiaryEvent(
+        title=(request.form.get('title') or 'Appointment').strip(),
+        start_at=from_london(start), end_at=from_london(end),
+        event_type=request.form.get('event_type') if request.form.get('event_type') in EVENT_TYPES else 'appointment',
+        owner=(request.form.get('owner') or getattr(current_user, 'username', None)),
+        location=_ftext(request.form.get('location')),
+        notes=_ftext(request.form.get('notes')),
+        contact_id=_fint(request.form.get('contact_id')),
+        property_id=_fint(request.form.get('property_id')),
+        project_id=_fint(request.form.get('project_id')),
+        enquiry_id=_fint(request.form.get('enquiry_id')),
+        created_by=getattr(current_user, 'username', None),
+    )
+    db.session.add(ev)
+    db.session.commit()
+    audit('create', entity='DiaryEvent', entity_id=ev.id, detail=ev.event_type)
+    flash('Appointment added.', 'success')
+    return _back_to('diary')
+
+
+@app.route('/diary/event/<int:id>', methods=['GET', 'POST'])
+def diary_event(id):
+    from datetime import datetime as _dt
+    ev = DiaryEvent.query.get_or_404(id)
+    if request.method == 'POST':
+        if not current_user.can('edit'):
+            abort(403)
+        if 'title' in request.form:
+            ev.title = request.form.get('title') or ev.title
+        for field in ('location', 'notes', 'owner'):
+            if field in request.form:
+                setattr(ev, field, _ftext(request.form.get(field)))
+        if request.form.get('event_type') in EVENT_TYPES:
+            ev.event_type = request.form['event_type']
+        for field in ('contact_id', 'property_id', 'project_id', 'enquiry_id'):
+            if field in request.form:
+                setattr(ev, field, _fint(request.form.get(field)))
+        try:
+            if request.form.get('start'):
+                ev.start_at = from_london(_dt.strptime(request.form['start'], '%Y-%m-%dT%H:%M'))
+            if request.form.get('end'):
+                ev.end_at = from_london(_dt.strptime(request.form['end'], '%Y-%m-%dT%H:%M'))
+        except ValueError:
+            flash('That start or end time was not understood.', 'warning')
+            return redirect(url_for('diary_event', id=ev.id))
+        if ev.end_at <= ev.start_at:
+            flash('The end time must be after the start time.', 'warning')
+            return redirect(url_for('diary_event', id=ev.id))
+        db.session.commit()
+        audit('edit', entity='DiaryEvent', entity_id=ev.id)
+        flash('Appointment updated.', 'success')
+        return _back_to('diary')
+    return render_template('diary_event.html', ev=ev, event_types=EVENT_TYPES,
+                           start_local=to_london(ev.start_at), end_local=to_london(ev.end_at),
+                           contacts=Contact.query.order_by(Contact.last_name).all(),
+                           properties=Property.query.order_by(Property.address).all(),
+                           projects=Project.query.order_by(Project.name).all())
+
+
+@app.route('/diary/event/<int:id>/move', methods=['POST'])
+@requires('edit')
+def diary_event_move(id):
+    """Dragged to a new time, or resized. Sent by the calendar as JSON."""
+    from datetime import datetime as _dt
+    ev = DiaryEvent.query.get_or_404(id)
+    data = request.get_json(silent=True) or request.form
+    try:
+        start = _dt.strptime(data['start'], '%Y-%m-%dT%H:%M')
+        end = _dt.strptime(data['end'], '%Y-%m-%dT%H:%M')
+    except (KeyError, TypeError, ValueError):
+        return jsonify({'ok': False, 'error': 'A start and end time are needed.'}), 400
+    if end <= start:
+        return jsonify({'ok': False, 'error': 'The end must be after the start.'}), 400
+    ev.start_at, ev.end_at = from_london(start), from_london(end)
+    db.session.commit()
+    audit('edit', entity='DiaryEvent', entity_id=ev.id, detail='moved or resized')
+    return jsonify({'ok': True, 'start': data['start'], 'end': data['end']})
+
+
+@app.route('/diary/event/<int:id>/delete', methods=['POST'])
+@requires('delete')
+def diary_event_delete(id):
+    ev = DiaryEvent.query.get_or_404(id)
+    return delete_record(ev, 'Appointment', 'diary')
 
 
 @app.route('/')
