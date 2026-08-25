@@ -890,6 +890,8 @@ class DiaryEvent(db.Model):
     all_day    = db.Column(db.Boolean, default=False)
     event_type = db.Column(db.String(20), default='appointment')
     owner      = db.Column(db.String(100))
+    # Kept in step with the linked property on save, so older records and any
+    # external copy still read sensibly; the property link is what counts.
     location   = db.Column(db.String(255))
     notes      = db.Column(db.Text)
 
@@ -923,6 +925,30 @@ class DiaryEvent(db.Model):
     @property
     def from_outlook(self):
         return bool(self.ms_event_id)
+
+    @property
+    def place(self):
+        """Where the appointment is: the linked property's current address.
+
+        Read through the relationship rather than from the stored text, so
+        correcting an address on the property record corrects every appointment
+        at it without touching them.
+        """
+        if self.linked_prop:
+            return property_address(self.linked_prop)
+        return self.location or ''
+
+
+def property_address(prop):
+    """A property's address and postcode as one line."""
+    if prop is None:
+        return ''
+    return ', '.join(b for b in (prop.address, prop.postcode) if b)
+
+
+def outlook_location(ev):
+    """What the Outlook sync will send as the event location."""
+    return ev.place
 
 
 def london_tz():
@@ -1326,7 +1352,8 @@ def _events_between(start_date, end_date, types=None, owner=None):
         events.append({
             'id': e.id, 'title': e.title, 'type': e.event_type or 'appointment',
             'type_label': e.type_label, 'colour': e.colour, 'owner': e.owner,
-            'location': e.location, 'all_day': bool(e.all_day),
+            'location': e.place, 'all_day': bool(e.all_day),
+            'property_id': e.property_id,
             'date': s.date().isoformat(), 'start': s.strftime('%H:%M'), 'end': t.strftime('%H:%M'),
             'start_min': s.hour * 60 + s.minute, 'end_min': t.hour * 60 + t.minute,
             'outlook': e.from_outlook, 'url': url_for('diary_event', id=e.id),
@@ -1361,7 +1388,8 @@ def diary():
 
     now_london = to_london(datetime.utcnow())
     owners = sorted({o[0] for o in db.session.query(DiaryEvent.owner).distinct() if o[0]})
-    return render_template('diary.html',
+    properties = Property.query.order_by(Property.address).all()
+    return render_template('diary.html', properties=properties,
                            view=view, anchor=anchor, start=start, end=end,
                            events=events, event_types=EVENT_TYPES,
                            selected_types=types, owner=owner, owners=owners,
@@ -1383,19 +1411,26 @@ def diary_event_new():
     if end <= start:
         flash('The end time must be after the start time.', 'warning')
         return _back_to('diary')
+    # Every appointment belongs to a property. Checked here, not only in the
+    # form, so it cannot be skipped by editing the request.
+    prop = Property.query.get(_fint(request.form.get('property_id')) or 0)
+    if prop is None:
+        flash('Choose the property this appointment is at.', 'warning')
+        return _back_to('diary')
+
     ev = DiaryEvent(
         title=(request.form.get('title') or 'Appointment').strip(),
         start_at=from_london(start), end_at=from_london(end),
         event_type=request.form.get('event_type') if request.form.get('event_type') in EVENT_TYPES else 'appointment',
         owner=(request.form.get('owner') or getattr(current_user, 'username', None)),
-        location=_ftext(request.form.get('location')),
         notes=_ftext(request.form.get('notes')),
         contact_id=_fint(request.form.get('contact_id')),
-        property_id=_fint(request.form.get('property_id')),
+        property_id=prop.id,
         project_id=_fint(request.form.get('project_id')),
         enquiry_id=_fint(request.form.get('enquiry_id')),
         created_by=getattr(current_user, 'username', None),
     )
+    ev.location = property_address(prop)   # a readable copy for older views and Outlook
     db.session.add(ev)
     db.session.commit()
     audit('create', entity='DiaryEvent', entity_id=ev.id, detail=ev.event_type)
@@ -1412,12 +1447,23 @@ def diary_event(id):
             abort(403)
         if 'title' in request.form:
             ev.title = request.form.get('title') or ev.title
-        for field in ('location', 'notes', 'owner'):
+        for field in ('notes', 'owner'):
             if field in request.form:
                 setattr(ev, field, _ftext(request.form.get(field)))
+        # The property is required on save, including for appointments made
+        # before this rule existed.
+        if 'property_id' in request.form:
+            prop = Property.query.get(_fint(request.form.get('property_id')) or 0)
+            if prop is None:
+                flash('Choose the property this appointment is at.', 'warning')
+                return redirect(url_for('diary_event', id=ev.id))
+            ev.property_id = prop.id
+        elif ev.property_id is None:
+            flash('Choose the property this appointment is at.', 'warning')
+            return redirect(url_for('diary_event', id=ev.id))
         if request.form.get('event_type') in EVENT_TYPES:
             ev.event_type = request.form['event_type']
-        for field in ('contact_id', 'property_id', 'project_id', 'enquiry_id'):
+        for field in ('contact_id', 'project_id', 'enquiry_id'):
             if field in request.form:
                 setattr(ev, field, _fint(request.form.get(field)))
         try:
@@ -1431,6 +1477,7 @@ def diary_event(id):
         if ev.end_at <= ev.start_at:
             flash('The end time must be after the start time.', 'warning')
             return redirect(url_for('diary_event', id=ev.id))
+        ev.location = property_address(Property.query.get(ev.property_id) if ev.property_id else None)
         db.session.commit()
         audit('edit', entity='DiaryEvent', entity_id=ev.id)
         flash('Appointment updated.', 'success')

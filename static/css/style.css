@@ -746,8 +746,23 @@ body, td, p, .fcell, .fval { font-weight: 400; }
 }
 .cal-mday a { color: inherit; text-decoration: none; }
 
-.cal-dialog { border: 1px solid var(--grey-200); padding: 0; width: min(520px, 92vw); }
+/* overflow stays visible so the property search list is not cut off by the
+   edge of the dialog. */
+.cal-dialog { border: 1px solid var(--grey-200); padding: 0; width: min(520px, 92vw); overflow: visible; }
 .cal-dialog::backdrop { background: rgba(14,31,68,.35); }
+
+/* Booking form: label above field, two across, full width where it helps. */
+.cal-form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 14px; }
+.cal-form .cal-field.wide { grid-column: 1 / -1; }
+.cal-form .cal-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.cal-form label { font-size: 11.5px; font-weight: 600; color: var(--grey-600); letter-spacing: .02em; }
+.cal-form input, .cal-form select { width: 100%; padding: 7px 9px; font: inherit; font-size: 13px;
+  border: 1px solid var(--grey-200); border-radius: 4px; background: #fff; }
+.cal-form input:focus, .cal-form select:focus { outline: none; border-color: var(--navy); }
+.cal-form .ss-wrap { width: 100%; }
+.cal-req { color: var(--danger); }
+.cal-hint { margin: 2px 0 0; font-size: 11.5px; color: var(--grey-600); }
+.cal-actions { padding: 0 14px 14px; }
 
 @media (max-width: 820px) {
   .cal-range { width: 100%; order: -1; margin-right: 0; }

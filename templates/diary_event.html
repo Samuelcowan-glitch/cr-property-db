@@ -11,6 +11,13 @@
   <span class="current">{{ ev.title }}</span>
 </div>
 
+{% if not ev.linked_prop %}
+<div class="cal-warn">
+  <strong>This appointment has no property.</strong>
+  It was made before a property became required. Choose one below to save any change.
+</div>
+{% endif %}
+
 <form method="post" data-inline-edit>
   <input type="hidden" name="next" value="{{ url_for('diary', view='day', date=start_local.date().isoformat()) }}">
   <div class="rec-toolbar">
@@ -51,8 +58,25 @@
           <div class="fcell fcell--edit"><input type="text" name="owner" value="{{ ev.owner or '' }}"></div>
         </div>
         <div class="frow">
+          <div class="fcell fcell--label">Property <span style="color:#c62828">&nbsp;*</span></div>
+          <div class="fcell fcell--edit">
+            <select name="property_id" required data-search>
+              <option value="">— Choose the property —</option>
+              {% for p in properties %}
+              <option value="{{ p.id }}" {{ 'selected' if ev.property_id == p.id else '' }}>{{ p.address }}{% if p.postcode %}, {{ p.postcode }}{% endif %}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="frow">
           <div class="fcell fcell--label">Location</div>
-          <div class="fcell fcell--edit"><input type="text" name="location" value="{{ ev.location or '' }}" placeholder="Not set"></div>
+          <div class="fcell {{ 'is-empty' if not ev.linked_prop }}">
+            {% if ev.linked_prop %}
+              <a href="{{ url_for('property_detail', id=ev.linked_prop.id) }}">{{ ev.place }}</a>
+            {% else %}
+              Choose a property above — its address becomes the location.
+            {% endif %}
+          </div>
         </div>
         <div class="frow">
           <div class="fcell fcell--label fcell--top">Notes</div>
@@ -79,17 +103,7 @@
             </select>
           </div>
         </div>
-        <div class="frow">
-          <div class="fcell fcell--label">Property</div>
-          <div class="fcell fcell--edit">
-            <select name="property_id">
-              <option value="">— None —</option>
-              {% for p in properties %}
-              <option value="{{ p.id }}" {{ 'selected' if ev.property_id == p.id else '' }}>{{ p.address }}</option>
-              {% endfor %}
-            </select>
-          </div>
-        </div>
+
         <div class="frow">
           <div class="fcell fcell--label">Project</div>
           <div class="fcell fcell--edit">

@@ -155,20 +155,22 @@
   <form method="post" action="{{ url_for('diary_event_new') }}" id="new-event-form">
     <input type="hidden" name="next" value="{{ request.full_path }}">
     <div class="box-head">New appointment</div>
-    <div class="form-grid" style="grid-template-columns:1fr 1fr;border:0">
-      <div class="form-group span-2">
+    {# The CRM's boxed form-grid puts labels in their own column, which is too
+       tight for a 520px dialog — this one stacks label over field instead. #}
+    <div class="cal-form">
+      <div class="cal-field wide">
         <label for="ev-title">Title</label>
         <input type="text" id="ev-title" name="title" placeholder="e.g. Viewing — 57B New Kings Road" required>
       </div>
-      <div class="form-group">
+      <div class="cal-field">
         <label for="ev-start">Starts</label>
         <input type="datetime-local" id="ev-start" name="start" required>
       </div>
-      <div class="form-group">
+      <div class="cal-field">
         <label for="ev-end">Ends</label>
         <input type="datetime-local" id="ev-end" name="end" required>
       </div>
-      <div class="form-group">
+      <div class="cal-field">
         <label for="ev-type">Type</label>
         <select id="ev-type" name="event_type">
           {% for key, (label, colour) in event_types.items() %}
@@ -176,16 +178,24 @@
           {% endfor %}
         </select>
       </div>
-      <div class="form-group">
+      <div class="cal-field">
         <label for="ev-owner">Who</label>
         <input type="text" id="ev-owner" name="owner" value="{{ current_user.username }}">
       </div>
-      <div class="form-group span-2">
-        <label for="ev-location">Location</label>
-        <input type="text" id="ev-location" name="location" placeholder="Optional">
+      <div class="cal-field wide">
+        <label for="ev-property">Property <span class="cal-req">*</span></label>
+        {# Searchable: searchable-select.js picks up any *_id field, so typing an
+           address, name or postcode filters the list. #}
+        <select id="ev-property" name="property_id" required data-search>
+          <option value="">— Choose the property —</option>
+          {% for p in properties %}
+          <option value="{{ p.id }}">{{ p.address }}{% if p.postcode %}, {{ p.postcode }}{% endif %}</option>
+          {% endfor %}
+        </select>
+        <p class="cal-hint">The property's address becomes the appointment location.</p>
       </div>
     </div>
-    <div class="form-actions" style="padding:10px">
+    <div class="form-actions cal-actions">
       <button type="submit" class="btn btn-primary btn-sm">Add appointment</button>
       <button type="button" class="btn btn-secondary btn-sm"
               onclick="document.getElementById('new-event').close()">Cancel</button>
