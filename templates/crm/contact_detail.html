@@ -2,8 +2,7 @@
 {% block title %}{{ contact.full_name }}{% endblock %}
 {% block topbar_title %}Contact{% endblock %}
 {% block topbar_actions %}
-  <a href="{{ url_for('contact_edit', id=contact.id) }}" class="btn btn-outline btn-sm">Edit</a>
-  <a href="{{ url_for('enquiry_new') }}" class="btn btn-primary btn-sm">+ New Enquiry</a>
+  <a href="{{ url_for('contacts_list') }}" class="btn btn-outline btn-sm">&larr; Contacts</a>
 {% endblock %}
 
 {% block content %}
@@ -17,129 +16,211 @@
   'New Enquiry': '#1c3160', 'Active Requirement': '#1a7f4b', 'Prospect': '#3a6ea5',
   'Under Offer': '#c9820a', 'Current Tenant': '#0e5a34', 'Requirement Satisfied': '#5b6675',
   'Inactive': '#8a939f', 'Archived': '#5f6368' } %}
-<div style="margin-bottom:20px">
-  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-    <h2 style="font-size:22px;font-weight:700;color:#0e1f44;margin:0">{{ contact.full_name }}</h2>
-    <span style="display:inline-block;padding:3px 12px;border-radius:999px;font-size:12px;font-weight:700;color:#fff;background:{{ status_colors.get(contact.status, '#5f6368') }}">{{ contact.status or '—' }}</span>
-    {% if contact.follow_up_overdue %}<span style="display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:700;color:#fff;background:#c0392b">⚠ Follow-up overdue</span>{% endif %}
-    <form method="post" action="{{ url_for('contact_set_status', id=contact.id) }}" style="margin-left:auto;display:flex;gap:6px;align-items:center">
-      <label for="status-quick" style="font-size:11px;color:#9aa0a6;text-transform:uppercase;letter-spacing:.5px">Set status</label>
-      <select id="status-quick" name="status" onchange="this.form.submit()" style="padding:6px 8px;border:1px solid #d5dbe4;border-radius:6px;font-size:13px">
-        {% for s in CONTACT_STATUSES %}
-        <option value="{{ s }}" {{ 'selected' if contact.status == s else '' }}>{{ s }}</option>
-        {% endfor %}
-      </select>
-      <noscript><button class="btn btn-sm btn-primary">Save</button></noscript>
-    </form>
-  </div>
-  <div style="color:#5f6368;font-size:13px;margin-top:6px">
-    {% if contact.job_title %}{{ contact.job_title }}{% endif %}
-    {% if contact.organisation %} &nbsp;·&nbsp; <a href="{{ url_for('organisation_detail', id=contact.organisation.id) }}">{{ contact.organisation.name }}</a>{% endif %}
-    {% if contact.contact_type %} &nbsp;·&nbsp; {{ contact.contact_type }}{% endif %}
-    {% if contact.assigned_agent %} &nbsp;·&nbsp; Agent: {{ contact.assigned_agent }}{% endif %}
-  </div>
-</div>
 
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-  <div class="card">
-    <div class="card-header"><div class="card-title">Contact Details</div></div>
-    <table class="detail-table">
-      <tr><td>Name</td><td>{{ contact.full_name }}</td></tr>
-      <tr><td>Job Title</td><td>{{ contact.job_title or '—' }}</td></tr>
-      <tr><td>Type</td><td>{{ contact.contact_type or '—' }}</td></tr>
-      <tr><td>Organisation</td><td>{% if contact.organisation %}<a href="{{ url_for('organisation_detail', id=contact.organisation.id) }}">{{ contact.organisation.name }}</a>{% else %}—{% endif %}</td></tr>
-      <tr><td>Email</td><td>{% if contact.email %}<a href="mailto:{{ contact.email }}">{{ contact.email }}</a>{% else %}—{% endif %}</td></tr>
-      <tr><td>Phone</td><td>{{ contact.phone or '—' }}</td></tr>
-      <tr><td>Mobile</td><td>{{ contact.mobile or '—' }}</td></tr>
-      <tr><td>Notes</td><td>{{ contact.notes or '—' }}</td></tr>
-    </table>
-  </div>
-
-  <div class="card">
-    <div class="card-header">
-      <div class="card-title">Enquiries ({{ contact.enquiries | length }})</div>
-      <a href="{{ url_for('enquiry_new') }}" class="btn btn-sm btn-primary">+ New</a>
-    </div>
-    {% if contact.enquiries %}
-    <table>
-      <thead><tr><th>Subject</th><th>Type</th><th>Status</th></tr></thead>
-      <tbody>
-        {% for e in contact.enquiries %}
-        <tr>
-          <td><a href="{{ url_for('enquiry_edit', id=e.id) }}">{{ e.subject }}</a></td>
-          <td>{{ e.enquiry_type or '—' }}</td>
-          <td><span class="badge {{ 'badge-active' if e.status == 'Open' else 'badge-complete' if e.status == 'Won' else 'badge-hold' }}">{{ e.status }}</span></td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    {% else %}
-    <div class="empty-state" style="padding:16px"><p>No enquiries linked.</p></div>
-    {% endif %}
-  </div>
-</div>
-
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px">
-  <div class="card">
-    <div class="card-header"><div class="card-title">Requirement</div></div>
-    <table class="detail-table">
-      <tr><td>Category</td><td>{{ contact.req_category|capitalize if contact.req_category else '—' }}</td></tr>
-      <tr><td>Property type</td><td>{{ contact.req_property_type or '—' }}</td></tr>
-      <tr><td>Intended use</td><td>{{ contact.req_use_class|capitalize if contact.req_use_class else '—' }}</td></tr>
-      <tr><td>Preferred location</td><td>{{ contact.req_area or '—' }}</td></tr>
-      <tr><td>Size</td><td>{% if contact.req_size_min or contact.req_size_max %}{{ contact.req_size_min|int if contact.req_size_min else '?' }}–{{ contact.req_size_max|int if contact.req_size_max else '?' }} sq ft{% else %}—{% endif %}</td></tr>
-      <tr><td>Max budget</td><td>{% if contact.req_budget_max %}£{{ '{:,.0f}'.format(contact.req_budget_max) }} {{ contact.req_budget_unit or '' }}{% else %}—{% endif %}</td></tr>
-      <tr><td>Preferred move-in</td><td>{{ contact.preferred_move_in.strftime('%d %b %Y') if contact.preferred_move_in else '—' }}</td></tr>
-      <tr><td>Lease length</td><td>{{ contact.lease_length or '—' }}</td></tr>
-      <tr><td>Special requirements</td><td>{{ contact.req_notes or '—' }}</td></tr>
-    </table>
-  </div>
-  <div class="card">
-    <div class="card-header"><div class="card-title">Follow-up</div></div>
-    <table class="detail-table">
-      <tr><td>Assigned agent</td><td>{{ contact.assigned_agent or '—' }}</td></tr>
-      <tr><td>Last contacted</td><td>{{ contact.last_contact_date.strftime('%d %b %Y') if contact.last_contact_date else '—' }}</td></tr>
-      <tr><td>Next follow-up</td><td>
-        {% if contact.next_follow_up %}<span style="{{ 'color:#c0392b;font-weight:700' if contact.follow_up_overdue else '' }}">{{ contact.next_follow_up.strftime('%d %b %Y') }}{{ ' ⚠ overdue' if contact.follow_up_overdue else '' }}</span>{% else %}—{% endif %}
-      </td></tr>
-      <tr><td>Last interaction</td><td>{% if contact.last_activity %}{{ contact.last_activity.created_at.strftime('%d %b %Y') }} · {{ contact.last_activity.kind|replace('_',' ') }}{% else %}—{% endif %}</td></tr>
-    </table>
-    <form method="post" action="{{ url_for('contact_add_activity', id=contact.id) }}" style="padding:12px;display:flex;gap:6px;flex-wrap:wrap">
-      <input type="hidden" name="kind" value="interaction">
-      <input type="text" name="body" placeholder="Log a call / email / meeting…" style="flex:1;min-width:150px;padding:6px 8px;border:1px solid #d5dbe4;border-radius:6px" required>
-      <button class="btn btn-sm btn-primary">Log</button>
-    </form>
-  </div>
-</div>
-
-<div class="card" id="activity" style="margin-top:16px">
-  <div class="card-header"><div class="card-title">Activity History</div></div>
-  <form method="post" action="{{ url_for('contact_add_activity', id=contact.id) }}" style="padding:12px;display:flex;gap:6px;border-bottom:1px solid #eef2f8">
-    <input type="hidden" name="kind" value="note">
-    <input type="text" name="body" placeholder="Add a note…" style="flex:1;padding:6px 8px;border:1px solid #d5dbe4;border-radius:6px" required>
-    <button class="btn btn-sm btn-outline">Add note</button>
-  </form>
-  {% if contact.activities %}
-  <table>
-    <thead><tr><th style="width:160px">When</th><th>Activity</th><th style="width:120px">By</th></tr></thead>
-    <tbody>
-      {% for a in contact.activities %}
-      <tr>
-        <td style="white-space:nowrap;color:#5f6368;font-size:12px">{{ a.created_at.strftime('%d %b %Y %H:%M') }}</td>
-        <td>
-          {% if a.kind == 'status_change' %}
-            <span class="badge badge-hold">Status</span> {{ a.old_status or '—' }} → <strong>{{ a.new_status }}</strong>
-          {% else %}
-            {% if a.kind == 'interaction' %}📞 {% elif a.kind == 'enquiry' %}✉️ {% endif %}{{ a.body }}
-          {% endif %}
-        </td>
-        <td style="color:#9aa0a6;font-size:12px">{{ a.author or '—' }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  {% else %}
-  <div class="empty-state" style="padding:16px"><p>No activity yet.</p></div>
+<!-- ── Record toolbar ── -->
+<div class="rec-toolbar">
+  <a href="{{ url_for('contact_edit', id=contact.id) }}"><span class="ic">&#9998;</span>Edit</a>
+  <a href="{{ url_for('enquiry_new') }}"><span class="ic">&#9993;</span>New Enquiry</a>
+  <a href="#activity"><span class="ic">&#128220;</span>Journal</a>
+  {% if contact.organisation %}
+  <a href="{{ url_for('organisation_detail', id=contact.organisation.id) }}"><span class="ic">&#127970;</span>Company</a>
   {% endif %}
+  <a href="{{ url_for('contacts_list') }}"><span class="ic">&#9776;</span>All Contacts</a>
+</div>
+
+<div class="rec-title">
+  <h2>{{ contact.full_name }}
+    <span class="sub">&nbsp;{{ contact.contact_type or 'Contact' }}{% if contact.created_at %} &middot; registered {{ contact.created_at.strftime('%d/%m/%Y') }}{% endif %}</span>
+  </h2>
+  <span class="badge" style="background:{{ status_colors.get(contact.status, '#5f6368') }};color:#fff">{{ contact.status or '—' }}</span>
+</div>
+
+<div class="rec-cols">
+
+  <!-- ════ LEFT ════ -->
+  <div class="rec-col">
+
+    <div class="box">
+      <div class="frow">
+        <div class="fcell fcell--label">Name</div>
+        <div class="fcell"><strong>{{ contact.full_name }}</strong></div>
+        <div class="fcell fcell--label w-narrow">Type</div>
+        <div class="fcell {{ 'is-empty' if not contact.contact_type }}">{{ contact.contact_type or 'Not set' }}</div>
+      </div>
+      <div class="frow">
+        <div class="fcell fcell--label">Job title</div>
+        <div class="fcell {{ 'is-empty' if not contact.job_title }}">{{ contact.job_title or 'Not added' }}</div>
+        <div class="fcell fcell--label w-narrow">Company</div>
+        <div class="fcell {{ 'is-empty' if not contact.organisation }}">
+          {% if contact.organisation %}<a href="{{ url_for('organisation_detail', id=contact.organisation.id) }}">{{ contact.organisation.name }}</a>{% else %}Not added{% endif %}
+        </div>
+      </div>
+      <form method="post" action="{{ url_for('contact_set_status', id=contact.id) }}">
+        <div class="frow">
+          <div class="fcell fcell--label">Status</div>
+          <div class="fcell fcell--flush">
+            <select name="status" class="fin" onchange="this.form.submit()">
+              {% for s in CONTACT_STATUSES %}
+              <option value="{{ s }}" {{ 'selected' if contact.status == s else '' }}>{{ s }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="fcell fcell--label w-narrow">Agent</div>
+          <div class="fcell {{ 'is-empty' if not contact.assigned_agent }}">{{ contact.assigned_agent or 'Not set' }}</div>
+        </div>
+      </form>
+    </div>
+
+    <div class="box">
+      <div class="box-head">Contact Details</div>
+      <div class="frow">
+        <div class="fcell fcell--label w-narrow">Mobile</div>
+        <div class="fcell {{ 'is-empty' if not contact.mobile }}">{{ contact.mobile or 'Not added' }}</div>
+      </div>
+      <div class="frow">
+        <div class="fcell fcell--label w-narrow">Telephone</div>
+        <div class="fcell {{ 'is-empty' if not contact.phone }}">{{ contact.phone or 'Not added' }}</div>
+      </div>
+      <div class="frow">
+        <div class="fcell fcell--label w-narrow">E-mail</div>
+        <div class="fcell {{ 'is-empty' if not contact.email }}">
+          {% if contact.email %}<a href="mailto:{{ contact.email }}">{{ contact.email }}</a>{% else %}Not added{% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="box">
+      <div class="box-head">Requirement</div>
+      <div class="frow">
+        <div class="fcell fcell--label">Category</div>
+        <div class="fcell {{ 'is-empty' if not contact.req_category }}">{{ contact.req_category|capitalize if contact.req_category else 'Not set' }}</div>
+        <div class="fcell fcell--label w-narrow">Use</div>
+        <div class="fcell {{ 'is-empty' if not contact.req_use_class }}">{{ contact.req_use_class|capitalize if contact.req_use_class else 'Not set' }}</div>
+      </div>
+      <div class="frow">
+        <div class="fcell fcell--label">Property type</div>
+        <div class="fcell {{ 'is-empty' if not contact.req_property_type }}">{{ contact.req_property_type or 'Not set' }}</div>
+      </div>
+      <div class="frow">
+        <div class="fcell fcell--label">Preferred area</div>
+        <div class="fcell {{ 'is-empty' if not contact.req_area }}">{{ contact.req_area or 'Not set' }}</div>
+      </div>
+      <div class="frow">
+        <div class="fcell fcell--label">Size</div>
+        <div class="fcell {{ 'is-empty' if not (contact.req_size_min or contact.req_size_max) }}">
+          {% if contact.req_size_min or contact.req_size_max %}
+            {{ contact.req_size_min|int if contact.req_size_min else '?' }}&ndash;{{ contact.req_size_max|int if contact.req_size_max else '?' }} sq ft
+          {% else %}Not set{% endif %}
+        </div>
+        <div class="fcell fcell--label w-narrow">Budget</div>
+        <div class="fcell {{ 'is-empty' if not contact.req_budget_max }}">
+          {% if contact.req_budget_max %}&pound;{{ '{:,.0f}'.format(contact.req_budget_max) }} {{ contact.req_budget_unit or '' }}{% else %}Not set{% endif %}
+        </div>
+      </div>
+      <div class="frow">
+        <div class="fcell fcell--label">Move-in</div>
+        <div class="fcell {{ 'is-empty' if not contact.preferred_move_in }}">{{ contact.preferred_move_in.strftime('%d %b %Y') if contact.preferred_move_in else 'Not set' }}</div>
+        <div class="fcell fcell--label w-narrow">Lease</div>
+        <div class="fcell {{ 'is-empty' if not contact.lease_length }}">{{ contact.lease_length or 'Not set' }}</div>
+      </div>
+      {% if contact.req_notes %}
+      <div class="frow">
+        <div class="fcell fcell--label fcell--top">Requirement notes</div>
+        <div class="fcell fcell--top" style="white-space:pre-wrap">{{ contact.req_notes }}</div>
+      </div>
+      {% endif %}
+    </div>
+
+  </div>
+
+  <!-- ════ RIGHT ════ -->
+  <div class="rec-col">
+
+    <div class="box">
+      <div class="box-head">
+        Follow-up
+        {% if contact.follow_up_overdue %}<span class="badge badge-lost">Overdue</span>{% endif %}
+      </div>
+      <div class="frow">
+        <div class="fcell fcell--label">Last contacted</div>
+        <div class="fcell {{ 'is-empty' if not contact.last_contact_date }}">{{ contact.last_contact_date.strftime('%d %b %Y') if contact.last_contact_date else 'Never' }}</div>
+      </div>
+      <div class="frow">
+        <div class="fcell fcell--label">Next follow-up</div>
+        <div class="fcell {{ 'is-empty' if not contact.next_follow_up }}" {% if contact.follow_up_overdue %}style="color:#c62828;font-weight:600"{% endif %}>
+          {{ contact.next_follow_up.strftime('%d %b %Y') if contact.next_follow_up else 'Not set' }}
+        </div>
+      </div>
+      <div class="frow">
+        <div class="fcell fcell--label">Last interaction</div>
+        <div class="fcell {{ 'is-empty' if not contact.last_activity }}">
+          {% if contact.last_activity %}{{ contact.last_activity.created_at.strftime('%d %b %Y') }} &middot; {{ contact.last_activity.kind|replace('_',' ') }}{% else %}None{% endif %}
+        </div>
+      </div>
+      <form method="post" action="{{ url_for('contact_add_activity', id=contact.id) }}">
+        <input type="hidden" name="kind" value="interaction">
+        <div class="frow">
+          <div class="fcell fcell--flush grow-2">
+            <input type="text" name="body" class="fin" placeholder="Log a call, email or meeting…" required>
+          </div>
+          <div class="fcell" style="flex:0 0 74px;justify-content:center">
+            <button class="btn btn-sm btn-primary" style="width:100%">Log</button>
+          </div>
+        </div>
+      </form>
+    </div>
+
+    <div class="box">
+      <div class="box-head">
+        Enquiries
+        <span class="box-actions">
+          <span>{{ contact.enquiries|length }}</span>
+          <a href="{{ url_for('enquiry_new') }}">+ Add</a>
+        </span>
+      </div>
+      {% for e in contact.enquiries %}
+      <div class="frow">
+        <div class="fcell grow-2"><a href="{{ url_for('enquiry_detail', id=e.id) }}">{{ e.subject }}</a></div>
+        <div class="fcell">{{ e.enquiry_type or '—' }}</div>
+        <div class="fcell" style="flex:0 0 96px">
+          <span class="badge {{ 'badge-active' if e.status == 'Open' else 'badge-complete' if e.status == 'Won' else 'badge-hold' }}">{{ e.status }}</span>
+        </div>
+      </div>
+      {% else %}
+      <div class="empty">No enquiries linked to this contact.</div>
+      {% endfor %}
+    </div>
+
+    <div class="box" id="activity">
+      <div class="box-head">Journal</div>
+      <form method="post" action="{{ url_for('contact_add_activity', id=contact.id) }}">
+        <input type="hidden" name="kind" value="note">
+        <div class="frow">
+          <div class="fcell fcell--flush grow-2">
+            <input type="text" name="body" class="fin" placeholder="Add a note…" required>
+          </div>
+          <div class="fcell" style="flex:0 0 74px;justify-content:center">
+            <button class="btn btn-sm btn-outline" style="width:100%">Add</button>
+          </div>
+        </div>
+      </form>
+      {% for a in contact.activities %}
+      <div class="frow">
+        <div class="fcell fcell--label w-narrow fcell--top">{{ a.created_at.strftime('%d %b %Y') }}</div>
+        <div class="fcell fcell--top grow-2">
+          {% if a.kind == 'status_change' %}
+            <span class="badge badge-hold">Status</span>&nbsp;{{ a.old_status or '—' }} &rarr; <strong>{{ a.new_status }}</strong>
+          {% else %}
+            {{ a.body }}
+          {% endif %}
+        </div>
+        <div class="fcell" style="flex:0 0 92px;color:#9aa0a6;font-size:11.5px">{{ a.author or '—' }}</div>
+      </div>
+      {% else %}
+      <div class="empty">No activity recorded yet.</div>
+      {% endfor %}
+    </div>
+
+  </div>
 </div>
 {% endblock %}

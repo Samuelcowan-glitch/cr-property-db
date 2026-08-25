@@ -54,14 +54,14 @@
      TAB 1: PROJECT OVERVIEW  (default — Reapit-style 3-col)
 ══════════════════════════════════════════════════════════════ -->
 <div class="tab-panel active" data-tab-group="proj" data-tab="overview">
-<div style="display:grid;grid-template-columns:220px 1fr 310px;gap:12px;align-items:start">
+<div class="rec-cols-3">
 
   <!-- ════ LEFT: Address / Client / Landlord / Tasks ════ -->
   <div>
 
     <!-- Property block -->
-    <div class="card" style="padding:0;overflow:hidden;margin-bottom:10px">
-      <div style="background:#0e1f44;color:#fff;padding:7px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">Property</div>
+    <div class="box">
+      <div class="box-head">Property</div>
       <div style="padding:10px 12px">
         {% if project.property %}
           <a href="{{ url_for('property_detail', id=project.property.id) }}" style="font-size:13px;font-weight:600;color:#1c3160;display:block;margin-bottom:3px">{{ project.property.address }}</a>
@@ -76,37 +76,9 @@
     </div>
 
     <!-- Client block -->
-    <div class="card" style="padding:0;overflow:hidden;margin-bottom:10px">
-      <div style="background:#0e1f44;color:#fff;padding:7px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">Client</div>
-      <div style="padding:10px 12px">
-        {% if project.client %}
-        <div style="font-size:13px;font-weight:600;color:#0e1f44;margin-bottom:6px">{{ project.client }}</div>
-        {% else %}
-        <div style="font-size:12px;color:#9aa0a6;margin-bottom:6px">No client set</div>
-        {% endif %}
-        {% if project.client_phone %}<div style="font-size:12px;color:#4a5568;margin-top:4px">&#128222; {{ project.client_phone }}</div>{% endif %}
-        {% if project.client_mobile %}<div style="font-size:12px;color:#4a5568;margin-top:3px">&#128241; {{ project.client_mobile }}</div>{% endif %}
-        {% if project.client_email %}<div style="font-size:12px;color:#4a5568;margin-top:3px">&#9993; {{ project.client_email }}</div>{% endif %}
-        {% if project.key_contact %}<div style="font-size:11px;color:#9aa0a6;margin-top:5px">Key contact: {{ project.key_contact }}</div>{% endif %}
-      </div>
-    </div>
-
-    <!-- Landlord / Agent block -->
-    <div class="card" style="padding:0;overflow:hidden;margin-bottom:10px">
-      <div style="background:#0e1f44;color:#fff;padding:7px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">Landlord / Agent</div>
-      <div style="padding:10px 12px">
-        {% macro irow(lbl,val) %}{% if val %}<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #f1f3f4;font-size:11.5px"><span style="color:#5f6368">{{ lbl }}</span><span style="font-weight:500;color:#0e1f44">{{ val }}</span></div>{% endif %}{% endmacro %}
-        {{ irow('Landlord', project.landlord_name) }}
-        {{ irow('Agent', project.agent_assigned or project.fee_earner) }}
-        {% if not project.landlord_name and not project.agent_assigned %}
-        <p style="font-size:11.5px;color:#9aa0a6;font-style:italic"><a href="{{ url_for('project_edit', id=project.id) }}" style="color:#e0303f">Edit</a> to add landlord &amp; agent.</p>
-        {% endif %}
-      </div>
-    </div>
-
     <!-- Next Call -->
-    <div class="card" style="padding:0;overflow:hidden;margin-bottom:10px">
-      <div style="background:#0e1f44;color:#fff;padding:7px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">Next Call</div>
+    <div class="box">
+      <div class="box-head">Next Call</div>
       <div style="padding:10px 12px">
         {% if project.next_call %}
         <div style="font-size:14px;font-weight:700;color:{% if project.next_call < today %}#c62828{% else %}#0e1f44{% endif %}">{{ project.next_call.strftime('%d %b %Y') }}</div>
@@ -133,8 +105,8 @@
     </div>
 
     <!-- To-Do -->
-    <div class="card" style="padding:0;overflow:hidden">
-      <div style="background:#0e1f44;color:#fff;padding:7px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">To-Do</div>
+    <div class="box">
+      <div class="box-head">To-Do</div>
       <div style="padding:4px 0">
         {% if project.tasks %}
           {% for task in project.tasks %}
@@ -175,22 +147,28 @@
   <div>
 
     <!-- Status / Instruction card -->
-    <div class="card" style="padding:0;overflow:hidden;margin-bottom:12px">
-      <div style="background:#e0303f;color:#fff;padding:9px 14px;font-size:13px;font-weight:700">Instruction Detail</div>
-      <div style="padding:12px 14px">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
-
+    <div class="box">
+      <div class="box-head">Instruction Detail</div>
+      <div class="frow">
+        <div class="fcell fcell--label">Status</div>
+        <div class="fcell"><strong>{{ project.status or '—' }}</strong></div>
+        <div class="fcell fcell--label">Instruction type</div>
+        <div class="fcell {{ 'is-empty' if not project.instruction_type }}">{{ project.instruction_type or 'Not set' }}</div>
+      </div>
+      <div class="frow">
+        <div class="fcell fcell--label">Available from</div>
+        <div class="fcell {{ 'is-empty' if not project.available_from }}">{{ project.available_from.strftime('%d %b %Y') if project.available_from else 'Not set' }}</div>
+        <div class="fcell fcell--label">Fee earner</div>
+        <div class="fcell {{ 'is-empty' if not project.fee_earner }}">{{ project.fee_earner or 'Not set' }}</div>
+      </div>
+      <div style="padding:0">
+        <div style="display:grid;grid-template-columns:1fr 1fr">
           {% macro dfield(lbl, val) %}
-          <div>
-            <div style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px">{{ lbl }}</div>
-            <div style="font-size:13px;font-weight:600;color:#0e1f44">{{ val or '—' }}</div>
+          <div class="frow" style="border-right:1px solid var(--cell-line)">
+            <div class="fcell fcell--label">{{ lbl }}</div>
+            <div class="fcell {{ 'is-empty' if not val }}">{{ val or 'Not set' }}</div>
           </div>
           {% endmacro %}
-
-          {{ dfield('Status', project.status) }}
-          {{ dfield('Instruction Type', project.instruction_type) }}
-          {{ dfield('Available From', project.available_from.strftime('%d %b %Y') if project.available_from else None) }}
-          {{ dfield('Fee Earner', project.fee_earner) }}
 
           {% if project.property and project.property.listing_price and project.property.listing_price > 0 %}
           {% set rent_pa = project.property.listing_price * 12 if project.property.listing_price_unit == 'pcm' else project.property.listing_price %}
@@ -222,10 +200,10 @@
     </div>
 
     <!-- Location Description -->
-    <div class="card" style="padding:0;overflow:hidden;margin-bottom:12px">
-      <div style="background:#0e1f44;color:#fff;padding:9px 14px;display:flex;align-items:center;justify-content:space-between">
-        <span style="font-size:12.5px;font-weight:700">Location</span>
-        <button onclick="toggleLocDesc()" style="background:none;border:none;color:rgba(255,255,255,.75);cursor:pointer;font-size:11px">Edit</button>
+    <div class="box">
+      <div class="box-head">
+        <span>Location</span>
+        <button onclick="toggleLocDesc()" style="background:none;border:none;color:#e0303f;font-weight:600;cursor:pointer;font-size:11px">Edit</button>
       </div>
       <div style="padding:12px 14px">
         <div id="loc-view">
@@ -255,8 +233,8 @@
 
     <!-- Applicant Matches -->
     {% if matches %}
-    <div class="card" style="padding:0;overflow:hidden">
-      <div style="background:#0e1f44;color:#fff;padding:9px 14px;font-size:12.5px;font-weight:700">
+    <div class="box">
+      <div class="box-head">
         Applicant Matches ({{ matches|length }})
       </div>
       <div style="max-height:300px;overflow-y:auto">
@@ -280,8 +258,8 @@
   <div style="position:sticky;top:68px;display:flex;flex-direction:column;gap:12px">
 
     <!-- ════ Notes ════ -->
-    <div class="card" style="padding:0;overflow:hidden;margin-bottom:12px">
-      <div style="background:#0e1f44;color:#fff;padding:9px 14px;display:flex;align-items:center;justify-content:space-between;gap:8px">
+    <div class="box">
+      <div class="box-head">
         <span style="font-size:12.5px;font-weight:700">Notes</span>
         <button type="button" onclick="toggleAddNote()" class="btn btn-sm"
                 style="background:#e0303f;border-color:#e0303f;color:#fff;padding:3px 10px;font-size:11px">+ Add Note</button>
@@ -366,10 +344,10 @@
     </div>
 
     <!-- Direct enquiries for this property/project -->
-    <div class="card" style="padding:0;overflow:hidden">
-      <div style="background:#e0303f;color:#fff;padding:9px 14px;display:flex;align-items:center;justify-content:space-between">
+    <div class="box">
+      <div class="box-head">
         <span style="font-size:13px;font-weight:700">Direct Enquiries</span>
-        <a href="{{ url_for('enquiry_new') }}" style="color:rgba(255,255,255,.8);font-size:11px">+ Add</a>
+        <a href="{{ url_for('enquiry_new') }}" style="font-size:11px">+ Add</a>
       </div>
       <div style="max-height:260px;overflow-y:auto">
         {# Enquiries linked to this project by EITHER its property or the project
@@ -419,9 +397,9 @@
     </div>
 
     <!-- Matched applicants (similar properties) -->
-    <div class="card" style="padding:0;overflow:hidden">
-      <div style="background:#0e1f44;color:#fff;padding:9px 14px;display:flex;align-items:center;justify-content:space-between">
-        <span style="font-size:13px;font-weight:700">Matched Applicants</span>
+    <div class="box">
+      <div class="box-head">
+        <span>Matched Applicants</span>
         <span style="font-size:11px;opacity:.75">{{ matches|length if matches else 0 }}</span>
       </div>
       <div style="max-height:320px;overflow-y:auto">
@@ -487,9 +465,9 @@
 {% set lst = project.project_listings[0] if project.project_listings else None %}
 {% if lst %}
 <!-- Existing listing — edit inline -->
-<div style="display:grid;grid-template-columns:1fr 280px;gap:16px">
+<div class="rec-cols-narrow">
   <div>
-    <div class="card" style="padding:0;overflow:hidden;margin-bottom:12px">
+    <div class="box">
       <div style="background:{% if lst.website_listed %}#1b7a3f{% else %}#9aa0a6{% endif %};color:#fff;padding:10px 16px;display:flex;align-items:center;justify-content:space-between">
         <span style="font-size:13px;font-weight:700">&#127758; Website Listing — {% if lst.website_listed %}LIVE{% else %}HIDDEN{% endif %}</span>
         <span style="font-size:11px;opacity:.8">{{ lst.listing_status|replace('-',' ')|title if lst.listing_status else '' }}</span>
@@ -750,8 +728,8 @@
 
     <!-- Photo gallery — these appear as the photo gallery on the website.
          Separate forms (not nested in the edit form above). -->
-    <div class="card" style="padding:0;overflow:hidden;margin-bottom:12px">
-      <div style="background:#0e1f44;color:#fff;padding:10px 16px;font-size:13px;font-weight:700">&#128247; Photo Gallery</div>
+    <div class="box">
+      <div class="box-head">&#128247; Photo Gallery</div>
       <div style="padding:16px">
         {% if lst.photos %}
         <div style="font-size:12px;color:#6b7280;margin-bottom:8px">The <strong>Cover</strong> photo is the one shown on the Properties page. Use “Make cover”, or the ◀ ▶ arrows to reorder.</div>
@@ -801,8 +779,8 @@
 
     <!-- Brochure & Floor Plan — separate upload forms (NOT nested in the edit form
          above). These appear as download links on the website listing. -->
-    <div class="card" style="padding:0;overflow:hidden;margin-bottom:12px">
-      <div style="background:#0e1f44;color:#fff;padding:10px 16px;font-size:13px;font-weight:700">&#128206; Brochure, Floor Plan &amp; EPC</div>
+    <div class="box">
+      <div class="box-head">&#128206; Brochure, Floor Plan &amp; EPC</div>
       <div style="padding:16px;display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:14px">
         <div>
           <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:6px">&#128196; Brochure (PDF)</div>
@@ -871,8 +849,8 @@
 
   <!-- RIGHT: Live preview info -->
   <div>
-    <div class="card" style="padding:0;overflow:hidden">
-      <div style="background:#0e1f44;color:#fff;padding:9px 14px;font-size:12.5px;font-weight:700">Live Preview</div>
+    <div class="box">
+      <div class="box-head">Live Preview</div>
       <div style="padding:14px">
         {# Only this listing's own photographs — a stock image here made the
            preview show a building that has nothing to do with the property. #}
@@ -915,7 +893,7 @@
      TAB: DOCUMENTS
 ══════════════════════════════════════════════════════════════ -->
 <div class="tab-panel" data-tab-group="proj" data-tab="documents">
-<div style="display:grid;grid-template-columns:1fr 320px;gap:16px;align-items:start">
+<div class="rec-cols-narrow">
 
   <!-- LEFT: documents grouped by folder -->
   <div>
@@ -953,7 +931,7 @@
 
   <!-- RIGHT: upload form -->
   <div class="card" style="overflow:hidden">
-    <div style="background:#0e1f44;color:#fff;padding:10px 16px;font-size:13px;font-weight:700">⬆️ Upload Document</div>
+    <div class="box-head">⬆️ Upload Document</div>
     <form method="post" action="{{ url_for('document_add', id=project.id) }}" enctype="multipart/form-data" style="padding:16px">
       <label style="font-size:12px;color:#5f6368;display:block;margin-bottom:4px">File</label>
       <input type="file" name="file" style="width:100%;font-size:12.5px;margin-bottom:14px">
