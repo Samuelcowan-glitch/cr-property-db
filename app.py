@@ -2171,13 +2171,15 @@ def service_delete(id):
 def note_add(id):
     project = Project.query.get_or_404(id)
     content = request.form.get('content', '').strip()
-    author  = request.form.get('author', '').strip() or 'Unknown'
+    # Who is signed in, rather than asking them to type their own name.
+    author = (request.form.get('author', '').strip()
+              or getattr(current_user, 'username', '') or 'Unknown')
     if content:
         note = ProjectNote(project_id=id, content=content, author=author)
         db.session.add(note)
         db.session.commit()
         flash('Note added.', 'success')
-    return redirect(url_for('project_detail', id=id))
+    return redirect(url_for('project_detail', id=id) + '#tab-overview')
 
 
 @app.route('/notes/<int:id>/delete', methods=['POST'])
@@ -2187,7 +2189,7 @@ def note_delete(id):
     db.session.delete(note)
     db.session.commit()
     flash('Note deleted.', 'info')
-    return redirect(url_for('project_detail', id=project_id))
+    return redirect(url_for('project_detail', id=project_id) + '#tab-overview')
 
 
 # ── Project Photos ────────────────────────────────────────────────────────────

@@ -253,38 +253,6 @@
       </div>
     </div>
 
-    <!-- Notes / Description -->
-    <div class="card" style="padding:0;overflow:hidden;margin-bottom:12px">
-      <div style="background:#0e1f44;color:#fff;padding:9px 14px;display:flex;align-items:center;justify-content:space-between">
-        <span style="font-size:12.5px;font-weight:700">Notes / Description</span>
-        <button onclick="toggleNotes()" style="background:none;border:none;color:rgba(255,255,255,.75);cursor:pointer;font-size:11px">Edit</button>
-      </div>
-      <div style="padding:12px 14px">
-        <div id="notes-view">
-          {% if project.notes %}
-          <p style="font-size:12.5px;line-height:1.65;color:#1a202c;white-space:pre-wrap;margin:0">{{ project.notes }}</p>
-          {% else %}
-          <p style="font-size:12px;color:#9aa0a6;font-style:italic;margin:0">No notes yet.</p>
-          {% endif %}
-        </div>
-        <form id="notes-form" method="post" action="{{ url_for('project_edit', id=project.id) }}" style="display:none">
-          <input type="hidden" name="name" value="{{ project.name }}">
-          <input type="hidden" name="status" value="{{ project.status }}">
-          <input type="hidden" name="project_ref" value="{{ project.project_ref or '' }}">
-          <input type="hidden" name="client" value="{{ project.client or '' }}">
-          <input type="hidden" name="fee_earner" value="{{ project.fee_earner or '' }}">
-          <input type="hidden" name="instruction_date" value="{{ project.instruction_date.strftime('%Y-%m-%d') if project.instruction_date else '' }}">
-          <input type="hidden" name="location_description" value="{{ project.location_description or '' }}">
-          {% if project.property_id %}<input type="hidden" name="property_id" value="{{ project.property_id }}">{% endif %}
-          <textarea name="notes" rows="6" style="width:100%;font-size:12.5px;padding:7px;border:1px solid #dde0e4;border-radius:5px;font-family:inherit;resize:vertical">{{ project.notes or '' }}</textarea>
-          <div style="display:flex;gap:6px;margin-top:6px">
-            <button type="submit" class="btn btn-primary btn-sm">Save</button>
-            <button type="button" class="btn btn-secondary btn-sm" onclick="toggleNotes()">Cancel</button>
-          </div>
-        </form>
-      </div>
-    </div>
-
     <!-- Applicant Matches -->
     {% if matches %}
     <div class="card" style="padding:0;overflow:hidden">
@@ -310,6 +278,78 @@
 
   <!-- ════ RIGHT: Enquiries ════ -->
   <div style="position:sticky;top:68px;display:flex;flex-direction:column;gap:12px">
+
+    <!-- ════ Notes ════ -->
+    <div class="card" style="padding:0;overflow:hidden;margin-bottom:12px">
+      <div style="background:#0e1f44;color:#fff;padding:9px 14px;display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <span style="font-size:12.5px;font-weight:700">Notes</span>
+        <button type="button" onclick="toggleAddNote()" class="btn btn-sm"
+                style="background:#e0303f;border-color:#e0303f;color:#fff;padding:3px 10px;font-size:11px">+ Add Note</button>
+      </div>
+
+      <form id="add-note-form" method="post" action="{{ url_for('note_add', id=project.id) }}"
+            style="display:none;padding:12px 14px;border-bottom:1px solid #eef0f2;background:#f8f9fb">
+        <textarea name="content" rows="4" required placeholder="What happened, what was agreed, what happens next…"
+                  style="width:100%;font-size:12.5px;padding:8px;border:1px solid #dde0e4;border-radius:5px;font-family:inherit;resize:vertical"></textarea>
+        <div style="display:flex;gap:6px;margin-top:8px;align-items:center">
+          <button type="submit" class="btn btn-primary btn-sm">Save Note</button>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="toggleAddNote()">Cancel</button>
+          <span style="font-size:11px;color:#9aa0a6;margin-left:auto">Saved as {{ current_user.username }}</span>
+        </div>
+      </form>
+
+      <div style="max-height:420px;overflow-y:auto">
+        {% for n in project.project_notes|sort(attribute='created_at', reverse=True) %}
+        <div style="padding:11px 14px;border-bottom:1px solid #f1f3f4">
+          <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:3px">
+            <span style="font-size:11.5px;font-weight:700;color:#0e1f44">{{ n.created_at.strftime('%d %b %Y') if n.created_at else '' }}</span>
+            <span style="font-size:11.5px;color:#5f6368">{{ n.author }}</span>
+            <form method="post" action="{{ url_for('note_delete', id=n.id) }}" class="confirm-delete" style="margin-left:auto">
+              <button type="submit" title="Delete note"
+                      style="background:none;border:none;color:#c8ccd1;cursor:pointer;font-size:12px;line-height:1;padding:0">&times;</button>
+            </form>
+          </div>
+          <div style="font-size:12.5px;line-height:1.6;color:#1a202c;white-space:pre-wrap">{{ n.content }}</div>
+        </div>
+        {% else %}
+        <div style="padding:18px 14px;text-align:center;color:#9aa0a6;font-size:12px;font-style:italic">
+          No notes yet. Use <strong>+ Add Note</strong> to record a call, viewing or update.
+        </div>
+        {% endfor %}
+      </div>
+
+      <!-- Free-text project description — unchanged, kept alongside the dated notes -->
+      <div style="border-top:1px solid #eef0f2">
+        <div style="padding:8px 14px 0;display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#5f6368">Description</span>
+          <button onclick="toggleNotes()" style="background:none;border:none;color:#5f6368;cursor:pointer;font-size:11px">Edit</button>
+        </div>
+<div style="padding:12px 14px">
+        <div id="notes-view">
+          {% if project.notes %}
+          <p style="font-size:12.5px;line-height:1.65;color:#1a202c;white-space:pre-wrap;margin:0">{{ project.notes }}</p>
+          {% else %}
+          <p style="font-size:12px;color:#9aa0a6;font-style:italic;margin:0">No notes yet.</p>
+          {% endif %}
+        </div>
+        <form id="notes-form" method="post" action="{{ url_for('project_edit', id=project.id) }}" style="display:none">
+          <input type="hidden" name="name" value="{{ project.name }}">
+          <input type="hidden" name="status" value="{{ project.status }}">
+          <input type="hidden" name="project_ref" value="{{ project.project_ref or '' }}">
+          <input type="hidden" name="client" value="{{ project.client or '' }}">
+          <input type="hidden" name="fee_earner" value="{{ project.fee_earner or '' }}">
+          <input type="hidden" name="instruction_date" value="{{ project.instruction_date.strftime('%Y-%m-%d') if project.instruction_date else '' }}">
+          <input type="hidden" name="location_description" value="{{ project.location_description or '' }}">
+          {% if project.property_id %}<input type="hidden" name="property_id" value="{{ project.property_id }}">{% endif %}
+          <textarea name="notes" rows="6" style="width:100%;font-size:12.5px;padding:7px;border:1px solid #dde0e4;border-radius:5px;font-family:inherit;resize:vertical">{{ project.notes or '' }}</textarea>
+          <div style="display:flex;gap:6px;margin-top:6px">
+            <button type="submit" class="btn btn-primary btn-sm">Save</button>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="toggleNotes()">Cancel</button>
+          </div>
+        </form>
+      </div>
+      </div>
+    </div>
 
     <!-- Direct enquiries for this property/project -->
     <div class="card" style="padding:0;overflow:hidden">
@@ -954,6 +994,14 @@ function toggleLocDesc() {
   if (f.style.display === 'none') { f.style.display='block'; v.style.display='none'; }
   else { f.style.display='none'; v.style.display='block'; }
 }
+function toggleAddNote() {
+  var f = document.getElementById('add-note-form');
+  if (!f) return;
+  var opening = f.style.display === 'none';
+  f.style.display = opening ? 'block' : 'none';
+  if (opening) f.querySelector('textarea').focus();
+}
+
 function toggleNotes() {
   var v = document.getElementById('notes-view');
   var f = document.getElementById('notes-form');
