@@ -459,3 +459,68 @@ table.rec-table td.actions { white-space: nowrap; text-align: right; }
 .box, .fcell, .org-main { overflow-wrap: anywhere; }
 .box img, .box canvas, .box svg, .box video { max-width: 100%; height: auto; }
 .box input, .box select, .box textarea { max-width: 100%; }
+
+/* ── Document boxes: brochure, floor plan, EPC ─────────────────────────────
+   Three equal boxes in a row, each laid out the same way: title, the file on
+   record, its actions, and the upload form last. The boxes stretch to match
+   the tallest, and the upload form is pushed to the bottom of each, so the
+   three buttons line up however much text sits above them. */
+.doc-grid {
+  display: grid;
+  /* Three equal columns, not auto-fit: with only three boxes auto-fit leaves
+     spare tracks and spreads them unevenly across a wide panel. */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px; padding: 14px; align-items: stretch;
+}
+
+.doc-del-form { display: none; }
+
+.doc-box {
+  display: flex; flex-direction: column; min-width: 0;
+  border: 1px solid var(--cell-line); border-radius: 5px;
+  background: var(--white); padding: 12px;
+}
+
+.doc-title {
+  font-size: 12px; font-weight: 700; color: var(--grey-700);
+  line-height: 1.3; margin-bottom: 8px;
+}
+
+/* A long file name is cut off with an ellipsis rather than pushing the
+   buttons out of the box; the full name is in the tooltip. */
+.doc-file {
+  font-size: 12.5px; line-height: 1.3; color: var(--text);
+  background: #f0fdf4; border: 1px solid #86efac; border-radius: 4px;
+  padding: 7px 9px; margin-bottom: 8px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.doc-file.is-empty {
+  background: var(--grey-50); border-color: var(--grey-200);
+  color: var(--grey-400); font-style: italic;
+}
+
+/* The file's own actions, kept apart from the upload button below. */
+.doc-actions {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  padding-bottom: 10px; margin-bottom: 10px;
+  border-bottom: 1px dashed var(--grey-200);
+}
+.doc-actions .btn { flex: 0 0 auto; }
+
+.doc-upload {
+  margin-top: auto;                 /* pins the button to the bottom */
+  display: flex; flex-direction: column; gap: 6px; min-width: 0;
+}
+.doc-upload input[type=file] {
+  font-size: 11.5px; max-width: 100%; min-width: 0;
+  border: 1px solid var(--grey-200); border-radius: 4px; padding: 5px 6px;
+  background: var(--white);
+}
+.doc-upload .btn { width: 100%; justify-content: center; white-space: nowrap; }
+
+/* Two across, then one, as the space runs out — measured on the panel the
+   boxes are in rather than the window. */
+@container (max-width: 700px) { .doc-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container (max-width: 460px) { .doc-grid { grid-template-columns: 1fr; } }
+@media (max-width: 700px)  { .doc-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px)  { .doc-grid { grid-template-columns: 1fr; } }

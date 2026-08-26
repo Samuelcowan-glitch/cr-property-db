@@ -1,0 +1,53 @@
+{#
+  One document box — brochure, floor plan or EPC. All three come from here, so
+  they cannot drift apart in structure, spacing or wording.
+
+    title     what the document is called
+    icon      the character shown before the title
+    filename  the file on record, or none
+    view_url  opens it in the browser
+    down_url  saves it
+    del_url   removes it
+    action    where the upload form posts
+    field     the file input's name
+    accept    which file types the picker offers
+    label     the noun used on the button: "Upload Brochure" / "Replace Brochure"
+    next_url  where to return after uploading or removing
+#}
+{% macro doc_box(title, icon, filename, view_url, down_url, del_url,
+                 action, field, accept, label, next_url) %}
+<div class="doc-box">
+  <div class="doc-title">{{ icon|safe }} {{ title }}</div>
+
+  {% if filename %}
+  <div class="doc-file" title="{{ filename }}">{{ filename }}</div>
+  <div class="doc-actions">
+    <a href="{{ view_url }}" class="btn btn-sm btn-outline" target="_blank" rel="noopener">View</a>
+    <a href="{{ down_url }}" class="btn btn-sm btn-outline">Download</a>
+    <button type="submit" class="btn btn-sm btn-danger" form="doc-del-{{ field }}">Remove</button>
+  </div>
+  {% else %}
+  <div class="doc-file is-empty">No file uploaded</div>
+  {% endif %}
+
+  {# The upload form sits last in the box, so the button lines up along the
+     bottom of all three however much text is above it. #}
+  <form class="doc-upload" method="post" action="{{ action }}" enctype="multipart/form-data">
+    <input type="hidden" name="next" value="{{ next_url }}">
+    <input type="file" name="{{ field }}" accept="{{ accept }}" aria-label="{{ label }} file">
+    <button type="submit" class="btn btn-primary btn-sm">
+      {{ 'Replace' if filename else 'Upload' }} {{ label }}
+    </button>
+  </form>
+</div>
+
+{# Removal posts on its own, since a form cannot sit inside another. It takes
+   no space: left visible it would claim a cell of the grid and push the boxes
+   out of line. #}
+{% if filename %}
+<form id="doc-del-{{ field }}" method="post" action="{{ del_url }}"
+      class="confirm-delete doc-del-form">
+  <input type="hidden" name="next" value="{{ next_url }}">
+</form>
+{% endif %}
+{% endmacro %}

@@ -2,7 +2,9 @@
    sidebar loads it into the details panel. #}
 {% extends layout|default("base.html") %}
 {% import "projects/_record_boxes.html" as rb %}
+{% import "projects/_doc_box.html" as db %}
 {% set pv = project_form_values(project) %}
+{% set back = url_for('project_detail', id=project.id) %}
 {% block title %}{{ project.name }}{% endblock %}
 {% block topbar_title %}{{ project.name }}{% endblock %}
 {% block topbar_actions %}
@@ -639,14 +641,16 @@
             <input type="number" name="parking_spaces" value="{{ lst.parking_spaces or '' }}" placeholder="e.g. 4" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #dde0e4;border-radius:5px">
           </div>
 
-          <div style="display:flex;gap:20px;align-items:center">
-            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+          {# Spans the row, like the section bars: squeezed into one grid track
+             the three labels wrap a word at a time. #}
+          <div style="grid-column:1/-1;display:flex;gap:20px;align-items:center;flex-wrap:wrap">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;white-space:nowrap">
               <input type="checkbox" name="website_listed" value="1" {{ 'checked' if lst.website_listed else '' }}> Show on website
             </label>
-            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;white-space:nowrap">
               <input type="checkbox" name="featured" value="1" {{ 'checked' if lst.featured else '' }}> Featured
             </label>
-            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px" title="Also publish this listing to the Zoopla data feed">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;white-space:nowrap" title="Also publish this listing to the Zoopla data feed">
               <input type="checkbox" name="zoopla_listed" value="1" {{ 'checked' if lst.zoopla_listed else '' }}> Publish to Zoopla
             </label>
           </div>
@@ -715,72 +719,32 @@
       </div>
     </div>
 
-    <!-- Brochure & Floor Plan — separate upload forms (NOT nested in the edit form
-         above). These appear as download links on the website listing. -->
+    {# All three documents come from one component, so they match each other
+       in structure, spacing and wording. The forms are separate from the
+       listing form above — a form cannot be nested inside another. #}
     <div class="box">
       <div class="box-head">&#128206; Brochure, Floor Plan &amp; EPC</div>
-      <div style="padding:16px;display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:14px">
-        <div>
-          <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:6px">&#128196; Brochure (PDF)</div>
-          {% if lst.brochure_filename %}
-          <div style="display:flex;align-items:center;gap:8px;background:#f0fdf4;border:1px solid #86efac;border-radius:5px;padding:8px;margin-bottom:8px">
-            <span style="flex:1;font-size:12.5px">{{ lst.brochure_filename }}</span>
-            <a href="{{ url_for('listing_brochure_download', id=lst.id) }}" class="btn btn-sm btn-outline" target="_blank">View</a>
-            <form method="post" action="{{ url_for('listing_brochure_delete', id=lst.id) }}" class="confirm-delete" style="display:inline">
-              <input type="hidden" name="next" value="{{ url_for('project_detail', id=project.id) }}#tab-listing">
-              <button type="submit" class="btn btn-sm btn-danger">Remove</button>
-            </form>
-          </div>
-          {% else %}
-          <div style="font-size:12px;color:#9aa0a6;margin-bottom:8px">No brochure uploaded.</div>
-          {% endif %}
-          <form method="post" action="{{ url_for('listing_brochure_upload', id=lst.id) }}" enctype="multipart/form-data" style="display:flex;gap:6px">
-            <input type="hidden" name="next" value="{{ url_for('project_detail', id=project.id) }}#tab-listing">
-            <input type="file" name="brochure" accept=".pdf" style="flex:1;font-size:12px">
-            <button type="submit" class="btn btn-primary btn-sm">Upload</button>
-          </form>
-        </div>
-        <div>
-          <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:6px">&#128506;&#65039; Floor Plan</div>
-          {% if lst.floor_plan_filename %}
-          <div style="display:flex;align-items:center;gap:8px;background:#f0fdf4;border:1px solid #86efac;border-radius:5px;padding:8px;margin-bottom:8px">
-            <span style="flex:1;font-size:12.5px">{{ lst.floor_plan_filename }}</span>
-            <a href="{{ url_for('listing_floorplan_download', id=lst.id) }}" class="btn btn-sm btn-outline" target="_blank">View</a>
-            <form method="post" action="{{ url_for('listing_floorplan_delete', id=lst.id) }}" class="confirm-delete" style="display:inline">
-              <input type="hidden" name="next" value="{{ url_for('project_detail', id=project.id) }}#tab-listing">
-              <button type="submit" class="btn btn-sm btn-danger">Remove</button>
-            </form>
-          </div>
-          {% else %}
-          <div style="font-size:12px;color:#9aa0a6;margin-bottom:8px">No floor plan uploaded.</div>
-          {% endif %}
-          <form method="post" action="{{ url_for('listing_floorplan_upload', id=lst.id) }}" enctype="multipart/form-data" style="display:flex;gap:6px">
-            <input type="hidden" name="next" value="{{ url_for('project_detail', id=project.id) }}#tab-listing">
-            <input type="file" name="floor_plan" accept=".pdf,.png,.jpg" style="flex:1;font-size:12px">
-            <button type="submit" class="btn btn-primary btn-sm">Upload</button>
-          </form>
-        </div>
-        <div>
-          <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:6px">&#128202; EPC (PDF)</div>
-          {% if lst.epc_filename %}
-          <div style="display:flex;align-items:center;gap:8px;background:#f0fdf4;border:1px solid #86efac;border-radius:5px;padding:8px;margin-bottom:8px;flex-wrap:wrap">
-            <span style="flex:1;min-width:110px;font-size:12.5px;word-break:break-word">{{ lst.epc_filename }}</span>
-            <a href="{{ url_for('listing_epc_download', id=lst.id, inline=1) }}" class="btn btn-sm btn-outline" target="_blank">View</a>
-            <a href="{{ url_for('listing_epc_download', id=lst.id) }}" class="btn btn-sm btn-outline">Download</a>
-            <form method="post" action="{{ url_for('listing_epc_delete', id=lst.id) }}" class="confirm-delete" style="display:inline">
-              <input type="hidden" name="next" value="{{ url_for('project_detail', id=project.id) }}#tab-listing">
-              <button type="submit" class="btn btn-sm btn-danger">Remove</button>
-            </form>
-          </div>
-          {% else %}
-          <div style="font-size:12px;color:#9aa0a6;margin-bottom:8px">No EPC uploaded.</div>
-          {% endif %}
-          <form method="post" action="{{ url_for('listing_epc_upload', id=lst.id) }}" enctype="multipart/form-data" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-            <input type="hidden" name="next" value="{{ url_for('project_detail', id=project.id) }}#tab-listing">
-            <input type="file" name="epc" accept=".pdf,application/pdf" style="flex:1;font-size:12px">
-            <button type="submit" class="btn btn-primary btn-sm">{{ 'Replace' if lst.epc_filename else 'Upload' }}</button>
-          </form>
-        </div>
+      <div class="doc-grid">
+        {{ db.doc_box('Brochure', '&#128196;', lst.brochure_filename,
+             url_for('listing_brochure_download', id=lst.id, inline=1),
+             url_for('listing_brochure_download', id=lst.id),
+             url_for('listing_brochure_delete', id=lst.id),
+             url_for('listing_brochure_upload', id=lst.id),
+             'brochure', '.pdf', 'Brochure', back) }}
+
+        {{ db.doc_box('Floor Plan', '&#128506;&#65039;', lst.floor_plan_filename,
+             url_for('listing_floorplan_download', id=lst.id, inline=1),
+             url_for('listing_floorplan_download', id=lst.id),
+             url_for('listing_floorplan_delete', id=lst.id),
+             url_for('listing_floorplan_upload', id=lst.id),
+             'floor_plan', '.pdf,.png,.jpg', 'Floorplan', back) }}
+
+        {{ db.doc_box('EPC', '&#128202;', lst.epc_filename,
+             url_for('listing_epc_download', id=lst.id, inline=1),
+             url_for('listing_epc_download', id=lst.id),
+             url_for('listing_epc_delete', id=lst.id),
+             url_for('listing_epc_upload', id=lst.id),
+             'epc', '.pdf,application/pdf', 'EPC', back) }}
       </div>
     </div>
   </div>

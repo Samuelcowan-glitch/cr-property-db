@@ -3850,8 +3850,11 @@ def listing_brochure_download(id):
     if not listing.brochure_data:
         flash('No brochure uploaded.', 'warning')
         return redirect(url_for('listing_edit', id=id))
+    # ?inline=1 opens it in the browser (the View button); otherwise download,
+    # the same as the EPC.
+    inline = request.args.get('inline') == '1'
     return send_file(io.BytesIO(listing.brochure_data),
-                     mimetype='application/pdf', as_attachment=True,
+                     mimetype='application/pdf', as_attachment=not inline,
                      download_name=listing.brochure_filename or 'brochure.pdf')
 
 
@@ -3980,8 +3983,9 @@ def listing_floorplan_download(id):
         return redirect(url_for('listing_edit', id=id))
     name = listing.floor_plan_filename or 'floor-plan.pdf'
     mime = mimetypes.guess_type(name)[0] or 'application/octet-stream'
+    inline = request.args.get('inline') == '1'
     return send_file(io.BytesIO(listing.floor_plan_data),
-                     mimetype=mime, as_attachment=True, download_name=name)
+                     mimetype=mime, as_attachment=not inline, download_name=name)
 
 # ── Enquiry pipeline ─────────────────────────────────────────────────────────
 
