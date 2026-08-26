@@ -17,84 +17,101 @@
 </div>
 
 <!-- ── Property header ── -->
-<div style="margin-bottom:20px">
-  <h2 style="font-size:22px;font-weight:700;color:#0e1f44">{{ prop.address }}</h2>
-  <div style="color:#5f6368;font-size:13px;margin-top:2px">{{ prop.postcode }}{% if prop.property_type %} &nbsp;·&nbsp; {{ prop.property_type }}{% endif %}{% if prop.display_size != '—' %} &nbsp;·&nbsp; {{ prop.display_size }}{% endif %}</div>
-</div>
-
-<!-- ── 04 Property Overview section ── -->
-<div class="overview-grid" style="margin-bottom:24px">
-
-  <!-- Left: property details (mirrors 04.04 General) -->
-  <form method="post" action="{{ url_for('property_edit', id=prop.id) }}" data-inline-edit>
-  <input type="hidden" name="next" value="{{ url_for('property_detail', id=prop.id) }}">
-  <div class="box">
-    <div class="box-head">
-      <span class="box-title">04.04 General</span>
-      <span class="rec-save">
-        <span data-save-status></span>
-        <button type="submit" class="btn btn-sm btn-primary btn-save" data-save>Save</button>
-      </span>
-    </div>
-    <div class="frow">
-      <div class="fcell fcell--label">Address</div>
-      <div class="fcell fcell--edit"><input type="text" name="address" value="{{ prop.address }}" required></div>
-    </div>
-    <div class="frow">
-      <div class="fcell fcell--label">Postcode</div>
-      <div class="fcell fcell--edit"><input type="text" name="postcode" value="{{ prop.postcode }}" required></div>
-    </div>
-    <div class="frow">
-      <div class="fcell fcell--label">Property type</div>
-      <div class="fcell fcell--edit"><input type="text" name="property_type" value="{{ prop.property_type or '' }}" placeholder="Not set"></div>
-    </div>
-    <div class="frow">
-      <div class="fcell fcell--label">Floor area</div>
-      <div class="fcell fcell--edit"><input type="number" step="any" name="size" value="{{ prop.size|int if prop.size else '' }}" placeholder="sq ft"></div>
-      <div class="fcell fcell--label w-narrow">Basis</div>
-      <div class="fcell fcell--edit">
-        <select name="measurement_type">
-          <option value="">—</option>
-          {% for m in ['NIA','GIA','GEA'] %}
-          <option value="{{ m }}" {{ 'selected' if prop.measurement_type == m else '' }}>{{ m }}</option>
-          {% endfor %}
-        </select>
-      </div>
-    </div>
-    <div class="frow">
-      <div class="fcell fcell--label fcell--top">Description</div>
-      <div class="fcell fcell--edit"><textarea name="description" placeholder="Not set">{{ prop.description or '' }}</textarea></div>
-    </div>
-    <div class="frow">
-      {# System-generated: shown, never editable. #}
-      <div class="fcell fcell--label">Added</div>
-      <div class="fcell is-empty">{{ prop.created_at.strftime('%d %b %Y') }}</div>
-    </div>
-  </div>
-  </form>
-
-  <!-- Right: key documents placeholder + quick stats -->
+<div class="rec-header">
   <div>
-    <div class="box" style="margin-bottom:12px">
-      <div class="box-head">
-        <span class="box-title">04.11 Property Key Documents</span>
-      </div>
-      <div class="empty-state" style="padding:16px">
-        <p style="font-size:12px;color:#9aa0a6">Document uploads can be linked from project folders below.</p>
+    <h2>{{ prop.address }}</h2>
+    <div class="rec-facts">
+      <span>{{ prop.postcode }}</span>
+      {% if prop.property_type %}<span>{{ prop.property_type }}</span>{% endif %}
+      {% if prop.area %}<span>{{ prop.area }}</span>{% endif %}
+      {% if prop.display_size != '—' %}<span>{{ prop.display_size }}</span>{% endif %}
+      <span>Added: <strong>{{ prop.created_at.strftime('%d %b %Y') }}</strong></span>
+    </div>
+  </div>
+  <div class="rec-tags">
+    <span class="badge badge-muted">{{ prop.projects|length }} instruction{{ '' if prop.projects|length == 1 else 's' }}</span>
+    <span class="badge badge-muted">{{ prop.transactions|length }} transaction{{ '' if prop.transactions|length == 1 else 's' }}</span>
+  </div>
+</div>
+
+{# The record is editable here, laid out exactly like the Project Overview:
+   a narrow column of short boxes beside the property's own details. #}
+<form method="post" action="{{ url_for('property_edit', id=prop.id) }}" data-inline-edit>
+<input type="hidden" name="next" value="{{ url_for('property_detail', id=prop.id) }}">
+
+<div class="rec-toolbar">
+  <span style="border:0;background:none;padding:0 6px 0 0;font-weight:700;color:#0e1f44">Property</span>
+  <span class="sp"></span>
+  <a href="{{ url_for('property_edit', id=prop.id) }}"><span class="ic">&#9998;</span>All details</a>
+  <span class="rec-save">
+    <span data-save-status></span>
+    <button type="submit" class="btn btn-primary btn-save" data-save>Save</button>
+  </span>
+</div>
+
+<div class="rec-cols-proj">
+
+  <!-- ════ LEFT ════ -->
+  <div class="rec-col">
+    <div class="box">
+      <div class="box-head">Instructions</div>
+      <div style="padding:12px 14px;font-size:12.5px;color:var(--grey-600);line-height:1.5">
+        {% if prop.projects %}
+        <div style="display:flex;flex-direction:column;gap:6px">
+          {% for pj in prop.projects %}
+          <a href="{{ url_for('project_detail', id=pj.id) }}">{{ pj.name }}</a>
+          {% endfor %}
+        </div>
+        <p style="margin-top:10px">Brochures, floor plans and EPCs are held against
+        the instruction, not the building.</p>
+        {% else %}
+        No instructions on this property yet.
+        <div style="margin-top:10px">
+          <a href="{{ url_for('project_new') }}?property_id={{ prop.id }}"
+             class="btn btn-primary btn-sm">+ New Project</a>
+        </div>
+        {% endif %}
       </div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-      <div class="stat-card" style="padding:14px">
-        <div class="stat-label">Transactions / Tenures</div>
-        <div class="stat-value" style="font-size:24px">{{ prop.transactions | length }}</div>
+  </div>
+
+  <!-- ════ RIGHT ════ -->
+  <div class="rec-col">
+    <div class="box box--grid">
+      <div class="box-head">Property Details</div>
+      <div class="frow">
+        <div class="fcell fcell--label">Address</div>
+        <div class="fcell fcell--edit"><input type="text" name="address" value="{{ prop.address }}" required></div>
+        <div class="fcell fcell--label">Postcode</div>
+        <div class="fcell fcell--edit"><input type="text" name="postcode" value="{{ prop.postcode }}" required></div>
       </div>
-      <div class="stat-card" style="padding:14px">
-        <div class="stat-label">Projects</div>
-        <div class="stat-value" style="font-size:24px">{{ prop.projects | length }}</div>
+      <div class="frow">
+        <div class="fcell fcell--label">Property type</div>
+        <div class="fcell fcell--edit"><input type="text" name="property_type" value="{{ prop.property_type or '' }}" placeholder="Not set"></div>
+        <div class="fcell fcell--label">Area</div>
+        <div class="fcell fcell--edit"><input type="text" name="area" value="{{ prop.area or '' }}" placeholder="e.g. Chelsea"></div>
+      </div>
+      <div class="frow">
+        <div class="fcell fcell--label">Floor area</div>
+        <div class="fcell fcell--edit"><input type="number" step="any" name="size" value="{{ prop.size|int if prop.size else '' }}" placeholder="sq ft"></div>
+        <div class="fcell fcell--label">Basis</div>
+        <div class="fcell fcell--edit">
+          <select name="measurement_type">
+            <option value="">&mdash;</option>
+            {% for m in ['NIA','GIA','GEA'] %}
+            <option value="{{ m }}" {{ 'selected' if prop.measurement_type == m else '' }}>{{ m }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="frow frow--full">
+        <div class="fcell fcell--label fcell--top">Description</div>
+        <div class="fcell fcell--edit"><textarea name="description" placeholder="Not set">{{ prop.description or '' }}</textarea></div>
       </div>
     </div>
   </div>
 </div>
+</form>
 
 <!-- ── Tabs: Tenures / Projects ── -->
 <div class="tabs" data-group="prop">

@@ -1,4 +1,6 @@
-﻿{% extends "base.html" %}
+{% extends "base.html" %}
+{% import "_property_row.html" as pr %}
+
 {% block title %}Properties{% endblock %}
 {% block topbar_title %}Properties &amp; Tenures{% endblock %}
 {% block topbar_actions %}
@@ -6,56 +8,39 @@
 {% endblock %}
 
 {% block content %}
-<div class="section-header">
-  <h2>Properties</h2>
-  <form class="search-bar" method="get">
-    <input type="text" name="q" value="{{ q }}" placeholder="Search address or postcode…">
-    <button class="btn btn-secondary btn-sm" type="submit">Search</button>
-    {% if q %}<a href="{{ url_for('properties_list') }}" class="btn btn-outline btn-sm">Clear</a>{% endif %}
-  </form>
-</div>
+{# Laid out like the Projects list, from the same row component, so the two
+   read the same way. Properties carry no reference number — that belongs to
+   an instruction, not to the building. #}
+<div class="rec-page">
 
-{% if properties %}
-<div class="rec-table-wrap">
-  <table class="rec-table">
-    <thead>
-      <tr>
-        <th>Address</th>
-        <th>Postcode</th>
-        <th>Type</th>
-        <th>Size</th>
-        <th>Tenures</th>
-        <th>Projects</th>
-        <th></th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for p in properties %}
-      <tr>
-        <td><a href="{{ url_for('property_detail', id=p.id) }}"><strong>{{ p.address }}</strong></a></td>
-        <td>{{ p.postcode }}</td>
-        <td>{{ p.property_type or '—' }}</td>
-        <td>{{ p.display_size }}</td>
-        <td>{{ p.transactions | length }}</td>
-        <td>{{ p.projects | length }}</td>
-        <td>
-          <div class="td-actions">
-            <a href="{{ url_for('property_detail', id=p.id) }}" class="btn btn-sm btn-outline">View</a>
-            <a href="{{ url_for('property_edit', id=p.id) }}" class="btn btn-sm btn-outline">Edit</a>
-          </div>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
-{% else %}
-<div class="card">
-  <div class="empty-state">
-    <div class="empty-icon">🏢</div>
-    <p>{% if q %}No properties match "{{ q }}".{% else %}No properties yet. Add your first property to get started.{% endif %}</p>
-    {% if not q %}<a href="{{ url_for('property_new') }}" class="btn btn-primary" style="margin-top:12px">+ Add Property</a>{% endif %}
+  <div class="list-bar">
+    <form method="get" class="list-filter">
+      <input type="search" name="q" value="{{ q }}" placeholder="Search address or postcode…">
+      <button type="submit" class="btn btn-primary btn-sm">Search</button>
+      {% if q %}<a href="{{ url_for('properties_list') }}" class="btn btn-outline btn-sm">Clear</a>{% endif %}
+    </form>
+    <span class="list-count">{{ properties|length }} propert{{ 'y' if properties|length == 1 else 'ies' }}</span>
   </div>
+
+  <div class="rec-list">
+    {% for p in properties %}
+    {% set photo = p.unit_listings[0].photos[0] if p.unit_listings and p.unit_listings[0].photos else none %}
+    {{ pr.property_row(
+         url_for('property_detail', id=p.id),
+         photo,
+         p.address,
+         p.postcode ~ (' · ' ~ p.property_type if p.property_type else ''),
+         format_size(p.size) ~ ' · ' ~ (p.projects|length) ~ ' instruction'
+           ~ ('' if p.projects|length == 1 else 's')) }}
+    {% else %}
+    <div class="org-empty">
+      {% if q %}No properties match &ldquo;{{ q }}&rdquo;.{% else %}No properties yet.{% endif %}
+      <div style="margin-top:12px">
+        <a href="{{ url_for('property_new') }}" class="btn btn-primary btn-sm">+ Add Property</a>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
 </div>
-{% endif %}
 {% endblock %}

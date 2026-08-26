@@ -1,105 +1,173 @@
 {% extends "base.html" %}
-{% block title %}{{ 'Edit Property' if prop else 'Add Property' }}{% endblock %}
-{% block topbar_title %}{{ 'Edit Property' if prop else 'Add Property' }}{% endblock %}
+{% set editing = prop is not none %}
+
+{% block title %}{{ 'Property Details' if editing else 'New Property' }}{% endblock %}
+{% block topbar_title %}{{ 'Property Details' if editing else 'New Property' }}{% endblock %}
 {% block topbar_actions %}
-  <a href="{{ url_for('properties_list') }}" class="btn btn-outline btn-sm">← Properties</a>
+  <a href="{{ url_for('properties_list') }}" class="btn btn-outline btn-sm">&larr; Properties</a>
 {% endblock %}
 
 {% block content %}
+{# Laid out like the project record: the whole page is the form, on the same
+   boxes and the same column grid, so the two read the same way. A property
+   carries no reference number — that belongs to an instruction. #}
+<form id="property-form" method="post" enctype="multipart/form-data"></form>
+{% if editing %}
+<form id="property-delete-form" method="post" class="confirm-delete"
+      action="{{ url_for('property_delete', id=prop.id) }}"></form>
+{% endif %}
+
 <div class="breadcrumb">
-  <a href="{{ url_for('dashboard') }}">Dashboard</a>
-  <span class="sep">/</span>
-  <a href="{{ url_for('properties_list') }}">Properties</a>
-  <span class="sep">/</span>
-  <span class="current">{{ 'Edit' if prop else 'New' }}</span>
+  <a href="{{ url_for('properties_list') }}">Properties</a><span class="sep">/</span>
+  {% if editing %}
+  <a href="{{ url_for('property_detail', id=prop.id) }}">{{ prop.address }}</a><span class="sep">/</span>
+  <span class="current">All details</span>
+  {% else %}
+  <span class="current">New property</span>
+  {% endif %}
 </div>
 
-<div class="card" style="max-width:760px">
-  <div class="card-header">
-    <div class="card-title">{{ 'Edit Property Details' if prop else 'New Property' }}</div>
+<div class="rec-page">
+  <div class="rec-toolbar">
+    <span style="border:0;background:none;padding:0 6px 0 0;font-weight:700;color:#0e1f44">
+      {{ 'All property details' if editing else 'New property' }}
+    </span>
+    <span class="sp"></span>
+    <a href="{{ url_for('property_detail', id=prop.id) if editing else url_for('properties_list') }}"
+       class="btn btn-outline btn-sm">Cancel</a>
+    {% if editing %}
+    <button type="submit" form="property-delete-form" class="btn btn-danger btn-sm">Delete Property</button>
+    {% endif %}
+    <span class="rec-save">
+      <button type="submit" class="btn btn-primary btn-save" form="property-form">
+        {{ 'Save Changes' if editing else 'Create Property' }}
+      </button>
+    </span>
   </div>
 
-  <form method="post">
-    <div class="form-grid" style="margin-bottom:16px">
-      <div class="form-group span-2">
-        <label for="address">Address *</label>
-        <input type="text" id="address" name="address" required
-               value="{{ prop.address if prop else '' }}"
-               placeholder="e.g. 12 King Street, Manchester">
+  <div class="rec-cols">
+
+    <div class="rec-col">
+      <div class="box box--grid">
+        <div class="box-head">Address</div>
+        <div class="frow frow--full">
+          <div class="fcell fcell--label">Address</div>
+          <div class="fcell fcell--edit">
+            <input type="text" name="address" required form="property-form"
+                   value="{{ prop.address if editing else '' }}"
+                   placeholder="e.g. 12 King Street, London">
+          </div>
+        </div>
+        <div class="frow">
+          <div class="fcell fcell--label">Postcode</div>
+          <div class="fcell fcell--edit">
+            <input type="text" name="postcode" required form="property-form"
+                   value="{{ prop.postcode if editing else '' }}"
+                   placeholder="e.g. SW10 0SZ" style="text-transform:uppercase">
+          </div>
+          <div class="fcell fcell--label">Area</div>
+          <div class="fcell fcell--edit">
+            <input type="text" name="area" form="property-form"
+                   value="{{ prop.area or '' if editing else '' }}" placeholder="e.g. Chelsea">
+          </div>
+        </div>
       </div>
 
-      <div class="form-group">
-        <label for="postcode">Postcode *</label>
-        <input type="text" id="postcode" name="postcode" required
-               value="{{ prop.postcode if prop else '' }}"
-               placeholder="e.g. M2 4LQ" style="text-transform:uppercase">
-      </div>
-
-      <div class="form-group">
-        <label for="property_type">Property Type</label>
-        <select id="property_type" name="property_type">
-          <option value="">— Select —</option>
-          {% for t in ['Office','Retail','Industrial','Warehouse','Residential','Mixed Use','Land','Hotel','Leisure','Other'] %}
-          <option value="{{ t }}" {{ 'selected' if prop and prop.property_type == t else '' }}>{{ t }}</option>
-          {% endfor %}
-        </select>
-      </div>
-
-      <div class="form-group" id="residential-use-row" style="{{ '' if not prop or (prop.website_category == 'residential' or prop.property_type in ['Residential']) else 'display:none' }}">
-        <label for="residential_use">Residential Use</label>
-        <select id="residential_use" name="residential_use">
-          <option value="">— Select —</option>
-          {% for u in ['Owner Occupied','HMO','Residential Investment','Vacant'] %}
-          <option value="{{ u }}" {{ 'selected' if prop and prop.residential_use == u else '' }}>{{ u }}</option>
-          {% endfor %}
-        </select>
-      </div>
-
-      <div class="form-group">
-        <label for="size">Floor Area / Size</label>
-        <input type="number" id="size" name="size" step="0.01" min="0"
-               value="{{ prop.size if prop and prop.size else '' }}"
-               placeholder="e.g. 2500">
-      </div>
-
-      <div class="form-group">
-        <label for="measurement_type">Measurement Basis</label>
-        <select id="measurement_type" name="measurement_type">
-          <option value="">— Select —</option>
-          <option value="GIA" {{ 'selected' if prop and prop.measurement_type == 'GIA' else '' }}>GIA — Gross Internal Area</option>
-          <option value="NIA" {{ 'selected' if prop and prop.measurement_type == 'NIA' else '' }}>NIA — Net Internal Area</option>
-          <option value="GEA" {{ 'selected' if prop and prop.measurement_type == 'GEA' else '' }}>GEA — Gross External Area</option>
-          <option value="IPMS 1" {{ 'selected' if prop and prop.measurement_type == 'IPMS 1' else '' }}>IPMS 1</option>
-          <option value="IPMS 2" {{ 'selected' if prop and prop.measurement_type == 'IPMS 2' else '' }}>IPMS 2</option>
-          <option value="IPMS 3" {{ 'selected' if prop and prop.measurement_type == 'IPMS 3' else '' }}>IPMS 3</option>
-        </select>
-      </div>
-
-      <div class="form-group span-2">
-        <label for="description">Description / Notes</label>
-        <textarea id="description" name="description" rows="4"
-                  placeholder="Brief property description, location notes, condition etc.">{{ prop.description if prop and prop.description else '' }}</textarea>
+      <div class="box box--grid">
+        <div class="box-head">Description</div>
+        <div class="frow frow--full">
+          <div class="fcell fcell--label fcell--top">Description</div>
+          <div class="fcell fcell--edit">
+            <textarea name="description" rows="5" form="property-form"
+                      placeholder="Condition, location notes, anything worth recording…">{{ prop.description or '' if editing else '' }}</textarea>
+          </div>
+        </div>
       </div>
     </div>
 
-    <p style="font-size:12.5px;color:#9aa0a6;margin:0 0 16px">
-      Website listing details (category, price, photos, brochure, floor plan) are managed per instruction on the
-      <strong>Website Listing</strong> tab of a Project — not here.
-    </p>
+    <div class="rec-col">
+      <div class="box box--grid">
+        <div class="box-head">Type &amp; Size</div>
+        <div class="frow">
+          <div class="fcell fcell--label">Property type</div>
+          <div class="fcell fcell--edit">
+            <select name="property_type" form="property-form">
+              <option value="">— Select —</option>
+              {% for t in ['Office','Retail','Industrial','Warehouse','Residential','Mixed Use','Land','Hotel','Leisure','Other'] %}
+              <option value="{{ t }}" {{ 'selected' if editing and prop.property_type == t else '' }}>{{ t }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="fcell fcell--label">Use class</div>
+          <div class="fcell fcell--edit">
+            <input type="text" name="use_class" form="property-form"
+                   value="{{ prop.use_class or '' if editing else '' }}" placeholder="e.g. Class E">
+          </div>
+        </div>
+        <div class="frow">
+          <div class="fcell fcell--label">Floor area</div>
+          <div class="fcell fcell--edit">
+            <input type="number" name="size" step="0.01" min="0" form="property-form"
+                   value="{{ prop.size|int if editing and prop.size else '' }}" placeholder="sq ft">
+          </div>
+          <div class="fcell fcell--label">Basis</div>
+          <div class="fcell fcell--edit">
+            <select name="measurement_type" form="property-form">
+              <option value="">— Select —</option>
+              {% for m, lbl in [('GIA','GIA — Gross Internal'), ('NIA','NIA — Net Internal'),
+                                ('GEA','GEA — Gross External'), ('IPMS 1','IPMS 1'),
+                                ('IPMS 2','IPMS 2'), ('IPMS 3','IPMS 3')] %}
+              <option value="{{ m }}" {{ 'selected' if editing and prop.measurement_type == m else '' }}>{{ lbl }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+      </div>
 
-    <div class="form-actions">
-      <button type="submit" class="btn btn-primary">{{ 'Save Changes' if prop else 'Create Property' }}</button>
-      {% if prop %}
-        <a href="{{ url_for('property_detail', id=prop.id) }}" class="btn btn-secondary">Cancel</a>
-        <button type="submit" form="property-delete-form" class="btn btn-danger btn-sm" style="margin-left:auto">Delete Property</button>
-      {% else %}
-        <a href="{{ url_for('properties_list') }}" class="btn btn-secondary">Cancel</a>
-      {% endif %}
+      <div class="box box--grid">
+        <div class="box-head">Residential</div>
+        <div class="frow">
+          <div class="fcell fcell--label">Use</div>
+          <div class="fcell fcell--edit">
+            <select name="residential_use" form="property-form">
+              <option value="">— Not residential —</option>
+              {% for u in ['Owner Occupied','HMO','Residential Investment','Vacant'] %}
+              <option value="{{ u }}" {{ 'selected' if editing and prop.residential_use == u else '' }}>{{ u }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="fcell fcell--label">Bedrooms</div>
+          <div class="fcell fcell--edit">
+            <input type="number" name="beds" min="0" form="property-form"
+                   value="{{ prop.beds if editing and prop.beds else '' }}" placeholder="—">
+          </div>
+        </div>
+        <div class="frow">
+          <div class="fcell fcell--label">Bathrooms</div>
+          <div class="fcell fcell--edit">
+            <input type="number" name="baths" min="0" form="property-form"
+                   value="{{ prop.baths if editing and prop.baths else '' }}" placeholder="—">
+          </div>
+          <div class="fcell fcell--label">Added</div>
+          <div class="fcell is-empty">
+            {{ prop.created_at.strftime('%d %b %Y') if editing else 'Not yet saved' }}
+          </div>
+        </div>
+      </div>
     </div>
-  </form>
-  {% if prop %}
-  <!-- Delete form kept OUTSIDE the edit form (nested forms are invalid HTML) -->
-  <form id="property-delete-form" method="post" action="{{ url_for('property_delete', id=prop.id) }}" class="confirm-delete"></form>
-  {% endif %}
+  </div>
+
+  <p class="rec-note">
+    Asking price, photographs, brochures and floor plans belong to an instruction,
+    and are set on the project&rsquo;s Marketing &amp; Publishing section.
+  </p>
+
+  <div class="rec-foot">
+    <a href="{{ url_for('property_detail', id=prop.id) if editing else url_for('properties_list') }}"
+       class="btn btn-outline">Cancel</a>
+    <button type="submit" class="btn btn-primary" form="property-form">
+      {{ 'Save Changes' if editing else 'Create Property' }}
+    </button>
+  </div>
 </div>
 {% endblock %}

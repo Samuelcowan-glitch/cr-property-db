@@ -1,6 +1,4 @@
-{# Rendered inside the full page normally, and on its own when the Projects
-   sidebar loads it into the details panel. #}
-{% extends layout|default("base.html") %}
+{% extends "base.html" %}
 {% import "projects/_record_boxes.html" as rb %}
 {% import "projects/_doc_box.html" as db %}
 {% set pv = project_form_values(project) %}
@@ -22,10 +20,10 @@
 </div>
 
 <!-- ── Header strip ── -->
-<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px;padding:14px 16px;background:#fff;border:1px solid #e8eaed;border-radius:8px">
+<div class="rec-header">
   <div>
-    <div style="font-size:18px;font-weight:700;color:#0e1f44;margin-bottom:4px">{{ project.name }}</div>
-    <div style="font-size:12px;color:#5f6368;display:flex;gap:16px;flex-wrap:wrap">
+    <h2>{{ project.name }}</h2>
+    <div class="rec-facts">
       {% if project.project_ref %}<span>Ref: <strong>{{ project.project_ref }}</strong></span>{% endif %}
       {% if project.instruction_type %}<span>{{ project.instruction_type }}</span>{% endif %}
       {% if project.fee_earner %}<span>Fee Earner: <strong>{{ project.fee_earner }}</strong></span>{% endif %}
@@ -33,7 +31,7 @@
       {% if project.available_from %}<span style="color:{% if project.available_from <= today %}#c62828{% else %}#1b7a3f{% endif %}">Available: <strong>{{ project.available_from.strftime('%d %b %Y') }}</strong></span>{% endif %}
     </div>
   </div>
-  <div style="display:flex;gap:8px;align-items:center">
+  <div class="rec-tags">
     {% if project.status == 'Active' %}<span class="badge badge-active">Active</span>
     {% elif project.status == 'Complete' %}<span class="badge badge-complete">Complete</span>
     {% else %}<span class="badge badge-hold">On Hold</span>{% endif %}

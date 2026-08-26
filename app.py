@@ -1650,6 +1650,7 @@ def property_edit(id):
         if 'postcode' in request.form:
             prop.postcode = (request.form.get('postcode') or '').upper()
         db.session.commit()
+        audit('edit', entity='Property', entity_id=prop.id)
         flash('Property updated.', 'success')
         return _back_to('property_detail', id=prop.id)
     return render_template('properties/form.html', prop=prop)
@@ -1972,12 +1973,8 @@ def projects_list():
         query = query.filter(Project.status == status)
     projects = query.order_by(Project.created_at.desc()).all()
     rows = [project_row_summary(p) for p in projects]
-    # Which project the details panel opens on: the one asked for, else the first.
-    selected = _fint(request.args.get('selected'))
-    if selected not in {p.id for p in projects}:
-        selected = projects[0].id if projects else None
     return render_template('projects/list.html', projects=projects, rows=rows,
-                           selected_id=selected, q=q, status=status)
+                           q=q, status=status)
 
 
 def _upsert_client_contact(form):
@@ -2286,11 +2283,7 @@ def project_detail(id):
     listing = project.project_listings[0] if project.project_listings else None
     pub = listing_publish_state(listing) if listing else None
 
-    # ?panel=1 returns the same overview without the sidebar and top bar, for
-    # the Projects list to drop into its details panel.
-    layout = '_bare.html' if request.args.get('panel') else 'base.html'
-
-    return render_template('projects/detail.html', project=project, layout=layout,
+    return render_template('projects/detail.html', project=project,
                            folder_labels=FOLDER_LABELS, today=date.today(),
                            matches=matches, registered_ids=registered_ids,
                            activity=activity, enquiries=enquiries,
@@ -2689,10 +2682,14 @@ PROJECT_FIELDS = [
 PROPERTY_FIELDS = [
     ('address',          'address',          None),
     ('property_type',    'property_type',    _ftext),
+    ('area',             'area',             _ftext),
     ('size',             'size',             _fnum),
     ('measurement_type', 'measurement_type', _ftext),
     ('description',      'description',      _ftext),
     ('residential_use',  'residential_use',  _ftext),
+    ('use_class',        'use_class',        _ftext),
+    ('beds',             'beds',             _fint),
+    ('baths',            'baths',            _fint),
 ]
 
 

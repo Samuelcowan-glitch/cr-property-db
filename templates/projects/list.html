@@ -8,123 +8,41 @@
 {% endblock %}
 
 {% block content %}
-<div class="proj-split" data-project-list>
+<div class="rec-page">
 
-  <!-- ════ The list ════ -->
-  <aside class="proj-side">
-    <section class="org-panel">
-      <header>
-        <span>Projects <span class="count">({{ projects|length }})</span></span>
-      </header>
-
-      <form method="get" class="proj-filter">
-        <input type="search" name="q" value="{{ q }}" placeholder="Search name, client, reference…">
-        <select name="status" onchange="this.form.submit()">
-          <option value="">All statuses</option>
-          {% for s in ['Active', 'Complete', 'On Hold'] %}
-          <option value="{{ s }}" {{ 'selected' if status == s }}>{{ s }}</option>
-          {% endfor %}
-        </select>
-        {% if q or status %}<a href="{{ url_for('projects_list') }}" class="btn btn-outline btn-sm">Clear</a>{% endif %}
-      </form>
-
-      <div class="org-body proj-list">
-        {% for r in rows %}
-        {# The same row component as the Organiser's To Let – Available panel. #}
-        {{ pr.property_row(
-             url_for('project_detail', id=r.project.id),
-             r.photo,
-             r.ref,
-             r.address,
-             r.rent ~ ' · ' ~ r.size,
-             selected=(r.project.id == selected_id),
-             attrs='data-project="' ~ r.project.id ~ '"') }}
-        {% else %}
-        <div class="org-empty">
-          {% if q or status %}No projects match your filter.{% else %}No projects yet.{% endif %}
-        </div>
+  <div class="list-bar">
+    <form method="get" class="list-filter">
+      <input type="search" name="q" value="{{ q }}" placeholder="Search name, client, reference…">
+      <select name="status" onchange="this.form.submit()">
+        <option value="">All statuses</option>
+        {% for s in ['Active', 'Complete', 'On Hold'] %}
+        <option value="{{ s }}" {{ 'selected' if status == s }}>{{ s }}</option>
         {% endfor %}
-      </div>
-    </section>
-  </aside>
-
-  <!-- ════ The project itself ════ -->
-  <div class="proj-panel" data-project-panel aria-live="polite">
-    {% if selected_id %}
-    <div class="proj-loading">Loading the project…</div>
-    {% else %}
-    <div class="proj-blank">
-      <div class="icon">&#128193;</div>
-      <p>{% if q or status %}No projects match your filter.{% else %}No projects yet.{% endif %}</p>
-      <a href="{{ url_for('project_new') }}" class="btn btn-primary btn-sm">+ New Project</a>
-    </div>
-    {% endif %}
+      </select>
+      <button type="submit" class="btn btn-primary btn-sm">Search</button>
+      {% if q or status %}
+      <a href="{{ url_for('projects_list') }}" class="btn btn-outline btn-sm">Clear</a>
+      {% endif %}
+    </form>
+    <span class="list-count">{{ projects|length }} project{{ '' if projects|length == 1 else 's' }}</span>
   </div>
+
+  <div class="rec-list">
+    {% for r in rows %}
+    {# The same row as the Organiser's To Let – Available panel. The whole row
+       opens the project on its own page. #}
+    {{ pr.property_row(
+         url_for('project_detail', id=r.project.id),
+         r.photo, r.ref, r.address, r.rent ~ ' · ' ~ r.size) }}
+    {% else %}
+    <div class="org-empty">
+      {% if q or status %}No projects match your search.{% else %}No projects yet.{% endif %}
+      <div style="margin-top:12px">
+        <a href="{{ url_for('project_new') }}" class="btn btn-primary btn-sm">+ New Project</a>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
 </div>
-
-<script>
-/* Choosing a project in the list loads it into the panel beside it, without
-   reloading the page around it. The row is a normal link, so opening it in a
-   new tab, or with JavaScript off, still works. */
-(function () {
-  var root  = document.querySelector('[data-project-list]');
-  var panel = document.querySelector('[data-project-panel]');
-  if (!root || !panel) return;
-
-  var current = null;
-
-  function reinit() {
-    // Scripts that set themselves up on page load need telling about the
-    // markup that has just arrived. Searchable selects watch for it already.
-    if (window.CRInlineEdit) window.CRInlineEdit.start(panel);
-    if (window.CRPhotoManager) window.CRPhotoManager.start(panel);
-  }
-
-  function runScripts(container) {
-    container.querySelectorAll('script').forEach(function (old) {
-      var s = document.createElement('script');
-      if (old.src) s.src = old.src; else s.textContent = old.textContent;
-      old.parentNode.replaceChild(s, old);
-    });
-  }
-
-  function load(id, push) {
-    if (id === current) return;
-    current = id;
-    panel.innerHTML = '<div class="proj-loading">Loading the project…</div>';
-
-    fetch('/projects/' + id + '?panel=1', {credentials: 'same-origin'})
-      .then(function (r) {
-        if (!r.ok) throw new Error(r.status);
-        return r.text();
-      })
-      .then(function (html) {
-        panel.innerHTML = html;
-        runScripts(panel);
-        reinit();
-        panel.scrollTop = 0;
-        if (push) {
-          history.replaceState({}, '', '{{ url_for("projects_list") }}?selected=' + id);
-        }
-      })
-      .catch(function () {
-        // Anything unexpected falls back to opening the project properly.
-        window.location.href = '/projects/' + id;
-      });
-  }
-
-  root.querySelectorAll('[data-project]').forEach(function (row) {
-    row.addEventListener('click', function (e) {
-      if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;  // new tab
-      e.preventDefault();
-      root.querySelectorAll('[data-project]').forEach(function (r) {
-        r.classList.toggle('is-selected', r === row);
-      });
-      load(row.dataset.project, true);
-    });
-  });
-
-  {% if selected_id %}load('{{ selected_id }}', false);{% endif %}
-})();
-</script>
 {% endblock %}

@@ -65,7 +65,7 @@
    below its content and pushes the right-hand column off the page when the
    record is shown inside the Projects panel. */
 .rec-cols-3 { display: grid; grid-template-columns: 260px minmax(0, 1fr) 320px; gap: 8px; align-items: start; }
-.rec-cols-narrow { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 8px; align-items: start; }
+.rec-cols-narrow { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 8px; align-items: start; max-width: 1560px; }
 .rec-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 @media (max-width: 1100px) {
   .rec-cols, .rec-cols-3, .rec-cols-narrow { grid-template-columns: 1fr; }
@@ -79,8 +79,10 @@
    and its listing. Two real columns, so nothing has to span rows and no gap
    opens up between the boxes on the left. */
 .rec-cols-proj {
-  display: grid; grid-template-columns: 300px minmax(0, 1fr);
+  display: grid; grid-template-columns: 320px minmax(0, 1fr);
   gap: 8px; align-items: start;
+  /* Past this the columns only get emptier, so the record stops widening. */
+  max-width: 1560px;
 }
 .rec-cols-proj > * { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
 
@@ -562,3 +564,52 @@ table.rec-table td.actions { white-space: nowrap; text-align: right; }
 @media (max-width: 700px) { .box--grid { grid-template-columns: 118px minmax(0, 1fr); } }
 @media (max-width: 520px) { .box--grid { grid-template-columns: 1fr; } }
 @media (max-width: 700px) { .box--grid .frow--full > .fcell:last-child { grid-column: auto; } }
+
+/* ── Record pages and lists ────────────────────────────────────────────────
+   Projects and Properties share these, so the two read the same way. A record
+   page is capped in width: past about 1500px the columns only get emptier. */
+.rec-page { max-width: 1560px; }
+
+.list-bar {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.list-filter { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; flex: 1 1 auto; }
+.list-filter input, .list-filter select {
+  font: inherit; font-size: 12.5px; padding: 6px 9px; min-width: 0;
+  border: 1px solid var(--cell-edge); border-radius: 4px; background: var(--white);
+}
+.list-filter input { flex: 0 1 300px; min-width: 180px; }
+.list-filter select { flex: 0 0 150px; }
+.list-count { margin-left: auto; font-size: 12px; color: var(--grey-600); white-space: nowrap; }
+
+/* The list itself: the shared property rows in one bordered panel. */
+.rec-list {
+  border: 1px solid var(--cell-edge); border-radius: 4px;
+  background: var(--white); overflow: hidden;
+}
+.rec-list .org-row { padding: 10px 12px; }
+.rec-list .org-title { font-size: 13px; font-weight: 600; }
+
+/* A quiet note under a record form. */
+.rec-note {
+  margin: 10px 0 0; font-size: 12px; color: var(--grey-600); line-height: 1.5;
+  max-width: 70ch;
+}
+
+/* ── Record header ─────────────────────────────────────────────────────────
+   The white card at the top of a Project or a Property, so the two open the
+   same way. */
+.rec-header {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap; margin-bottom: 12px; padding: 13px 16px;
+  background: var(--white); border: 1px solid var(--grey-200); border-radius: 8px;
+}
+.rec-header h2 { font-size: 18px; font-weight: 700; color: var(--navy);
+  margin: 0 0 4px; line-height: 1.3; }
+.rec-header .rec-facts {
+  display: flex; gap: 16px; flex-wrap: wrap;
+  font-size: 12px; color: var(--grey-600); line-height: 1.4;
+}
+.rec-header .rec-facts strong { color: var(--text); }
+.rec-header .rec-tags { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }

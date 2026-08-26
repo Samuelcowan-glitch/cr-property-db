@@ -148,7 +148,9 @@ a:hover { text-decoration: underline; color: var(--blue-l); }
 .topbar-actions { display: flex; align-items: center; gap: 6px; }
 
 /* ── Content ───────────────────────────────────────────────────────────────── */
-.content { padding: 16px 20px; flex: 1; }
+/* A containment context, so record layouts can size themselves against the
+   space they actually have rather than the whole window. */
+.content { padding: 16px 20px; flex: 1; container-type: inline-size; }
 
 /* ── Alerts ────────────────────────────────────────────────────────────────── */
 .alerts { margin-bottom: 12px; }
@@ -644,6 +646,12 @@ body, td, p, .fcell, .fval { font-weight: 400; }
   .sidebar-nav a.active { border-left: 0; border-bottom-color: var(--orange); }
   .sidebar-nav a.nav-more, .nav-divider, .nav-section-label, .sidebar-footer { display: none; }
   .main { margin-left: 0; }
+  /* Three or four actions do not fit a phone in one fixed-height row, and a
+     row that cannot wrap makes the whole page wider than the screen. */
+  .topbar { height: auto; min-height: var(--topbar-h); flex-wrap: wrap; padding: 6px 12px; }
+  .topbar-left { min-width: 0; }
+  .topbar-title { font-size: 14px; }
+  .topbar-actions { flex-wrap: wrap; }
   .stat-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .content { padding: 12px; }
 }
@@ -783,47 +791,4 @@ body, td, p, .fcell, .fval { font-weight: 400; }
 .cal-event.is-compact .cal-loc { display: none; }
 .cal-event.is-tiny .cal-time { display: none; }
 
-/* ── Projects: list beside the project ─────────────────────────────────────
-   The list reuses the Organiser's .org-row so the two read identically; only
-   the surrounding split and the selected state are new. */
-.proj-split { display: grid; grid-template-columns: 330px 1fr; gap: 12px; align-items: start; }
-.proj-side { position: sticky; top: 12px; }
-.proj-list { max-height: calc(100vh - 210px); }
-
-.proj-filter {
-  display: flex; gap: 6px; padding: 8px 10px; background: var(--grey-50);
-  border-bottom: 1px solid var(--grey-200);
-}
-.proj-filter input, .proj-filter select {
-  font: inherit; font-size: 12px; padding: 5px 8px; min-width: 0;
-  border: 1px solid var(--grey-200); border-radius: 4px; background: var(--white);
-}
-.proj-filter input { flex: 1 1 auto; }
-.proj-filter select { flex: 0 0 96px; }
-
-/* Rows are links; they must not pick up the usual link colour or underline. */
-a.org-row { text-decoration: none; color: inherit; }
-a.org-row:hover { text-decoration: none; }
-.org-row.is-selected { background: #eef2f9; box-shadow: inset 3px 0 0 var(--navy); }
-.org-row.is-selected .org-title { color: var(--navy); font-weight: 600; }
-
-.proj-panel { min-width: 0; }
-.proj-loading, .proj-blank {
-  border: 1px solid var(--grey-200); background: var(--white); border-radius: 3px;
-  padding: 40px 20px; text-align: center; color: var(--grey-600); font-size: 13px;
-}
-.proj-blank .icon { font-size: 26px; margin-bottom: 10px; }
-.proj-blank p { margin-bottom: 12px; }
-
-@media (max-width: 1100px) {
-  .proj-split { grid-template-columns: 1fr; }
-  .proj-side { position: static; }
-  .proj-list { max-height: 320px; }
-}
-
-/* The record shown inside the Projects panel has less room than a full page.
-   On a wide monitor it keeps its three columns; on a narrower one the panel
-   is measured on its own and the record stacks, rather than being squeezed
-   into columns too narrow to read. */
-.proj-panel { container-type: inline-size; }
 
