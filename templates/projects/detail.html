@@ -359,7 +359,7 @@
 
           {% if project.fee_percent or project.fee_fixed %}
           <div>
-            <div style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px">{% if project.instruction_type == 'Sale' %}Sale Fee{% elif project.instruction_type == 'Letting' %}Letting Fee{% else %}Fee{% endif %}</div>
+            <div style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px">{% if project.instruction_type == INSTRUCTION_FOR_SALE %}Sale Fee{% elif project.instruction_type == INSTRUCTION_TO_LET %}Letting Fee{% else %}Fee{% endif %}</div>
             <div style="font-size:13px;font-weight:600;color:#0e1f44">
               {% if project.fee_percent %}{{ project.fee_percent }}%{% endif %}
               {% if project.fee_percent and project.fee_fixed %} + {% endif %}

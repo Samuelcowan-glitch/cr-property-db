@@ -613,3 +613,17 @@ table.rec-table td.actions { white-space: nowrap; text-align: right; }
 }
 .rec-header .rec-facts strong { color: var(--text); }
 .rec-header .rec-tags { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+/* The instruction type, shown on each row of the Projects list so the type
+   reads at a glance. Colour follows the type, not the row. */
+.org-tag {
+  flex-shrink: 0; align-self: flex-start;
+  font-size: 10.5px; font-weight: 600; white-space: nowrap;
+  border-radius: 999px; padding: 3px 10px;
+  background: var(--grey-100); color: var(--grey-700);
+}
+.org-tag.it-for-sale--available { background: #e8eefb; color: #24417f; }
+.org-tag.it-to-let--available   { background: #e6f2f1; color: #1f6b62; }
+.org-tag.it-market-appraisal    { background: #fdf1dc; color: #8a6113; }
+.org-tag.it-prospect            { background: #ede4f5; color: #5c3a75; }
+.org-tag.it-archived            { background: var(--grey-100); color: var(--grey-600); }

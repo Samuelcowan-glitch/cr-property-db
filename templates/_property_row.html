@@ -10,9 +10,10 @@
     meta     the second line
     sub      the third line
     selected true to mark this row as the one currently open
-    attrs    any extra attributes (used for the panel loading)
+    attrs    any extra attributes
+    tag      a short label shown on the right — a project's instruction type
 #}
-{% macro property_row(href, photo, title, meta, sub, selected=false, attrs='') %}
+{% macro property_row(href, photo, title, meta, sub, selected=false, attrs='', tag='') %}
 <a class="org-row{{ ' is-selected' if selected else '' }}" href="{{ href }}" {{ attrs|safe }}>
   {% if photo %}
   <img class="org-thumb" src="{{ url_for('listing_photo_image', id=photo.id, w=160) }}" alt="">
@@ -24,5 +25,6 @@
     <div class="org-meta">{{ meta }}</div>
     <div class="org-sub">{{ sub }}</div>
   </div>
+  {% if tag %}<span class="org-tag it-{{ tag|lower|replace(' ','-')|replace('–','') }}">{{ tag }}</span>{% endif %}
 </a>
 {% endmacro %}

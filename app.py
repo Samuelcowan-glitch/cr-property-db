@@ -1567,8 +1567,8 @@ def dashboard():
                                 Contact.status.notin_(ARCHIVED_STATUSES + ['Inactive']))
                         .order_by(Contact.next_follow_up).all())
 
-    to_let = _available_listings('Letting')
-    for_sale = _available_listings('Sale')
+    to_let = _available_listings(INSTRUCTION_TO_LET)
+    for_sale = _available_listings(INSTRUCTION_FOR_SALE)
     # Landlords and clients with a call due — the third column of the organiser.
     landlords_to_call = (Contact.query
                          .filter(Contact.contact_type.in_(['Landlord', 'Client']),
@@ -1952,6 +1952,7 @@ def project_row_summary(project):
     return {
         'project': project,
         'photo': photo,
+        'type': project.instruction_type or '',
         'ref': project.project_ref or project.name,
         'address': address or 'No property linked',
         'rent': format_rent(price, unit),
@@ -1963,6 +1964,7 @@ def project_row_summary(project):
 def projects_list():
     q = request.args.get('q', '')
     status = request.args.get('status', '')
+    etype = request.args.get('type', '')
     query = Project.query
     if q:
         query = query.filter(
@@ -1971,10 +1973,12 @@ def projects_list():
         )
     if status:
         query = query.filter(Project.status == status)
+    if etype:
+        query = query.filter(Project.instruction_type == etype)
     projects = query.order_by(Project.created_at.desc()).all()
     rows = [project_row_summary(p) for p in projects]
     return render_template('projects/list.html', projects=projects, rows=rows,
-                           q=q, status=status)
+                           q=q, status=status, type_=etype)
 
 
 def _upsert_client_contact(form):
@@ -1989,7 +1993,8 @@ def _upsert_client_contact(form):
     phone  = (form.get('client_phone') or '').strip() or None
     mobile = (form.get('client_mobile') or '').strip() or None
     # A letting instruction's client is the landlord; otherwise a general client.
-    target_type = 'Landlord' if (form.get('instruction_type') or '').strip() == 'Letting' else 'Client'
+    target_type = ('Landlord' if (form.get('instruction_type') or '').strip() == INSTRUCTION_TO_LET
+                   else 'Client')
     parts = name.split(' ', 1)
     first_name = parts[0] or name
     last_name  = parts[1] if len(parts) > 1 else '.'
@@ -2135,7 +2140,15 @@ def project_new():
 
 # What an instruction can be. Anything else on an older record is left alone
 # and flagged on screen for someone to look at, never rewritten quietly.
-INSTRUCTION_TYPES = ['Letting', 'Sale', 'Sale or Letting']
+INSTRUCTION_TYPES = ['For Sale – Available', 'To Let – Available',
+                     'Market Appraisal', 'Prospect', 'Archived']
+
+# The two that put a property on the market. Used where the CRM needs to know
+# whether an instruction is a sale or a letting, rather than just its label.
+INSTRUCTION_FOR_SALE = INSTRUCTION_TYPES[0]
+INSTRUCTION_TO_LET = INSTRUCTION_TYPES[1]
+app.jinja_env.globals['INSTRUCTION_FOR_SALE'] = INSTRUCTION_FOR_SALE
+app.jinja_env.globals['INSTRUCTION_TO_LET'] = INSTRUCTION_TO_LET
 app.jinja_env.globals['INSTRUCTION_TYPES'] = INSTRUCTION_TYPES
 
 
@@ -2191,7 +2204,7 @@ def _validate_project_form(form):
     if not (form.get('instruction_type') or '').strip():
         errors['instruction_type'] = 'Choose what kind of instruction this is.'
     elif not instruction_type_ok(form.get('instruction_type')):
-        errors['instruction_type'] = 'Choose Letting, Sale, or Sale or Letting.'
+        errors['instruction_type'] = 'Choose one of: ' + ', '.join(INSTRUCTION_TYPES) + '.'
 
     if form.get('property_mode', 'existing') == 'existing':
         prop = Property.query.get(_fint(form.get('property_id')) or 0)
@@ -2301,7 +2314,7 @@ def project_edit(id):
         was_type = project.instruction_type
         if 'instruction_type' in request.form and not instruction_type_ok(
                 request.form.get('instruction_type'), was_type):
-            flash('Choose Letting, Sale, or Sale or Letting.', 'warning')
+            flash('Choose one of: ' + ', '.join(INSTRUCTION_TYPES) + '.', 'warning')
             return _back_to('project_detail', id=project.id)
         apply_form_fields(project, request.form, PROJECT_FIELDS)
         if not (project.name or '').strip():
