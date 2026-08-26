@@ -1308,6 +1308,21 @@ def _available_listings(instruction_type):
             .all())
 
 
+def _projects_of_type(instruction_type, limit=25):
+    """Active projects on a given instruction type, newest first.
+
+    Read straight from the projects, not from their listings: an instruction
+    such as a market appraisal has no website listing behind it. Because it is
+    a live query, a project appears here the moment its type is set and drops
+    out the moment it is changed.
+    """
+    return (Project.query
+            .filter(Project.instruction_type == instruction_type,
+                    Project.status == 'Active')
+            .order_by(Project.created_at.desc())
+            .limit(limit).all())
+
+
 def _diary_items(limit_days=60):
     """Everything with a date attached, from the records that already hold them."""
     today = date.today()
@@ -1569,6 +1584,7 @@ def dashboard():
 
     to_let = _available_listings(INSTRUCTION_TO_LET)
     for_sale = _available_listings(INSTRUCTION_FOR_SALE)
+    appraisals = _projects_of_type(INSTRUCTION_APPRAISAL)
     # Landlords and clients with a call due — the third column of the organiser.
     landlords_to_call = (Contact.query
                          .filter(Contact.contact_type.in_(['Landlord', 'Client']),
@@ -1582,7 +1598,7 @@ def dashboard():
     contact_count = Contact.query.count()
 
     return render_template('dashboard.html',
-                           to_let=to_let, for_sale=for_sale,
+                           to_let=to_let, for_sale=for_sale, appraisals=appraisals,
                            landlords_to_call=landlords_to_call, diary_items=diary_items,
                            prop_count=prop_count,
                            trans_count=trans_count,
@@ -2147,8 +2163,10 @@ INSTRUCTION_TYPES = ['For Sale – Available', 'To Let – Available',
 # whether an instruction is a sale or a letting, rather than just its label.
 INSTRUCTION_FOR_SALE = INSTRUCTION_TYPES[0]
 INSTRUCTION_TO_LET = INSTRUCTION_TYPES[1]
+INSTRUCTION_APPRAISAL = INSTRUCTION_TYPES[2]
 app.jinja_env.globals['INSTRUCTION_FOR_SALE'] = INSTRUCTION_FOR_SALE
 app.jinja_env.globals['INSTRUCTION_TO_LET'] = INSTRUCTION_TO_LET
+app.jinja_env.globals['INSTRUCTION_APPRAISAL'] = INSTRUCTION_APPRAISAL
 app.jinja_env.globals['INSTRUCTION_TYPES'] = INSTRUCTION_TYPES
 
 

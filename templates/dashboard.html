@@ -43,6 +43,25 @@
 
     <section class="org-panel">
       <header>
+        <span>For Sale &ndash; Available <span class="count">({{ for_sale|length }})</span></span>
+        <a href="{{ url_for('projects_list') }}">All instructions</a>
+      </header>
+      <div class="org-body">
+        {% for l in for_sale %}
+        {{ pr.property_row(
+             url_for('project_detail', id=l.project_id),
+             l.photos[0] if l.photos else none,
+             (l.unit_name ~ ', ' if l.unit_name else '') ~ (l.prop.address if l.prop else l.area or 'Property'),
+             (l.price_display or format_rent(l.listing_price, 'sale')) ~ ' · ' ~ format_size(l.size),
+             'For Sale – Available' ~ (' · ' ~ l.prop.postcode if l.prop and l.prop.postcode else '')) }}
+        {% else %}
+        <div class="org-empty">No sales instructions are currently available.</div>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="org-panel">
+      <header>
         <span>To Let &ndash; Available <span class="count">({{ to_let|length }})</span></span>
         <a href="{{ url_for('projects_list') }}">All instructions</a>
       </header>
@@ -63,19 +82,22 @@
 
     <section class="org-panel">
       <header>
-        <span>For Sale &ndash; Available <span class="count">({{ for_sale|length }})</span></span>
-        <a href="{{ url_for('projects_list') }}">All instructions</a>
+        <span>Market Appraisals <span class="count">({{ appraisals|length }})</span></span>
+        <a href="{{ url_for('projects_list', type=INSTRUCTION_APPRAISAL) }}">All appraisals</a>
       </header>
       <div class="org-body">
-        {% for l in for_sale %}
+        {# Read live from the projects, so an instruction appears here as soon
+           as its type is set to Market Appraisal, and leaves when it changes. #}
+        {% for p in appraisals %}
+        {% set lst = p.project_listings[0] if p.project_listings else none %}
         {{ pr.property_row(
-             url_for('project_detail', id=l.project_id),
-             l.photos[0] if l.photos else none,
-             (l.unit_name ~ ', ' if l.unit_name else '') ~ (l.prop.address if l.prop else l.area or 'Property'),
-             (l.price_display or format_rent(l.listing_price, 'sale')) ~ ' · ' ~ format_size(l.size),
-             'For Sale – Available' ~ (' · ' ~ l.prop.postcode if l.prop and l.prop.postcode else '')) }}
+             url_for('project_detail', id=p.id),
+             lst.photos[0] if lst and lst.photos else none,
+             p.property.address if p.property else p.name,
+             format_size(p.property.size if p.property else none),
+             'Market Appraisal' ~ (' · ' ~ p.property.postcode if p.property and p.property.postcode else '')) }}
         {% else %}
-        <div class="org-empty">No sales instructions are currently available.</div>
+        <div class="org-empty">No market appraisals at the moment.</div>
         {% endfor %}
       </div>
     </section>
