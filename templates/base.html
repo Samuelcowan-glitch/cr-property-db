@@ -55,6 +55,7 @@
       <a href="{{ url_for('property_new') }}" class="nav-more">Add property</a>
       <a href="{{ url_for('project_new') }}" class="nav-more">New project</a>
       <a href="{{ url_for('transaction_new') }}" class="nav-more">Record transaction</a>
+      <a href="{{ url_for('admin_microsoft') }}" class="nav-more {{ 'active' if request.endpoint and 'microsoft' in request.endpoint else '' }}">Microsoft 365</a>
     </div>
 
     <div class="sidebar-footer" style="display:flex;align-items:center;justify-content:space-between;gap:8px">

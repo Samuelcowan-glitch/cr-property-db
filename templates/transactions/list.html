@@ -1,79 +1,319 @@
-﻿{% extends "base.html" %}
+{% extends "base.html" %}
 {% block title %}Transactions{% endblock %}
-{% block topbar_title %}Transaction Records{% endblock %}
+{% block topbar_title %}Transactions{% endblock %}
 {% block topbar_actions %}
   <a href="{{ url_for('transaction_new') }}" class="btn btn-primary btn-sm">+ Record Transaction</a>
 {% endblock %}
 
-{% block content %}
-<div class="section-header">
-  <h2>Transactions</h2>
-  <form class="search-bar" method="get" style="flex-wrap:wrap;gap:8px">
-    <input type="text" name="q" value="{{ q }}" placeholder="Search address or postcode…" style="max-width:240px">
-    <select name="type" style="max-width:160px">
-      <option value="">All Types</option>
-      <option value="Capital"   {{ 'selected' if ttype=='Capital' }}>Capital</option>
-      <option value="Leasehold" {{ 'selected' if ttype=='Leasehold' }}>Leasehold</option>
-    </select>
-    <button class="btn btn-secondary btn-sm" type="submit">Filter</button>
-    {% if q or ttype %}<a href="{{ url_for('transactions_list') }}" class="btn btn-outline btn-sm">Clear</a>{% endif %}
-  </form>
-</div>
+{#
+   Every figure on this page is worked out from the transaction records
+   themselves each time the page loads. There are no stored totals, so adding,
+   editing, completing or deleting a transaction changes the numbers with
+   nothing to refresh and nothing to reconcile.
+#}
 
-{% if transactions %}
-<div class="rec-table-wrap">
-  <table class="rec-table">
-    <thead>
-      <tr>
-        <th>Property</th>
-        <th>Postcode</th>
-        <th>Type</th>
-        <th>Tenure</th>
-        <th>Date</th>
-        <th>Value / Rent</th>
-        <th>Parties</th>
-        <th></th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for t in transactions %}
-      <tr>
-        <td><a href="{{ url_for('property_detail', id=t.property.id) }}">{{ t.property.address }}</a></td>
-        <td>{{ t.property.postcode }}</td>
-        <td>
-          {% if t.transaction_type == 'Capital' %}
-            <span class="badge badge-capital">Capital</span>
-          {% else %}
-            <span class="badge badge-leasehold">Leasehold</span>
-          {% endif %}
-        </td>
-        <td>{{ t.tenure_type or '—' }}</td>
-        <td>{{ t.transaction_date.strftime('%d %b %Y') if t.transaction_date else '—' }}</td>
-        <td>
-          {% if t.transaction_type == 'Capital' %}{{ t.display_value }}
-          {% else %}{{ t.display_rent }}{% endif %}
-        </td>
-        <td style="max-width:180px;font-size:12px">{{ t.parties }}</td>
-        <td>
-          <div class="td-actions">
-            <a href="{{ url_for('transaction_edit', id=t.id) }}" class="btn btn-sm btn-outline">Edit</a>
-            <form method="post" action="{{ url_for('transaction_delete', id=t.id) }}" class="confirm-delete">
-              <button class="btn btn-sm btn-danger" type="submit">Del</button>
-            </form>
-          </div>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
-{% else %}
-<div class="card">
-  <div class="empty-state">
-    <div class="empty-icon">📋</div>
-    <p>{% if q or ttype %}No transactions match your filter.{% else %}No transactions recorded yet.{% endif %}</p>
-    <a href="{{ url_for('transaction_new') }}" class="btn btn-primary" style="margin-top:12px">+ Record First Transaction</a>
+{# A rise, a fall, or an honest word when there is nothing to compare with. #}
+{% macro delta(change) %}
+  {% if change.kind == 'up' %}
+    <span class="kpi-delta up"><span class="arrow">&#9650;</span>{{ change.label }}</span>
+  {% elif change.kind == 'down' %}
+    <span class="kpi-delta down"><span class="arrow">&#9660;</span>{{ change.label }}</span>
+  {% else %}
+    <span class="kpi-delta {{ change.kind }}">{{ change.label }}</span>
+  {% endif %}
+{% endmacro %}
+
+{# A sortable column heading. Clicking again reverses it. #}
+{% macro th(key, label, cls='') %}
+  {% set on = (sort == key) %}
+  {% set nd = 'asc' if (on and dir == 'desc') else ('desc' if on else 'desc') %}
+  {% set qs = {} %}
+  {% for k, v in args.items() %}{% set _ = qs.update({k: v}) %}{% endfor %}
+  {% set _ = qs.update({'sort': key, 'dir': 'asc' if on and dir == 'desc' else 'desc'}) %}
+  <th class="{{ cls }}">
+    <a href="{{ url_for('transactions_list', **qs) }}">{{ label }}{% if on %}<span class="caret">{{ '&#9650;'|safe if dir == 'asc' else '&#9660;'|safe }}</span>{% endif %}</a>
+  </th>
+{% endmacro %}
+
+{% block content %}
+<div class="fin-page">
+
+  <!-- ════ The firm's figures ════ -->
+  <div class="fin-band">
+    <h3>Financial summary</h3>
+    <span class="fin-note">
+      All transactions on the books &middot; {{ dash.this_month_label }} compared with {{ dash.last_month_label }}
+      {%- if dash.excluded_count %} &middot; {{ dash.excluded_count }} fallen through or archived, excluded{% endif %}
+    </span>
   </div>
+
+  <div class="kpi-grid">
+    <div class="kpi">
+      <span class="kpi-label">Transactions</span>
+      <span class="kpi-figure">{{ '{:,}'.format(dash.total_count) }}</span>
+      <span class="kpi-sub">{{ dash.completed_count }} completed</span>
+    </div>
+
+    <div class="kpi">
+      <span class="kpi-label">Completed this month</span>
+      <span class="kpi-figure">{{ '{:,}'.format(dash.completed_month) }}</span>
+      {{ delta(dash.completed_change) }}
+    </div>
+
+    <div class="kpi">
+      <span class="kpi-label">Commission billed</span>
+      <span class="kpi-figure is-small">{{ money_gbp(dash.billed_total) }}</span>
+      <span class="kpi-sub">Net of VAT, invoiced to date</span>
+    </div>
+
+    <div class="kpi">
+      <span class="kpi-label">Billed this month</span>
+      <span class="kpi-figure is-small">{{ money_gbp(dash.billed_month) }}</span>
+      {{ delta(dash.billed_change) }}
+    </div>
+
+    <div class="kpi">
+      <span class="kpi-label">Commission received</span>
+      <span class="kpi-figure is-small">{{ money_gbp(dash.received_total) }}</span>
+      <span class="kpi-sub">Payments recorded as received</span>
+    </div>
+
+    <div class="kpi {{ 'is-warning' if dash.outstanding_total > 0 }}">
+      <span class="kpi-label">Commission outstanding</span>
+      <span class="kpi-figure is-small">{{ money_gbp(dash.outstanding_total) }}</span>
+      <span class="kpi-sub">
+        {%- if dash.overdue_total > 0 -%}
+          {{ money_gbp(dash.overdue_total) }} past its due date
+        {%- else -%}
+          Nothing past its due date
+        {%- endif -%}
+      </span>
+    </div>
+
+    <div class="kpi">
+      <span class="kpi-label">Total transaction value</span>
+      <span class="kpi-figure is-small">{{ money_gbp(dash.value_total) }}</span>
+      <span class="kpi-sub">{{ money_gbp(dash.value_completed) }} of it completed</span>
+    </div>
+
+    <div class="kpi">
+      <span class="kpi-label">Average commission</span>
+      <span class="kpi-figure is-small">
+        {{ money_gbp(dash.avg_commission) if dash.avg_commission is not none else '—' }}
+      </span>
+      <span class="kpi-sub">
+        {%- if dash.avg_commission is not none -%}
+          Per completed transaction
+        {%- else -%}
+          No completed transactions yet
+        {%- endif -%}
+      </span>
+    </div>
+  </div>
+
+  <!-- ════ Performance over time ════ -->
+  <div class="fin-band">
+    <h3>Performance</h3>
+    <span class="fin-note">
+      Completions by completion date, billing by invoice date, receipts by the date the payment came in
+    </span>
+  </div>
+
+  <div class="fin-chart">
+    <div class="fin-chart-head">
+      <div class="fin-key">
+        <span><i style="background:#9aa8c0"></i>Completed ({{ chart.total_completed }})</span>
+        <span><i style="background:#26406e"></i>Commission billed ({{ money_gbp(chart.total_billed) }})</span>
+        <span><i style="background:#2f7a4f"></i>Received ({{ money_gbp(chart.total_received) }})</span>
+        <span><i style="background:#b5762c"></i>Outstanding</span>
+      </div>
+      <div class="fin-periods">
+        {% for key, label in TRANSACTION_PERIODS %}
+        {% set qs = {} %}{% for k, v in args.items() %}{% set _ = qs.update({k: v}) %}{% endfor %}
+        {% set _ = qs.update({'period': key}) %}
+        <a href="{{ url_for('transactions_list', **qs) }}"
+           class="{{ 'is-on' if chart.period == key }}">{{ label }}</a>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="fin-plot-wrap">
+      <div class="fin-axis" aria-hidden="true">
+        {% for label in chart.axis %}<span>{{ label if chart.peak_money else '' }}</span>{% endfor %}
+        <span>{{ '£0' if chart.peak_money else '' }}</span>
+      </div>
+      <div class="fin-plot">
+        {# Completed transactions, counted on their own scale. #}
+        <div class="fin-counts">
+          {% for c in chart.columns %}
+          <div class="fin-count"
+               title="{{ c.label }} — {{ c.completed }} completed">
+            <i class="{{ 'is-nil' if not c.completed }}"
+               style="height:{{ (c.completed / chart.peak_count * 100)|round(1) if chart.peak_count else 0 }}%"></i>
+          </div>
+          {% endfor %}
+        </div>
+
+        <div class="fin-gridlines" aria-hidden="true">
+          {% for pc in [0, 25, 50, 75, 100] %}<span style="top:{{ pc }}%"></span>{% endfor %}
+        </div>
+        <div class="fin-cols">
+          {% for c in chart.columns %}
+          <div class="fin-col"
+               title="{{ c.label }} — billed {{ money_gbp(c.billed) }}, received {{ money_gbp(c.received) }}, outstanding {{ money_gbp(c.outstanding) }}">
+            {% for cls, amount in [('billed', c.billed), ('received', c.received), ('outstanding', c.outstanding)] %}
+            <i class="fin-bar {{ cls }} {{ 'is-nil' if not amount }}"
+               style="height:{{ (amount / chart.peak_money * 100)|round(1) if chart.peak_money else 0 }}%"></i>
+            {% endfor %}
+          </div>
+          {% endfor %}
+        </div>
+        <div class="fin-ticks">
+          {% for c in chart.columns %}
+          <div class="fin-tick"><span class="n">{{ c.completed or '—' }}</span>{{ c.label }}</div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════ The transactions themselves ════ -->
+  <div class="fin-band">
+    <h3>Transactions</h3>
+    <span class="fin-note">
+      {{ listed_totals.count }} shown &middot; filtering the table does not change the figures above
+    </span>
+  </div>
+
+  <form class="fin-filters" method="get">
+    <input type="text" name="q" class="wide" value="{{ args.get('q', '') }}"
+           placeholder="Search reference, address, client, tenant or purchaser…">
+
+    <select name="type">
+      <option value="">All types</option>
+      {% for opt in ['Capital', 'Leasehold'] %}
+      <option value="{{ opt }}" {{ 'selected' if args.get('type') == opt }}>{{ opt }}</option>
+      {% endfor %}
+    </select>
+
+    <select name="status">
+      <option value="">All statuses</option>
+      {% for st in TRANSACTION_STATUSES %}
+      <option value="{{ st }}" {{ 'selected' if args.get('status') == st }}>{{ st }}</option>
+      {% endfor %}
+    </select>
+
+    <select name="fee_earner">
+      <option value="">All fee earners</option>
+      {% for fe in fee_earners %}
+      <option value="{{ fe }}" {{ 'selected' if args.get('fee_earner') == fe }}>{{ fe }}</option>
+      {% endfor %}
+    </select>
+
+    <select name="client">
+      <option value="">All clients</option>
+      {% for cl in clients %}
+      <option value="{{ cl }}" {{ 'selected' if args.get('client') == cl }}>{{ cl }}</option>
+      {% endfor %}
+    </select>
+
+    <select name="property">
+      <option value="">All properties</option>
+      {% for p in properties %}
+      <option value="{{ p.id }}" {{ 'selected' if args.get('property') == p.id|string }}>{{ p.address }}</option>
+      {% endfor %}
+    </select>
+
+    <span class="lbl">From</span>
+    <input type="date" name="from" value="{{ args.get('from', '') }}">
+    <span class="lbl">to</span>
+    <input type="date" name="to" value="{{ args.get('to', '') }}">
+
+    <input type="hidden" name="period" value="{{ chart.period }}">
+    <input type="hidden" name="sort" value="{{ sort }}">
+    <input type="hidden" name="dir" value="{{ dir }}">
+    <button class="btn btn-secondary btn-sm" type="submit">Apply</button>
+    <a href="{{ url_for('transactions_list') }}" class="btn btn-outline btn-sm">Clear</a>
+    <a href="{{ url_for('transactions_list', show='all') }}" class="btn btn-outline btn-sm">
+      Include archived
+    </a>
+  </form>
+
+  {% if transactions %}
+  <div class="fin-table-wrap">
+    <table class="fin-table">
+      <thead>
+        <tr>
+          {{ th('reference', 'Ref') }}
+          {{ th('address', 'Property') }}
+          {{ th('client', 'Client') }}
+          {{ th('counterparty', 'Tenant / Purchaser') }}
+          {{ th('type', 'Type') }}
+          {{ th('fee_earner', 'Fee earner') }}
+          {{ th('value', 'Agreed value', 'num') }}
+          {{ th('fee', 'Fee', 'num') }}
+          {{ th('commission', 'Commission', 'num') }}
+          {{ th('vat', 'VAT', 'num') }}
+          {{ th('invoice', 'Invoice total', 'num') }}
+          {{ th('received', 'Received', 'num') }}
+          {{ th('outstanding', 'Outstanding', 'num') }}
+          {{ th('invoice_date', 'Invoiced') }}
+          {{ th('payment_due_date', 'Due') }}
+          {{ th('completion_date', 'Completed') }}
+          {{ th('status', 'Status') }}
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in transactions %}
+        <tr>
+          <td><a class="ref" href="{{ url_for('transaction_detail', id=t.id) }}">{{ t.reference or '—' }}</a></td>
+          <td class="addr">
+            {% if t.property %}{{ t.property.address }}{% if t.property.postcode %}, {{ t.property.postcode }}{% endif %}
+            {% else %}<span class="muted">—</span>{% endif %}
+          </td>
+          <td class="party">{{ t.client or '—' }}</td>
+          <td class="party">{{ t.counterparty or '—' }}</td>
+          <td>{{ t.transaction_type or '—' }}</td>
+          <td>{{ t.fee_earner or '—' }}</td>
+          <td class="num">{{ money_gbp(t.commission_basis) if t.commission_basis else '—' }}</td>
+          <td class="num">{{ t.fee_basis_label }}</td>
+          <td class="num">{{ money_gbp(t.net_commission) if t.net_commission else '—' }}</td>
+          <td class="num">{{ money_gbp(t.vat_amount) if t.net_commission else '—' }}</td>
+          <td class="num">{{ money_gbp(t.total_invoice) if t.net_commission else '—' }}</td>
+          <td class="num {{ 'settled' if t.commission_received }}">
+            {{ money_gbp(t.commission_received) if t.commission_received else '—' }}
+          </td>
+          <td class="num {{ 'owing' if t.is_billed and t.outstanding > 0 else 'settled' if t.is_billed }}">
+            {{ money_gbp(t.outstanding) if t.is_billed else '—' }}
+          </td>
+          <td>{{ t.invoice_date.strftime('%d %b %Y') if t.invoice_date else '—' }}</td>
+          <td class="{{ 'owing' if t.is_overdue }}">
+            {{ t.payment_due_date.strftime('%d %b %Y') if t.payment_due_date else '—' }}
+          </td>
+          <td>{{ t.completion_date.strftime('%d %b %Y') if t.completion_date else '—' }}</td>
+          <td><span class="st {{ status_class(t.status) }}">{{ t.status or 'Not set' }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td colspan="8">{{ listed_totals.count }} transaction{{ '' if listed_totals.count == 1 else 's' }} shown</td>
+          <td class="num">{{ money_gbp(listed_totals.commission) }}</td>
+          <td colspan="2"></td>
+          <td class="num">{{ money_gbp(listed_totals.received) }}</td>
+          <td class="num">{{ money_gbp(listed_totals.outstanding) }}</td>
+          <td colspan="4"></td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+  {% else %}
+  <div class="fin-table-wrap">
+    <div class="empty" style="padding:22px 14px">
+      No transactions match those filters.
+    </div>
+  </div>
+  {% endif %}
+
 </div>
-{% endif %}
 {% endblock %}

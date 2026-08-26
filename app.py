@@ -5,6 +5,8 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from flask_login import LoginManager, UserMixin, login_user, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
+import ms_graph
+import ms_sync
 from datetime import datetime, date, timedelta
 
 app = Flask(__name__)
@@ -256,6 +258,44 @@ class Property(db.Model):
         return '—'
 
 
+# ── Transactions: the shared vocabulary and the money rules ──────────────────
+
+TRANSACTION_STATUSES = [
+    'Draft', 'In progress', 'Terms agreed', 'Solicitors instructed',
+    'Completed', 'Commission billed', 'Part paid', 'Paid',
+    'Fallen through', 'Archived',
+]
+
+# Earned nothing, so left out of every figure on the dashboard.
+TRANSACTION_EXCLUDED = {'Fallen through', 'Archived'}
+
+# Reached completion. A transaction does not stop being completed once the
+# invoice is raised or paid, so those statuses count too.
+TRANSACTION_COMPLETED = {'Completed', 'Commission billed', 'Part paid', 'Paid'}
+
+# The VAT rate used when a transaction does not carry its own.
+VAT_RATE_DEFAULT = float(os.environ.get('VAT_RATE', '20'))
+
+
+def money_gbp(amount, blank='—'):
+    """A sum of money the way an invoice writes it: £12,345.00."""
+    if amount is None:
+        return blank
+    return f'£{float(amount):,.2f}'
+
+
+def money_short(amount):
+    """A sum for a chart axis, where the pennies would only be noise."""
+    if amount is None:
+        return '—'
+    a = float(amount)
+    if abs(a) >= 1_000_000:
+        return f'£{a / 1_000_000:,.2f}m'.replace('.00m', 'm')
+    if abs(a) >= 1_000:
+        return f'£{a / 1_000:,.1f}k'.replace('.0k', 'k')
+    return f'£{a:,.0f}'
+
+
 class Transaction(db.Model):
     __tablename__ = 'transactions'
     id = db.Column(db.Integer, primary_key=True)
@@ -315,6 +355,43 @@ class Transaction(db.Model):
     tenant_covenant   = db.Column(db.String(50))    # Strong / Satisfactory / Weak
     written_analysis  = db.Column(db.Text)          # free-text analysis
 
+    # ── Fee and invoicing ──
+    # These carry the money. Nothing here is derived and stored: the
+    # commission, VAT, invoice total and outstanding balance are all worked
+    # out from these on the way out, so a figure can never go stale.
+    reference         = db.Column(db.String(30), index=True)  # TR-0001
+    status            = db.Column(db.String(30), default='Draft', index=True)
+    fee_earner        = db.Column(db.String(120), index=True)
+    client            = db.Column(db.String(255))   # who we act for and invoice
+    project_id        = db.Column(db.Integer, db.ForeignKey('projects.id'))
+    agreed_value      = db.Column(db.Float)         # agreed rent or sale price
+    fee_type          = db.Column(db.String(20))    # Percentage / Fixed
+    fee_percent       = db.Column(db.Float)         # % of the agreed value
+    fixed_fee         = db.Column(db.Float)         # £, used instead of a %
+    vat_rate          = db.Column(db.Float)         # % — blank means the default
+    invoice_number    = db.Column(db.String(40))
+    invoice_date      = db.Column(db.Date, index=True)
+    payment_due_date  = db.Column(db.Date)
+    completion_date   = db.Column(db.Date, index=True)
+    terms_agreed_date         = db.Column(db.Date)
+    solicitors_instructed_date = db.Column(db.Date)
+
+    # ── Solicitors ──
+    client_solicitor       = db.Column(db.String(255))
+    client_solicitor_firm  = db.Column(db.String(255))
+    client_solicitor_email = db.Column(db.String(255))
+    client_solicitor_phone = db.Column(db.String(60))
+    other_solicitor        = db.Column(db.String(255))
+    other_solicitor_firm   = db.Column(db.String(255))
+    other_solicitor_email  = db.Column(db.String(255))
+    other_solicitor_phone  = db.Column(db.String(60))
+
+    payments  = db.relationship('TransactionPayment', backref='transaction',
+                                lazy=True, cascade='all, delete-orphan')
+    documents = db.relationship('TransactionDocument', backref='transaction',
+                                lazy=True, cascade='all, delete-orphan')
+    project   = db.relationship('Project', foreign_keys=[project_id])
+
     @property
     def display_value(self):
         if self.value:
@@ -343,6 +420,129 @@ class Transaction(db.Model):
             if self.tenant:
                 parts.append(f"Tenant: {self.tenant}")
             return ' | '.join(parts) if parts else '—'
+
+    # ── The money ────────────────────────────────────────────────────────────
+    # One place, worked out on demand. Every total on the Transactions page —
+    # the cards, the chart, the table — comes through these, so a figure can
+    # never disagree with the record it came from.
+
+    @property
+    def counterparty(self):
+        """The tenant or purchaser, whichever this transaction has."""
+        return self.purchaser or self.tenant or None
+
+    @property
+    def commission_basis(self):
+        """The agreed sum the fee is charged on.
+
+        The agreed figure entered on the transaction, falling back to the sale
+        price or the rent already recorded — real values from the record, never
+        an estimate. Returns 0.0 when there is nothing to charge on.
+        """
+        if self.agreed_value is not None:
+            return float(self.agreed_value)
+        if self.transaction_type == 'Capital':
+            return float(self.value or 0.0)
+        return float(self.rent_pa or 0.0)
+
+    @property
+    def net_commission(self):
+        """Our fee, before VAT. A fixed fee is used as entered."""
+        if self.fee_type == 'Fixed':
+            return round(float(self.fixed_fee or 0.0), 2)
+        if self.fee_percent:
+            return round(self.commission_basis * float(self.fee_percent) / 100.0, 2)
+        return 0.0
+
+    @property
+    def applicable_vat_rate(self):
+        return VAT_RATE_DEFAULT if self.vat_rate is None else float(self.vat_rate)
+
+    @property
+    def vat_amount(self):
+        return round(self.net_commission * self.applicable_vat_rate / 100.0, 2)
+
+    @property
+    def total_invoice(self):
+        return round(self.net_commission + self.vat_amount, 2)
+
+    @property
+    def commission_received(self):
+        """Only money actually recorded as received, each payment once."""
+        return round(sum(float(p.amount or 0.0) for p in self.payments), 2)
+
+    @property
+    def outstanding(self):
+        return round(self.total_invoice - self.commission_received, 2)
+
+    @property
+    def counts_towards_totals(self):
+        """Whether this transaction belongs in the firm's figures at all.
+
+        A transaction that fell through or was archived earned nothing and is
+        left out of every total, which is what makes the dashboard recalculate
+        the moment its status changes.
+        """
+        return self.status not in TRANSACTION_EXCLUDED
+
+    @property
+    def has_completed(self):
+        """Reached completion: a completion date and a post-completion status."""
+        return bool(self.completion_date) and self.status in TRANSACTION_COMPLETED
+
+    @property
+    def is_billed(self):
+        """Invoiced. A draft is never counted as billed, even if dated."""
+        return bool(self.invoice_date) and self.counts_towards_totals \
+            and self.status != 'Draft'
+
+    @property
+    def is_overdue(self):
+        return bool(self.payment_due_date and self.outstanding > 0.005
+                    and self.payment_due_date < date.today())
+
+    @property
+    def fee_basis_label(self):
+        if self.fee_type == 'Fixed':
+            return f'Fixed {money_gbp(self.fixed_fee)}' if self.fixed_fee else 'Fixed fee'
+        if self.fee_percent:
+            return f'{self.fee_percent:g}%'
+        return '—'
+
+
+class TransactionPayment(db.Model):
+    """One payment received against a transaction's invoice.
+
+    Payments are rows rather than a running total on the transaction, so a
+    part payment is recorded as itself and the same money cannot be counted
+    twice by saving the record again.
+    """
+    __tablename__ = 'transaction_payments'
+    id             = db.Column(db.Integer, primary_key=True)
+    transaction_id = db.Column(db.Integer, db.ForeignKey('transactions.id'),
+                               nullable=False, index=True)
+    amount         = db.Column(db.Float, nullable=False)
+    received_on    = db.Column(db.Date, index=True)
+    method         = db.Column(db.String(40))
+    reference      = db.Column(db.String(80))
+    note           = db.Column(db.String(255))
+    recorded_by    = db.Column(db.String(80))
+    created_at     = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class TransactionDocument(db.Model):
+    """A file kept against a transaction. The file itself is loaded only when
+    somebody asks for it, so listing a transaction never pulls it out."""
+    __tablename__ = 'transaction_documents'
+    id             = db.Column(db.Integer, primary_key=True)
+    transaction_id = db.Column(db.Integer, db.ForeignKey('transactions.id'),
+                               nullable=False, index=True)
+    kind           = db.Column(db.String(40))       # Invoice, Terms, Contract…
+    filename       = db.Column(db.String(255))
+    size           = db.Column(db.Integer)
+    data           = db.deferred(db.Column(db.LargeBinary))
+    uploaded_by    = db.Column(db.String(80))
+    uploaded_at    = db.Column(db.DateTime, default=datetime.utcnow)
 
 
 # ── CRM Models ─────────────────────────────────────────────────────────────
@@ -385,6 +585,9 @@ class Contact(db.Model):
     email = db.Column(db.String(120))
     contact_type = db.Column(db.String(50))
     notes        = db.Column(db.Text)
+    # Which Outlook contact this one is mirrored to, if it has been.
+    ms_contact_id  = db.Column(db.String(255))
+    ms_synced_at   = db.Column(db.DateTime)
     created_at   = db.Column(db.DateTime, default=datetime.utcnow)
     # Applicant requirements (for matching)
     req_category      = db.Column(db.String(20))   # commercial / residential
@@ -936,7 +1139,18 @@ class DiaryEvent(db.Model):
 
     @property
     def from_outlook(self):
+        """Whether this appointment exists in the Outlook calendar as well."""
         return bool(self.ms_event_id)
+
+    @property
+    def from_outlook_only(self):
+        """Made in Outlook rather than here.
+
+        Those are pulled in and shown, but the CRM is not their home: it does
+        not push changes back, and its own appointments are never overwritten
+        by a pull.
+        """
+        return bool(self.ms_event_id) and self.created_by == 'Outlook'
 
     @property
     def place(self):
@@ -1422,7 +1636,7 @@ def diary():
                            selected_types=types, owner=owner, owners=owners,
                            today=now_london.date(),
                            now_minutes=now_london.hour * 60 + now_london.minute,
-                           outlook_connected=False)
+                           outlook_connected=ms_graph.is_configured())
 
 
 @app.route('/diary/event/new', methods=['POST'])
@@ -1461,7 +1675,8 @@ def diary_event_new():
     db.session.add(ev)
     db.session.commit()
     audit('create', entity='DiaryEvent', entity_id=ev.id, detail=ev.event_type)
-    flash('Appointment added.', 'success')
+    ok, note = ms_sync.push_event(app, db, ev)
+    flash('Appointment added.' + (' ' + note if ok else ''), 'success')
     return _back_to('diary')
 
 
@@ -1507,6 +1722,7 @@ def diary_event(id):
         ev.location = property_address(Property.query.get(ev.property_id) if ev.property_id else None)
         db.session.commit()
         audit('edit', entity='DiaryEvent', entity_id=ev.id)
+        ms_sync.push_event(app, db, ev)      # keep Outlook in step
         flash('Appointment updated.', 'success')
         return _back_to('diary')
     return render_template('diary_event.html', ev=ev, event_types=EVENT_TYPES,
@@ -1533,6 +1749,7 @@ def diary_event_move(id):
     ev.start_at, ev.end_at = from_london(start), from_london(end)
     db.session.commit()
     audit('edit', entity='DiaryEvent', entity_id=ev.id, detail='moved or resized')
+    ms_sync.push_event(app, db, ev)          # keep Outlook in step
     return jsonify({'ok': True, 'start': data['start'], 'end': data['end']})
 
 
@@ -1540,6 +1757,8 @@ def diary_event_move(id):
 @requires('delete')
 def diary_event_delete(id):
     ev = DiaryEvent.query.get_or_404(id)
+    # Take it out of Outlook first, while the id is still on the record.
+    ms_sync.remove_event(app, db, ev)
     return delete_record(ev, 'Appointment', 'diary')
 
 
@@ -1728,19 +1947,445 @@ def floorplan_delete(id):
 
 # ── Transactions ────────────────────────────────────────────────────────────
 
+# ── Transactions: the firm's figures ─────────────────────────────────────────
+# Everything on the Transactions page is worked out here, from the records
+# themselves, every time the page is asked for. Nothing is cached and no total
+# is written back to the database, so adding, editing, completing or deleting
+# a transaction changes the dashboard on the next load with nothing to refresh.
+
+
+def _month_start(d):
+    return date(d.year, d.month, 1)
+
+
+def _month_shift(d, months):
+    """The first of the month `months` away from d, forwards or backwards."""
+    total = (d.year * 12 + d.month - 1) + months
+    return date(total // 12, total % 12 + 1, 1)
+
+
+def _in_month(when, first_of_month):
+    """Whether a date falls in that calendar month. Missing dates never do."""
+    return bool(when) and first_of_month <= when < _month_shift(first_of_month, 1)
+
+
+def _change(now, before):
+    """How this month compares with last, honestly.
+
+    A percentage against nothing is meaningless, so a month following a zero
+    says so rather than showing an invented rise.
+    """
+    now, before = float(now or 0), float(before or 0)
+    if before == 0:
+        if now == 0:
+            return {'kind': 'none', 'pct': None,
+                    'label': 'No previous-month comparison'}
+        return {'kind': 'new', 'pct': None, 'label': 'New'}
+    pct = (now - before) / abs(before) * 100.0
+    if abs(pct) < 0.05:
+        return {'kind': 'flat', 'pct': 0.0, 'label': 'No change'}
+    kind = 'up' if pct > 0 else 'down'
+    return {'kind': kind, 'pct': round(pct, 1),
+            'label': f'{abs(pct):,.1f}% on last month'}
+
+
+def counting_transactions():
+    """Every transaction that belongs in the figures.
+
+    Fallen-through and archived transactions are dropped here, once, so no
+    total further down can accidentally include them.
+    """
+    return [t for t in Transaction.query.options(
+        db.joinedload(Transaction.payments)).all() if t.counts_towards_totals]
+
+
+def transaction_dashboard(rows=None):
+    """The KPI cards. Real records only — every figure traces to a row."""
+    rows = counting_transactions() if rows is None else rows
+    this_month = _month_start(date.today())
+    last_month = _month_shift(this_month, -1)
+
+    completed = [t for t in rows if t.has_completed]
+    billed_rows = [t for t in rows if t.is_billed]
+
+    def completed_in(m):
+        return [t for t in completed if _in_month(t.completion_date, m)]
+
+    def billed_in(m):
+        return sum(t.net_commission for t in billed_rows
+                   if _in_month(t.invoice_date, m))
+
+    billed_total = sum(t.net_commission for t in billed_rows)
+    received_total = sum(t.commission_received for t in billed_rows)
+    completed_now = completed_in(this_month)
+    completed_before = completed_in(last_month)
+    billed_now = billed_in(this_month)
+
+    return {
+        'total_count':      len(rows),
+        'excluded_count':   Transaction.query.count() - len(rows),
+        'completed_count':  len(completed),
+        'completed_month':  len(completed_now),
+        'completed_change': _change(len(completed_now), len(completed_before)),
+        'billed_total':     round(billed_total, 2),
+        'billed_month':     round(billed_now, 2),
+        'billed_change':    _change(billed_now, billed_in(last_month)),
+        'received_total':   round(received_total, 2),
+        'outstanding_total': round(billed_total - received_total, 2),
+        'overdue_total':    round(sum(t.outstanding for t in billed_rows
+                                      if t.is_overdue), 2),
+        'value_total':      round(sum(t.commission_basis for t in rows), 2),
+        'value_completed':  round(sum(t.commission_basis for t in completed), 2),
+        'avg_commission':   round(sum(t.net_commission for t in completed)
+                                  / len(completed), 2) if completed else None,
+        'this_month_label': this_month.strftime('%B %Y'),
+        'last_month_label': last_month.strftime('%B %Y'),
+    }
+
+
+TRANSACTION_PERIODS = [('month', 'Month'), ('quarter', 'Quarter'), ('year', 'Year')]
+
+
+def _bucket_of(when, period):
+    """Which chart column a date belongs in: (sort key, label)."""
+    if not when:
+        return None
+    if period == 'year':
+        return (when.year, 0), str(when.year)
+    if period == 'quarter':
+        q = (when.month - 1) // 3 + 1
+        return (when.year, q), f'Q{q} {when.year}'
+    return (when.year, when.month), when.strftime('%b %y')
+
+
+def _bucket_keys(period):
+    """The columns to draw, oldest first, ending with the one we are in."""
+    today = date.today()
+    if period == 'year':
+        return [_bucket_of(date(today.year - i, 1, 1), period)
+                for i in range(4, -1, -1)]
+    if period == 'quarter':
+        firsts = [_month_shift(_month_start(today), -3 * i) for i in range(7, -1, -1)]
+        seen, out = set(), []
+        for m in firsts:
+            k = _bucket_of(m, period)
+            if k[0] not in seen:
+                seen.add(k[0])
+                out.append(k)
+        return out
+    return [_bucket_of(_month_shift(_month_start(today), -i), period)
+            for i in range(11, -1, -1)]
+
+
+def transaction_chart(rows=None, period='month'):
+    """Completed transactions and commission, column by column.
+
+    Completions are placed by their completion date, billing by its invoice
+    date and receipts by the date the payment came in, so each column says
+    what actually happened in that period rather than what a record looks
+    like now.
+    """
+    period = period if period in dict(TRANSACTION_PERIODS) else 'month'
+    rows = counting_transactions() if rows is None else rows
+    keys = _bucket_keys(period)
+    order = {k: i for i, (k, _) in enumerate(keys)}
+    cols = [{'key': k, 'label': lbl, 'completed': 0, 'billed': 0.0,
+             'received': 0.0, 'outstanding': 0.0} for k, lbl in keys]
+
+    for t in rows:
+        if t.has_completed:
+            b = _bucket_of(t.completion_date, period)
+            if b and b[0] in order:
+                cols[order[b[0]]]['completed'] += 1
+        if t.is_billed:
+            b = _bucket_of(t.invoice_date, period)
+            if b and b[0] in order:
+                cols[order[b[0]]]['billed'] += t.net_commission
+                cols[order[b[0]]]['outstanding'] += max(t.outstanding, 0.0)
+        for p in t.payments:
+            b = _bucket_of(p.received_on, period)
+            if b and b[0] in order:
+                cols[order[b[0]]]['received'] += float(p.amount or 0.0)
+
+    for c in cols:
+        for k in ('billed', 'received', 'outstanding'):
+            c[k] = round(c[k], 2)
+    peak_money = max([max(c['billed'], c['received'], c['outstanding'])
+                      for c in cols] + [0.0])
+    peak_count = max([c['completed'] for c in cols] + [0])
+    return {
+        'period': period, 'columns': cols,
+        'peak_money': peak_money, 'peak_count': peak_count,
+        'total_billed':   round(sum(c['billed'] for c in cols), 2),
+        'total_received': round(sum(c['received'] for c in cols), 2),
+        'total_completed': sum(c['completed'] for c in cols),
+        'axis': [money_short(peak_money * f) for f in (1, 0.75, 0.5, 0.25)],
+    }
+
+
+def next_transaction_reference():
+    """The next TR-0001. Falls forward past anything already used."""
+    highest = 0
+    for (ref,) in db.session.query(Transaction.reference).filter(
+            Transaction.reference.isnot(None)).all():
+        digits = ''.join(ch for ch in str(ref) if ch.isdigit())
+        if digits:
+            highest = max(highest, int(digits))
+    return f'TR-{highest + 1:04d}'
+
+
+
+
+TRANSACTION_STATUS_CLASS = {
+    'Draft': 'st-draft', 'In progress': 'st-progress', 'Terms agreed': 'st-terms',
+    'Solicitors instructed': 'st-solicitors', 'Completed': 'st-completed',
+    'Commission billed': 'st-billed', 'Part paid': 'st-part', 'Paid': 'st-paid',
+    'Fallen through': 'st-fallen', 'Archived': 'st-archived',
+}
+app.jinja_env.globals['status_class'] = \
+    lambda st: TRANSACTION_STATUS_CLASS.get(st, 'st-draft')
+app.jinja_env.globals['money_gbp'] = money_gbp
+app.jinja_env.globals['money_short'] = money_short
+app.jinja_env.globals['TRANSACTION_STATUSES'] = TRANSACTION_STATUSES
+app.jinja_env.globals['TRANSACTION_PERIODS'] = TRANSACTION_PERIODS
+app.jinja_env.globals['VAT_RATE_DEFAULT'] = VAT_RATE_DEFAULT
+
+
+# Columns the table can be ordered by. Money and balances are worked out per
+# record rather than held in a column, so they are sorted in the same pass
+# that renders them rather than by the database.
+TRANSACTION_SORTS = {
+    'reference':   lambda t: (t.reference or '').lower(),
+    'address':     lambda t: (t.property.address if t.property else '').lower(),
+    'client':      lambda t: (t.client or '').lower(),
+    'counterparty': lambda t: (t.counterparty or '').lower(),
+    'type':        lambda t: (t.transaction_type or '').lower(),
+    'fee_earner':  lambda t: (t.fee_earner or '').lower(),
+    'status':      lambda t: (t.status or '').lower(),
+    'value':       lambda t: t.commission_basis,
+    'fee':         lambda t: (t.fee_percent or 0.0) if t.fee_type != 'Fixed' else (t.fixed_fee or 0.0),
+    'commission':  lambda t: t.net_commission,
+    'vat':         lambda t: t.vat_amount,
+    'invoice':     lambda t: t.total_invoice,
+    'received':    lambda t: t.commission_received,
+    'outstanding': lambda t: t.outstanding,
+    'invoice_date':     lambda t: t.invoice_date or date.min,
+    'payment_due_date': lambda t: t.payment_due_date or date.min,
+    'completion_date':  lambda t: t.completion_date or date.min,
+}
+
+
+def _transaction_filters(rows, args):
+    """Narrow the list to what was asked for. Every filter is applied here."""
+    q = (args.get('q') or '').strip().lower()
+    if q:
+        def hit(t):
+            fields = [t.reference, t.client, t.counterparty, t.tenant,
+                      t.purchaser, t.vendor, t.landlord, t.invoice_number,
+                      t.property.address if t.property else None,
+                      t.property.postcode if t.property else None]
+            return any(q in (v or '').lower() for v in fields)
+        rows = [t for t in rows if hit(t)]
+    for key, get in (('type', lambda t: t.transaction_type),
+                     ('status', lambda t: t.status),
+                     ('fee_earner', lambda t: t.fee_earner),
+                     ('client', lambda t: t.client)):
+        want = (args.get(key) or '').strip()
+        if want:
+            rows = [t for t in rows if (get(t) or '') == want]
+    prop_id = (args.get('property') or '').strip()
+    if prop_id.isdigit():
+        rows = [t for t in rows if t.property_id == int(prop_id)]
+    frm, to = _parse_date(args.get('from')), _parse_date(args.get('to'))
+    if frm or to:
+        def when(t):
+            return t.completion_date or t.invoice_date or t.transaction_date
+        rows = [t for t in rows
+                if when(t) and (not frm or when(t) >= frm) and (not to or when(t) <= to)]
+    return rows
+
+
 @app.route('/transactions')
 def transactions_list():
-    q = request.args.get('q', '')
-    ttype = request.args.get('type', '')
-    query = Transaction.query.join(Property)
-    if q:
-        query = query.filter(
-            db.or_(Property.address.ilike(f'%{q}%'), Property.postcode.ilike(f'%{q}%'))
-        )
-    if ttype:
-        query = query.filter(Transaction.transaction_type == ttype)
-    transactions = query.order_by(Transaction.transaction_date.desc()).all()
-    return render_template('transactions/list.html', transactions=transactions, q=q, ttype=ttype)
+    """The Transactions page: the firm's figures, then the detail behind them.
+
+    The dashboard is worked out from every transaction that counts, so it
+    reports the whole book. The table below shows whatever the filters ask
+    for — narrowing the table never changes the figures above it.
+    """
+    # Read the book once. Everything below works from this one list, so the
+    # cards, the chart and the table can never disagree with each other.
+    everyone = Transaction.query.options(
+        db.joinedload(Transaction.payments),
+        db.joinedload(Transaction.property)).all()
+    rows = [t for t in everyone if t.counts_towards_totals]
+    dash = transaction_dashboard(rows)
+    dash['excluded_count'] = len(everyone) - len(rows)
+    chart = transaction_chart(rows, request.args.get('period', 'month'))
+
+    # Archived and fallen-through transactions are outside the figures, but
+    # somebody still has to be able to find them.
+    show_all = request.args.get('status') in TRANSACTION_EXCLUDED \
+        or request.args.get('show') == 'all'
+    listed = everyone if show_all else rows
+
+    listed = _transaction_filters(listed, request.args)
+    sort = request.args.get('sort') or 'completion_date'
+    direction = 'asc' if request.args.get('dir') == 'asc' else 'desc'
+    key = TRANSACTION_SORTS.get(sort) or TRANSACTION_SORTS['completion_date']
+    listed = sorted(listed, key=key, reverse=(direction == 'desc'))
+
+    return render_template(
+        'transactions/list.html',
+        transactions=listed, dash=dash, chart=chart,
+        sort=sort, dir=direction, args=request.args, today=date.today(),
+        fee_earners=sorted({t.fee_earner for t in everyone if t.fee_earner}),
+        clients=sorted({t.client for t in everyone if t.client}),
+        properties=Property.query.order_by(Property.address).all(),
+        listed_totals={
+            'count': len(listed),
+            'commission': round(sum(t.net_commission for t in listed
+                                    if t.counts_towards_totals), 2),
+            'received': round(sum(t.commission_received for t in listed
+                                  if t.counts_towards_totals), 2),
+            'outstanding': round(sum(t.outstanding for t in listed
+                                     if t.is_billed), 2),
+        })
+
+
+@app.route('/transactions/<int:id>')
+def transaction_detail(id):
+    """One transaction, on its own page, with the list left behind."""
+    t = Transaction.query.get_or_404(id)
+    history = AuditLog.query.filter_by(entity='Transaction', entity_id=str(id)) \
+        .order_by(AuditLog.at.desc()).limit(30).all()
+    return render_template(
+        'transactions/detail.html', t=t, today=date.today(), history=history,
+        payments=sorted(t.payments, key=lambda p: p.received_on or date.min,
+                        reverse=True),
+        documents=sorted(t.documents, key=lambda d: d.uploaded_at or datetime.min,
+                         reverse=True),
+        properties=Property.query.order_by(Property.address).all(),
+        projects=Project.query.order_by(Project.name).all())
+
+
+@app.route('/transactions/<int:id>/save', methods=['POST'])
+@requires('edit')
+def transaction_save(id):
+    """Save the transaction page. Only the fields the page sent are written."""
+    t = Transaction.query.get_or_404(id)
+    form = request.form
+
+    status = (form.get('status') or '').strip()
+    if status and status not in TRANSACTION_STATUSES:
+        flash(f'"{status}" is not a transaction status, so it was not saved.', 'error')
+        form = {k: v for k, v in form.items() if k != 'status'}
+
+    if 'property_id' in form and (form.get('property_id') or '').isdigit():
+        t.property_id = int(form['property_id'])
+    if 'project_id' in form:
+        pid = (form.get('project_id') or '').strip()
+        t.project_id = int(pid) if pid.isdigit() else None
+
+    before = (t.status, t.completion_date, t.net_commission)
+    apply_form_fields(t, form, TRANSACTION_FIELDS)
+    if not t.reference:
+        t.reference = next_transaction_reference()
+    db.session.commit()
+
+    changed = []
+    if before[0] != t.status:
+        changed.append(f'status {before[0]} to {t.status}')
+    if before[1] != t.completion_date:
+        changed.append('completion date')
+    if before[2] != t.net_commission:
+        changed.append('commission')
+    audit('edit', entity='Transaction', entity_id=t.id,
+          detail='; '.join(changed) or 'details')
+    flash('Transaction saved.', 'success')
+    return redirect(url_for('transaction_detail', id=t.id))
+
+
+@app.route('/transactions/<int:id>/payments', methods=['POST'])
+@requires('edit')
+def transaction_payment_add(id):
+    """Record money received. Each payment is its own row, counted once."""
+    t = Transaction.query.get_or_404(id)
+    amount = _fnum(request.form.get('amount'))
+    if not amount or amount <= 0:
+        flash('Enter the amount received before saving the payment.', 'error')
+        return redirect(url_for('transaction_detail', id=id))
+    db.session.add(TransactionPayment(
+        transaction_id=t.id, amount=round(float(amount), 2),
+        received_on=_parse_date(request.form.get('received_on')) or date.today(),
+        method=_ftext(request.form.get('method')),
+        reference=_ftext(request.form.get('reference')),
+        note=_ftext(request.form.get('note')),
+        recorded_by=getattr(current_user, 'username', None)))
+    db.session.commit()
+    audit('create', entity='Transaction', entity_id=t.id,
+          detail=f'payment of {money_gbp(amount)} recorded')
+    flash(f'Payment of {money_gbp(amount)} recorded.', 'success')
+    return redirect(url_for('transaction_detail', id=id))
+
+
+@app.route('/transactions/<int:id>/payments/<int:pid>/delete', methods=['POST'])
+@requires('delete')
+def transaction_payment_delete(id, pid):
+    p = TransactionPayment.query.filter_by(id=pid, transaction_id=id).first_or_404()
+    amount = p.amount
+    db.session.delete(p)
+    db.session.commit()
+    audit('delete', entity='Transaction', entity_id=id,
+          detail=f'payment of {money_gbp(amount)} removed')
+    flash('Payment removed.', 'success')
+    return redirect(url_for('transaction_detail', id=id))
+
+
+@app.route('/transactions/<int:id>/documents', methods=['POST'])
+@requires('edit')
+def transaction_document_add(id):
+    t = Transaction.query.get_or_404(id)
+    upload = request.files.get('document')
+    if not upload or not upload.filename:
+        flash('Choose a file to upload.', 'error')
+        return redirect(url_for('transaction_detail', id=id))
+    blob = upload.read()
+    if len(blob) > MAX_UPLOAD_BYTES:
+        flash('That file is too large to store against a transaction.', 'error')
+        return redirect(url_for('transaction_detail', id=id))
+    db.session.add(TransactionDocument(
+        transaction_id=t.id, filename=_clean_filename(upload.filename, 'document'),
+        size=len(blob), data=blob,
+        kind=_ftext(request.form.get('kind')) or 'Document',
+        uploaded_by=getattr(current_user, 'username', None)))
+    db.session.commit()
+    audit('create', entity='Transaction', entity_id=t.id, detail='document uploaded')
+    flash('Document uploaded.', 'success')
+    return redirect(url_for('transaction_detail', id=id))
+
+
+@app.route('/transactions/<int:id>/documents/<int:did>')
+def transaction_document_download(id, did):
+    d = TransactionDocument.query.filter_by(id=did, transaction_id=id).first_or_404()
+    audit('export', entity='Transaction', entity_id=id,
+          detail=f'downloaded {d.filename}')
+    from flask import send_file
+    import io as _io
+    return send_file(_io.BytesIO(d.data or b''), as_attachment=True,
+                     download_name=d.filename or 'document')
+
+
+@app.route('/transactions/<int:id>/documents/<int:did>/delete', methods=['POST'])
+@requires('delete')
+def transaction_document_delete(id, did):
+    d = TransactionDocument.query.filter_by(id=did, transaction_id=id).first_or_404()
+    name = d.filename
+    db.session.delete(d)
+    db.session.commit()
+    audit('delete', entity='Transaction', entity_id=id, detail=f'removed {name}')
+    flash('Document removed.', 'success')
+    return redirect(url_for('transaction_detail', id=id))
 
 
 @app.route('/transactions/new', methods=['GET', 'POST'])
@@ -1804,74 +2449,23 @@ def transaction_new():
         )
         db.session.add(t)
         db.session.commit()
+        if not t.reference:
+            t.reference = next_transaction_reference()
+        if not t.status:
+            t.status = 'Draft'
+        db.session.commit()
+        audit('create', entity='Transaction', entity_id=t.id, detail=t.reference)
         flash('Transaction recorded. It now appears as a tenure on the property.', 'success')
-        return redirect(url_for('property_detail', id=t.property_id))
+        return redirect(url_for('transaction_detail', id=t.id))
     prop_id = request.args.get('property_id')
     return render_template('transactions/form.html', properties=properties, prop_id=prop_id, trans=None)
 
 
 @app.route('/transactions/<int:id>/edit', methods=['GET', 'POST'])
 def transaction_edit(id):
-    t = Transaction.query.get_or_404(id)
-    properties = Property.query.order_by(Property.address).all()
-    if request.method == 'POST':
-        def parse_date(val):
-            return datetime.strptime(val, '%Y-%m-%d').date() if val else None
-        def parse_float(val):
-            return float(val.replace(',', '')) if val and val.strip() else None
-
-        t.property_id = request.form['property_id']
-        t.transaction_type = request.form['transaction_type']
-        t.tenure_type = request.form.get('tenure_type')
-        t.transaction_date = parse_date(request.form.get('transaction_date'))
-        t.value = parse_float(request.form.get('value'))
-        t.vendor = request.form.get('vendor')
-        t.purchaser = request.form.get('purchaser')
-        t.landlord = request.form.get('landlord')
-        t.tenant = request.form.get('tenant')
-        t.lease_start = parse_date(request.form.get('lease_start'))
-        t.lease_end = parse_date(request.form.get('lease_end'))
-        t.rent_pa = parse_float(request.form.get('rent_pa'))
-        t.break_clause        = request.form.get('break_clause')
-        t.notes               = request.form.get('notes')
-        t.description         = request.form.get('description') or None
-        t.niy                 = parse_float(request.form.get('niy'))
-        t.giy                 = parse_float(request.form.get('giy'))
-        t.capital_rate_psf    = parse_float(request.form.get('capital_rate_psf'))
-        t.wault               = parse_float(request.form.get('wault'))
-        t.passing_income      = parse_float(request.form.get('passing_income'))
-        t.income_pct          = parse_float(request.form.get('income_pct'))
-        t.erv                 = parse_float(request.form.get('erv'))
-        t.tenant_covenant     = request.form.get('tenant_covenant') or None
-        t.written_analysis    = request.form.get('written_analysis') or None
-        t.done_by             = request.form.get('done_by') or 'CR'
-        t.third_party_name    = request.form.get('third_party_name') or None
-        t.part_or_floor       = request.form.get('part_or_floor') or None
-        t.source              = request.form.get('source') or None
-        t.source_contact      = request.form.get('source_contact') or None
-        t.nda                 = bool(request.form.get('nda'))
-        t.size_units          = request.form.get('size_units') or None
-        t.size_basis          = request.form.get('size_basis') or None
-        t.demise_description  = request.form.get('demise_description') or None
-        t.incentive_years     = parse_float(request.form.get('incentive_years'))
-        t.headline_rate       = parse_float(request.form.get('headline_rate'))
-        t.headline_rate_unit  = request.form.get('headline_rate_unit') or 'pa'
-        t.net_rate            = parse_float(request.form.get('net_rate'))
-        t.next_break_date     = parse_date(request.form.get('next_break_date'))
-        t.no_break            = bool(request.form.get('no_break'))
-        t.next_review_date    = parse_date(request.form.get('next_review_date'))
-        t.no_review           = bool(request.form.get('no_review'))
-        t.review_type         = request.form.get('review_type') or None
-        t.repair              = request.form.get('repair') or None
-        t.alienation          = request.form.get('alienation') or None
-        t.primary_use_class   = request.form.get('primary_use_class') or None
-        t.lt_act              = request.form.get('lt_act') or None
-        t.epc_rating          = request.form.get('epc_rating') or None
-        t.fitted              = request.form.get('fitted') or None
-        db.session.commit()
-        flash('Transaction updated.', 'success')
-        return redirect(url_for('property_detail', id=t.property_id))
-    return render_template('transactions/form.html', properties=properties, prop_id=t.property_id, trans=t)
+    """Kept so older links still work. Editing happens on the record itself,
+    which is the one place the money can be changed and the one Save button."""
+    return redirect(url_for('transaction_detail', id=id))
 
 
 @app.route('/transactions/<int:id>/delete', methods=['POST'])
@@ -2653,6 +3247,46 @@ CONTACT_FIELDS = [
     ('assigned_agent',    'assigned_agent',    _ftext),
     ('last_contact_date', 'last_contact_date', _parse_date),
     ('next_follow_up',    'next_follow_up',    _parse_date),
+]
+
+
+TRANSACTION_FIELDS = [
+    ('reference',          'reference',          _ftext),
+    ('status',             'status',             _ftext),
+    ('fee_earner',         'fee_earner',         _ftext),
+    ('client',             'client',             _ftext),
+    ('transaction_type',   'transaction_type',   _ftext),
+    ('tenure_type',        'tenure_type',        _ftext),
+    ('transaction_date',   'transaction_date',   _parse_date),
+    ('vendor',             'vendor',             _ftext),
+    ('purchaser',          'purchaser',          _ftext),
+    ('landlord',           'landlord',           _ftext),
+    ('tenant',             'tenant',             _ftext),
+    ('value',              'value',              _fnum),
+    ('rent_pa',            'rent_pa',            _fnum),
+    ('agreed_value',       'agreed_value',       _fnum),
+    ('fee_type',           'fee_type',           _ftext),
+    ('fee_percent',        'fee_percent',        _fnum),
+    ('fixed_fee',          'fixed_fee',          _fnum),
+    ('vat_rate',           'vat_rate',           _fnum),
+    ('invoice_number',     'invoice_number',     _ftext),
+    ('invoice_date',       'invoice_date',       _parse_date),
+    ('payment_due_date',   'payment_due_date',   _parse_date),
+    ('completion_date',    'completion_date',    _parse_date),
+    ('terms_agreed_date',  'terms_agreed_date',  _parse_date),
+    ('solicitors_instructed_date', 'solicitors_instructed_date', _parse_date),
+    ('lease_start',        'lease_start',        _parse_date),
+    ('lease_end',          'lease_end',          _parse_date),
+    ('break_clause',       'break_clause',       _ftext),
+    ('client_solicitor',       'client_solicitor',       _ftext),
+    ('client_solicitor_firm',  'client_solicitor_firm',  _ftext),
+    ('client_solicitor_email', 'client_solicitor_email', _ftext),
+    ('client_solicitor_phone', 'client_solicitor_phone', _ftext),
+    ('other_solicitor',        'other_solicitor',        _ftext),
+    ('other_solicitor_firm',   'other_solicitor_firm',   _ftext),
+    ('other_solicitor_email',  'other_solicitor_email',  _ftext),
+    ('other_solicitor_phone',  'other_solicitor_phone',  _ftext),
+    ('notes',              'notes',              _ftext),
 ]
 
 
@@ -4721,6 +5355,82 @@ def api_listings():
     return resp
 
 
+# ── Microsoft 365 ────────────────────────────────────────────────────────────
+
+@app.route('/admin/microsoft')
+@requires('admin')
+def admin_microsoft():
+    """What is connected to Microsoft 365, and what it is keeping in step."""
+    from datetime import timedelta as _td
+    mirrored = DiaryEvent.query.filter(DiaryEvent.ms_event_id.isnot(None)).count()
+    from_outlook = DiaryEvent.query.filter_by(created_by='Outlook').count()
+    contacts_shared = Contact.query.filter(Contact.ms_contact_id.isnot(None)).count()
+    last = (DiaryEvent.query.filter(DiaryEvent.synced_at.isnot(None))
+            .order_by(DiaryEvent.synced_at.desc()).first())
+    return render_template(
+        'admin/microsoft.html',
+        status=ms_graph.connection_status(),
+        mailbox=ms_graph.MAILBOX,
+        mirrored=mirrored, from_outlook=from_outlook,
+        contacts_shared=contacts_shared,
+        contacts_total=Contact.query.count(),
+        last_sync=last.synced_at if last else None,
+        email_configured=_email_configured())
+
+
+def _email_configured():
+    try:
+        from email_sync import check_configured
+        return check_configured()
+    except Exception:
+        return False
+
+
+@app.route('/admin/microsoft/calendar-pull', methods=['POST'])
+@requires('admin')
+def admin_ms_calendar_pull():
+    """Bring appointments made in Outlook into the diary."""
+    report = ms_sync.pull_events(app, db, DiaryEvent)
+    if report['error']:
+        flash(f"Could not read the calendar: {report['error']}", 'danger')
+    else:
+        flash(f"Calendar checked: {report['added']} new, "
+              f"{report['updated']} updated.", 'success')
+        audit('sync', entity='DiaryEvent', detail='pulled from Outlook')
+    return redirect(url_for('admin_microsoft'))
+
+
+@app.route('/admin/microsoft/calendar-push', methods=['POST'])
+@requires('admin')
+def admin_ms_calendar_push():
+    """Put every CRM appointment into Outlook, for a first run."""
+    sent = failed = 0
+    for ev in DiaryEvent.query.filter(DiaryEvent.created_by != 'Outlook').all():
+        ok, _ = ms_sync.push_event(app, db, ev)
+        sent += 1 if ok else 0
+        failed += 0 if ok else 1
+    flash(f'{sent} appointment(s) sent to Outlook'
+          + (f', {failed} could not be sent.' if failed else '.'),
+          'success' if not failed else 'warning')
+    audit('sync', entity='DiaryEvent', detail='pushed to Outlook')
+    return redirect(url_for('admin_microsoft'))
+
+
+@app.route('/admin/microsoft/contacts-push', methods=['POST'])
+@requires('admin')
+def admin_ms_contacts_push():
+    """Mirror the address book into Outlook contacts."""
+    report = ms_sync.push_all_contacts(app, db, Contact)
+    if report['error']:
+        flash(report['error'], 'danger')
+    else:
+        flash(f"{report['sent']} contact(s) shared with Outlook"
+              + (f", {report['failed']} could not be." if report['failed'] else '.'),
+              'success' if not report['failed'] else 'warning')
+        audit('sync', entity='Contact', detail='pushed to Outlook')
+    return redirect(url_for('admin_microsoft'))
+
+
 @app.route('/admin/zoopla', methods=['GET'])
 @requires('publish')
 def admin_zoopla():
@@ -4895,6 +5605,24 @@ def _migrate_project_columns():
             ('alienation',        'TEXT'), ('primary_use_class','TEXT'),
             ('lt_act',            'TEXT'), ('epc_rating',       'TEXT'),
             ('fitted',            'TEXT'),
+            # Fee, invoicing and the parties behind them.
+            ('reference',         'TEXT'), ('status',           'TEXT'),
+            ('fee_earner',        'TEXT'), ('client',           'TEXT'),
+            ('project_id',        'INTEGER'),
+            ('agreed_value',      'REAL'), ('fee_type',         'TEXT'),
+            ('fee_percent',       'REAL'), ('fixed_fee',        'REAL'),
+            ('vat_rate',          'REAL'), ('invoice_number',   'TEXT'),
+            ('invoice_date',      'DATE'), ('payment_due_date', 'DATE'),
+            ('completion_date',   'DATE'), ('terms_agreed_date','DATE'),
+            ('solicitors_instructed_date', 'DATE'),
+            ('client_solicitor',       'TEXT'),
+            ('client_solicitor_firm',  'TEXT'),
+            ('client_solicitor_email', 'TEXT'),
+            ('client_solicitor_phone', 'TEXT'),
+            ('other_solicitor',        'TEXT'),
+            ('other_solicitor_firm',   'TEXT'),
+            ('other_solicitor_email',  'TEXT'),
+            ('other_solicitor_phone',  'TEXT'),
         ]
 
         with db.engine.connect() as conn:
@@ -4907,6 +5635,27 @@ def _migrate_project_columns():
             for col_name, col_def in trans_cols:
                 if col_name not in trans_existing:
                     conn.execute(text(f'ALTER TABLE transactions ADD COLUMN {col_name} {col_def}'))
+            conn.commit()
+
+        # Give every transaction a reference. These are identifiers, not
+        # figures: nothing about the money is guessed or filled in here.
+        try:
+            missing = Transaction.query.filter(
+                db.or_(Transaction.reference.is_(None), Transaction.reference == '')
+            ).order_by(Transaction.id).all()
+            if missing:
+                used = {r for (r,) in db.session.query(Transaction.reference)
+                        .filter(Transaction.reference.isnot(None)).all()}
+                nxt = 1
+                for t in missing:
+                    while f'TR-{nxt:04d}' in used:
+                        nxt += 1
+                    t.reference = f'TR-{nxt:04d}'
+                    used.add(t.reference)
+                db.session.commit()
+        except Exception:
+            db.session.rollback()
+            app.logger.exception('Could not give transactions their references')
 
         cont_cols = [
             ('req_category', 'TEXT'),      ('req_property_type', 'TEXT'),
@@ -5153,6 +5902,7 @@ def _migrate_crm_columns():
         cont_cols = [
             ('status',            "TEXT DEFAULT 'Prospect'"),
             ('preferred_move_in', 'DATE'),
+            ('ms_contact_id', 'TEXT'), ('ms_synced_at', 'TIMESTAMP'),
             ('lease_length',      'TEXT'),
             ('assigned_agent',    'TEXT'),
             ('last_contact_date', 'DATE'),

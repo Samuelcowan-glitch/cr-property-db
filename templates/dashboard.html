@@ -192,7 +192,7 @@
         {% for t in recent_transactions %}
         <div class="org-row">
           <div class="org-main">
-            <a class="org-title" href="{{ url_for('transaction_edit', id=t.id) }}">
+            <a class="org-title" href="{{ url_for('transaction_detail', id=t.id) }}">
               {{ t.property.address if t.property else 'Transaction' }}
             </a>
             <div class="org-sub">

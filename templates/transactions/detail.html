@@ -1,0 +1,538 @@
+{% extends "base.html" %}
+{% set title = (t.reference or 'Transaction') ~ (' — ' ~ t.property.address if t.property else '') %}
+{% block title %}{{ t.reference or 'Transaction' }}{% endblock %}
+{% block topbar_title %}{{ t.reference or 'Transaction' }}{% endblock %}
+{% block topbar_actions %}
+  {# The one Save on the page. Every field below belongs to this form. #}
+  <button type="submit" form="trx-form" class="btn btn-primary btn-sm">Save</button>
+  {% if t.property %}
+  <a href="{{ url_for('property_detail', id=t.property.id) }}" class="btn btn-outline btn-sm">View Property</a>
+  {% endif %}
+{% endblock %}
+
+{#
+   Every field is editable where it stands — there is no separate edit mode.
+   The commission, VAT, invoice total and outstanding balance are worked out
+   from the record and shown read-only, so they can never drift from the terms
+   above them.
+#}
+
+{% macro d(value) %}{{ value.strftime('%Y-%m-%d') if value else '' }}{% endmacro %}
+{% macro shown(value) %}{{ value.strftime('%d %b %Y') if value else '—' }}{% endmacro %}
+{% macro num(value) %}{{ '%g'|format(value) if value is not none else '' }}{% endmacro %}
+
+{% block content %}
+{# Uploads and payments post on their own, so nothing is nested in another form. #}
+<form id="trx-form" method="post" action="{{ url_for('transaction_save', id=t.id) }}"></form>
+<form id="pay-form" method="post" action="{{ url_for('transaction_payment_add', id=t.id) }}"></form>
+<form id="doc-form" method="post" enctype="multipart/form-data"
+      action="{{ url_for('transaction_document_add', id=t.id) }}"></form>
+
+<div class="rec-page fin-page">
+
+  <div class="breadcrumb">
+    <a href="{{ url_for('dashboard') }}">Dashboard</a><span class="sep">/</span>
+    <a href="{{ url_for('transactions_list') }}">Transactions</a><span class="sep">/</span>
+    <span class="current">{{ t.reference or 'Transaction' }}</span>
+  </div>
+
+  <!-- ── Header strip ── -->
+  <div class="rec-header">
+    <div>
+      <h2>{{ t.property.address if t.property else 'Transaction' }}</h2>
+      <div class="rec-facts">
+        <span>Ref: <strong>{{ t.reference or '—' }}</strong></span>
+        {% if t.transaction_type %}<span>{{ t.transaction_type }}</span>{% endif %}
+        {% if t.fee_earner %}<span>Fee earner: <strong>{{ t.fee_earner }}</strong></span>{% endif %}
+        {% if t.client %}<span>Client: <strong>{{ t.client }}</strong></span>{% endif %}
+        {% if t.completion_date %}<span>Completed: <strong>{{ shown(t.completion_date) }}</strong></span>{% endif %}
+      </div>
+    </div>
+    <div class="rec-tags">
+      <span class="st {{ status_class(t.status) }}">{{ t.status or 'Not set' }}</span>
+      {% if t.net_commission %}
+      <span class="st {{ 'st-fallen' if t.outstanding > 0.005 else 'st-paid' }}">
+        {% if t.outstanding > 0.005 %}{{ money_gbp(t.outstanding) }} outstanding{% else %}Settled in full{% endif %}
+      </span>
+      {% endif %}
+      {% if t.is_overdue %}<span class="st st-fallen">Payment overdue</span>{% endif %}
+    </div>
+  </div>
+
+  <div class="trx-cols">
+
+    <!-- ═══ Left column ═══ -->
+    <div>
+
+      <!-- ── 1. Transaction overview ── -->
+      <div class="box box--grid">
+        <div class="box-head">1. Transaction overview</div>
+        <div class="frow">
+          <div class="fcell fcell--label">Reference</div>
+          <div class="fcell fcell--edit">
+            <input name="reference" form="trx-form" value="{{ t.reference or '' }}"
+                   placeholder="TR-0001">
+          </div>
+          <div class="fcell fcell--label">Status</div>
+          <div class="fcell fcell--edit">
+            <select name="status" form="trx-form">
+              <option value="">Not set</option>
+              {% for st in TRANSACTION_STATUSES %}
+              <option value="{{ st }}" {{ 'selected' if t.status == st }}>{{ st }}</option>
+              {% endfor %}
+              {% if t.status and t.status not in TRANSACTION_STATUSES %}
+              <option value="{{ t.status }}" selected>{{ t.status }} — please review</option>
+              {% endif %}
+            </select>
+          </div>
+        </div>
+        <div class="frow">
+          <div class="fcell fcell--label">Type</div>
+          <div class="fcell fcell--edit">
+            <select name="transaction_type" form="trx-form">
+              {% for opt in ['Capital', 'Leasehold'] %}
+              <option value="{{ opt }}" {{ 'selected' if t.transaction_type == opt }}>{{ opt }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="fcell fcell--label">Tenure</div>
+          <div class="fcell fcell--edit">
+            <input name="tenure_type" form="trx-form" value="{{ t.tenure_type or '' }}"
+                   placeholder="Freehold / Leasehold">
+          </div>
+        </div>
+        <div class="frow">
+          <div class="fcell fcell--label">Fee earner</div>
+          <div class="fcell fcell--edit">
+            <input name="fee_earner" form="trx-form" value="{{ t.fee_earner or '' }}">
+          </div>
+          <div class="fcell fcell--label">Transaction date</div>
+          <div class="fcell fcell--edit">
+            <input type="date" name="transaction_date" form="trx-form" value="{{ d(t.transaction_date) }}">
+          </div>
+        </div>
+      </div>
+
+      <!-- ── 2. Property and project ── -->
+      <div class="box box--grid">
+        <div class="box-head">2. Property and project</div>
+        <div class="frow frow--full">
+          <div class="fcell fcell--label">Property</div>
+          <div class="fcell fcell--edit">
+            <select name="property_id" form="trx-form">
+              {% for p in properties %}
+              <option value="{{ p.id }}" {{ 'selected' if t.property_id == p.id }}>
+                {{ p.address }}{% if p.postcode %}, {{ p.postcode }}{% endif %}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="frow frow--full">
+          <div class="fcell fcell--label">Project</div>
+          <div class="fcell fcell--edit">
+            <select name="project_id" form="trx-form">
+              <option value="">Not linked to a project</option>
+              {% for p in projects %}
+              <option value="{{ p.id }}" {{ 'selected' if t.project_id == p.id }}>
+                {{ p.name }}{% if p.project_ref %} ({{ p.project_ref }}){% endif %}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="frow">
+          <div class="fcell fcell--label">Postcode</div>
+          <div class="fcell {{ 'is-empty' if not (t.property and t.property.postcode) }}">
+            {{ t.property.postcode if t.property and t.property.postcode else '—' }}
+          </div>
+          <div class="fcell fcell--label">Size</div>
+          <div class="fcell {{ 'is-empty' if not (t.property and t.property.size) }}">
+            {{ t.property.display_size if t.property else '—' }}
+          </div>
+        </div>
+        {% if t.project %}
+        <div class="frow frow--full">
+          <div class="fcell fcell--label">Instruction</div>
+          <div class="fcell">
+            <a href="{{ url_for('project_detail', id=t.project.id) }}">{{ t.project.name }}</a>
+            {% if t.project.instruction_type %} &middot; {{ t.project.instruction_type }}{% endif %}
+          </div>
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- ── 3. Client, tenant or purchaser ── -->
+      <div class="box box--grid">
+        <div class="box-head">3. Client, tenant or purchaser</div>
+        <div class="frow frow--full">
+          <div class="fcell fcell--label">Client</div>
+          <div class="fcell fcell--edit">
+            <input name="client" form="trx-form" value="{{ t.client or '' }}"
+                   placeholder="Who we act for and invoice">
+          </div>
+        </div>
+        <div class="frow">
+          <div class="fcell fcell--label">Vendor</div>
+          <div class="fcell fcell--edit">
+            <input name="vendor" form="trx-form" value="{{ t.vendor or '' }}">
+          </div>
+          <div class="fcell fcell--label">Purchaser</div>
+          <div class="fcell fcell--edit">
+            <input name="purchaser" form="trx-form" value="{{ t.purchaser or '' }}">
+          </div>
+        </div>
+        <div class="frow">
+          <div class="fcell fcell--label">Landlord</div>
+          <div class="fcell fcell--edit">
+            <input name="landlord" form="trx-form" value="{{ t.landlord or '' }}">
+          </div>
+          <div class="fcell fcell--label">Tenant</div>
+          <div class="fcell fcell--edit">
+            <input name="tenant" form="trx-form" value="{{ t.tenant or '' }}">
+          </div>
+        </div>
+      </div>
+
+      <!-- ── 4. Agreed commercial terms ── -->
+      <div class="box box--grid">
+        <div class="box-head">4. Agreed commercial terms</div>
+        <div class="frow frow--full">
+          <div class="fcell fcell--label">Agreed value</div>
+          <div class="fcell fcell--edit">
+            <input type="number" step="0.01" name="agreed_value" form="trx-form"
+                   value="{{ num(t.agreed_value) }}"
+                   placeholder="The rent or sale price the fee is charged on">
+          </div>
+        </div>
+        <div class="frow">
+          <div class="fcell fcell--label">Sale price</div>
+          <div class="fcell fcell--edit">
+            <input type="number" step="0.01" name="value" form="trx-form" value="{{ num(t.value) }}">
+          </div>
+          <div class="fcell fcell--label">Rent p.a.</div>
+          <div class="fcell fcell--edit">
+            <input type="number" step="0.01" name="rent_pa" form="trx-form" value="{{ num(t.rent_pa) }}">
+          </div>
+        </div>
+        <div class="frow">
+          <div class="fcell fcell--label">Lease start</div>
+          <div class="fcell fcell--edit">
+            <input type="date" name="lease_start" form="trx-form" value="{{ d(t.lease_start) }}">
+          </div>
+          <div class="fcell fcell--label">Lease end</div>
+          <div class="fcell fcell--edit">
+            <input type="date" name="lease_end" form="trx-form" value="{{ d(t.lease_end) }}">
+          </div>
+        </div>
+        <div class="frow frow--full">
+          <div class="fcell fcell--label">Break clause</div>
+          <div class="fcell fcell--edit">
+            <input name="break_clause" form="trx-form" value="{{ t.break_clause or '' }}">
+          </div>
+        </div>
+      </div>
+
+      <!-- ── 8. Important dates ── -->
+      <div class="box box--grid">
+        <div class="box-head">8. Important dates</div>
+        <div class="frow">
+          <div class="fcell fcell--label">Terms agreed</div>
+          <div class="fcell fcell--edit">
+            <input type="date" name="terms_agreed_date" form="trx-form" value="{{ d(t.terms_agreed_date) }}">
+          </div>
+          <div class="fcell fcell--label">Solicitors instructed</div>
+          <div class="fcell fcell--edit">
+            <input type="date" name="solicitors_instructed_date" form="trx-form"
+                   value="{{ d(t.solicitors_instructed_date) }}">
+          </div>
+        </div>
+        <div class="frow frow--full">
+          <div class="fcell fcell--label">Completion</div>
+          <div class="fcell fcell--edit">
+            <input type="date" name="completion_date" form="trx-form" value="{{ d(t.completion_date) }}">
+          </div>
+        </div>
+        <div class="frow frow--full">
+          <div class="fcell fcell--label fcell--top">Counted as completed</div>
+          <div class="fcell" style="line-height:1.5">
+            {% if t.has_completed %}
+              Yes — this transaction is in the completed totals.
+            {% elif t.completion_date %}
+              Not yet: it has a completion date but its status is
+              &ldquo;{{ t.status or 'not set' }}&rdquo;.
+            {% else %}
+              Not yet: a completion date is needed as well as a completed status.
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <!-- ── 7. Solicitors ── -->
+      <div class="box box--grid">
+        <div class="box-head">7. Solicitors</div>
+        <div class="frow">
+          <div class="fcell fcell--label">Our client's</div>
+          <div class="fcell fcell--edit">
+            <input name="client_solicitor" form="trx-form" value="{{ t.client_solicitor or '' }}"
+                   placeholder="Name">
+          </div>
+          <div class="fcell fcell--label">Firm</div>
+          <div class="fcell fcell--edit">
+            <input name="client_solicitor_firm" form="trx-form" value="{{ t.client_solicitor_firm or '' }}">
+          </div>
+        </div>
+        <div class="frow">
+          <div class="fcell fcell--label">Email</div>
+          <div class="fcell fcell--edit">
+            <input type="email" name="client_solicitor_email" form="trx-form"
+                   value="{{ t.client_solicitor_email or '' }}">
+          </div>
+          <div class="fcell fcell--label">Telephone</div>
+          <div class="fcell fcell--edit">
+            <input name="client_solicitor_phone" form="trx-form" value="{{ t.client_solicitor_phone or '' }}">
+          </div>
+        </div>
+        <div class="frow">
+          <div class="fcell fcell--label">Other side</div>
+          <div class="fcell fcell--edit">
+            <input name="other_solicitor" form="trx-form" value="{{ t.other_solicitor or '' }}"
+                   placeholder="Name">
+          </div>
+          <div class="fcell fcell--label">Firm</div>
+          <div class="fcell fcell--edit">
+            <input name="other_solicitor_firm" form="trx-form" value="{{ t.other_solicitor_firm or '' }}">
+          </div>
+        </div>
+        <div class="frow">
+          <div class="fcell fcell--label">Email</div>
+          <div class="fcell fcell--edit">
+            <input type="email" name="other_solicitor_email" form="trx-form"
+                   value="{{ t.other_solicitor_email or '' }}">
+          </div>
+          <div class="fcell fcell--label">Telephone</div>
+          <div class="fcell fcell--edit">
+            <input name="other_solicitor_phone" form="trx-form" value="{{ t.other_solicitor_phone or '' }}">
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ═══ Right column ═══ -->
+    <div>
+
+      <!-- ── 5. Commission calculation ── -->
+      <div class="box box--grid">
+        <div class="box-head">5. Commission calculation</div>
+        <div class="frow">
+          <div class="fcell fcell--label">Fee basis</div>
+          <div class="fcell fcell--edit">
+            <select name="fee_type" form="trx-form">
+              <option value="Percentage" {{ 'selected' if t.fee_type != 'Fixed' }}>Percentage of value</option>
+              <option value="Fixed" {{ 'selected' if t.fee_type == 'Fixed' }}>Fixed fee</option>
+            </select>
+          </div>
+          <div class="fcell fcell--label">VAT rate</div>
+          <div class="fcell fcell--edit">
+            <input type="number" step="0.01" name="vat_rate" form="trx-form"
+                   value="{{ num(t.vat_rate) }}" placeholder="{{ '%g'|format(VAT_RATE_DEFAULT) }}">
+          </div>
+        </div>
+        <div class="frow">
+          <div class="fcell fcell--label">Fee percentage</div>
+          <div class="fcell fcell--edit">
+            <input type="number" step="0.001" name="fee_percent" form="trx-form"
+                   value="{{ num(t.fee_percent) }}" placeholder="e.g. 10">
+          </div>
+          <div class="fcell fcell--label">Fixed fee</div>
+          <div class="fcell fcell--edit">
+            <input type="number" step="0.01" name="fixed_fee" form="trx-form" value="{{ num(t.fixed_fee) }}">
+          </div>
+        </div>
+      </div>
+
+      <div class="box">
+        <div class="box-head">Worked out from the terms above</div>
+        <div class="calc-row">
+          <span class="lbl">Agreed value<span class="how">the fee is charged on this</span></span>
+          <span class="val">{{ money_gbp(t.commission_basis) }}</span>
+        </div>
+        <div class="calc-row">
+          <span class="lbl">Net commission<span class="how">{{ t.fee_basis_label }}</span></span>
+          <span class="val">{{ money_gbp(t.net_commission) }}</span>
+        </div>
+        <div class="calc-row">
+          <span class="lbl">VAT<span class="how">at {{ '%g'|format(t.applicable_vat_rate) }}%</span></span>
+          <span class="val">{{ money_gbp(t.vat_amount) }}</span>
+        </div>
+        <div class="calc-row is-total">
+          <span class="lbl">Total invoice</span>
+          <span class="val">{{ money_gbp(t.total_invoice) }}</span>
+        </div>
+        <div class="calc-row">
+          <span class="lbl">Received<span class="how">{{ payments|length }} payment{{ '' if payments|length == 1 else 's' }}</span></span>
+          <span class="val">{{ money_gbp(t.commission_received) }}</span>
+        </div>
+        <div class="calc-row is-total {{ 'is-owing' if t.outstanding > 0.005 else 'is-settled' }}">
+          <span class="lbl">Outstanding balance</span>
+          <span class="val">{{ money_gbp(t.outstanding) }}</span>
+        </div>
+      </div>
+
+      <!-- ── 6. Invoice and payment ── -->
+      <div class="box box--grid">
+        <div class="box-head">6. Invoice and payment</div>
+        <div class="frow">
+          <div class="fcell fcell--label">Invoice number</div>
+          <div class="fcell fcell--edit">
+            <input name="invoice_number" form="trx-form" value="{{ t.invoice_number or '' }}">
+          </div>
+          <div class="fcell fcell--label">Invoice date</div>
+          <div class="fcell fcell--edit">
+            <input type="date" name="invoice_date" form="trx-form" value="{{ d(t.invoice_date) }}">
+          </div>
+        </div>
+        <div class="frow frow--full">
+          <div class="fcell fcell--label">Payment due</div>
+          <div class="fcell fcell--edit">
+            <input type="date" name="payment_due_date" form="trx-form" value="{{ d(t.payment_due_date) }}">
+          </div>
+        </div>
+      </div>
+
+      <div class="box">
+        <div class="box-head">Payments received</div>
+        {% if payments %}
+        <table class="pay-table">
+          <thead>
+            <tr><th>Date</th><th>Method</th><th>Reference</th><th class="num">Amount</th><th></th></tr>
+          </thead>
+          <tbody>
+            {% for p in payments %}
+            <tr>
+              <td>{{ shown(p.received_on) }}</td>
+              <td>{{ p.method or '—' }}</td>
+              <td>{{ p.reference or '—' }}</td>
+              <td class="num">{{ money_gbp(p.amount) }}</td>
+              <td>
+                <form method="post" style="display:inline"
+                      action="{{ url_for('transaction_payment_delete', id=t.id, pid=p.id) }}">
+                  <button class="rm" type="submit"
+                          onclick="return confirm('Remove this payment of {{ money_gbp(p.amount) }}?')">Remove</button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="empty" style="padding:12px 11px">No payments recorded yet.</div>
+        {% endif %}
+
+        <div class="box-head" style="border-top:1px solid var(--grey-200)">Record a payment</div>
+        <div class="box--grid" style="border:0">
+          <div class="frow">
+            <div class="fcell fcell--label">Amount</div>
+            <div class="fcell fcell--edit">
+              <input type="number" step="0.01" min="0.01" name="amount" form="pay-form" required>
+            </div>
+            <div class="fcell fcell--label">Received on</div>
+            <div class="fcell fcell--edit">
+              <input type="date" name="received_on" form="pay-form" value="{{ d(today) }}">
+            </div>
+          </div>
+          <div class="frow">
+            <div class="fcell fcell--label">Method</div>
+            <div class="fcell fcell--edit">
+              <input name="method" form="pay-form" placeholder="BACS, cheque…">
+            </div>
+            <div class="fcell fcell--label">Reference</div>
+            <div class="fcell fcell--edit">
+              <input name="reference" form="pay-form">
+            </div>
+          </div>
+          <div class="frow frow--action">
+            <div class="fcell"><span style="font-size:11px;color:var(--grey-600)">
+              Each payment is kept as its own entry, so the same money is never counted twice.
+            </span></div>
+            <div class="fcell">
+              <button type="submit" form="pay-form" class="btn btn-secondary btn-sm">Record payment</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── 9. Documents ── -->
+      <div class="box">
+        <div class="box-head">9. Documents</div>
+        <div class="trx-docs">
+          {% for doc in documents %}
+          <div class="trx-doc">
+            <span class="kd">{{ doc.kind or 'Document' }}</span>
+            <a class="nm" href="{{ url_for('transaction_document_download', id=t.id, did=doc.id) }}">{{ doc.filename }}</a>
+            <span class="sz">{{ '{:,.0f}'.format((doc.size or 0) / 1024) }} KB</span>
+            <form method="post" style="display:inline"
+                  action="{{ url_for('transaction_document_delete', id=t.id, did=doc.id) }}">
+              <button class="rm" type="submit"
+                      onclick="return confirm('Remove {{ doc.filename }}?')"
+                      style="background:none;border:0;color:var(--grey-400);cursor:pointer;font-size:11px">Remove</button>
+            </form>
+          </div>
+          {% else %}
+          <div class="empty" style="padding:12px 11px">No documents yet.</div>
+          {% endfor %}
+        </div>
+        <div class="box--grid" style="border:0;border-top:1px solid var(--grey-200)">
+          <div class="frow">
+            <div class="fcell fcell--label">Kind</div>
+            <div class="fcell fcell--edit">
+              <input name="kind" form="doc-form" placeholder="Invoice, terms, contract…">
+            </div>
+            <div class="fcell fcell--label">File</div>
+            <div class="fcell fcell--edit">
+              <input type="file" name="document" form="doc-form" required>
+            </div>
+          </div>
+          <div class="frow frow--action">
+            <div class="fcell"></div>
+            <div class="fcell">
+              <button type="submit" form="doc-form" class="btn btn-secondary btn-sm">Upload</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── 10. Notes and activity ── -->
+      <div class="box box--grid">
+        <div class="box-head">10. Notes</div>
+        <div class="frow frow--full">
+          <div class="fcell fcell--label fcell--top">Notes</div>
+          <div class="fcell fcell--edit">
+            <textarea name="notes" form="trx-form" rows="4"
+                      placeholder="Anything worth recording about this transaction">{{ t.notes or '' }}</textarea>
+          </div>
+        </div>
+      </div>
+
+      <div class="box">
+        <div class="box-head">Activity history</div>
+        {% if history %}
+        <ul class="trx-history">
+          {% for h in history %}
+          <li>
+            <span class="when">{{ h.at.strftime('%d %b %H:%M') if h.at else '' }}</span>
+            <span class="who">{{ h.username or 'someone' }}</span>
+            <span class="what">{{ h.action }}{% if h.detail %} — {{ h.detail }}{% endif %}</span>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <div class="empty" style="padding:12px 11px">Nothing recorded against this transaction yet.</div>
+        {% endif %}
+      </div>
+
+    </div>
+  </div>
+</div>
+{% endblock %}

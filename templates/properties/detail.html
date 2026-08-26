@@ -169,7 +169,7 @@
           <td>{{ t.tenant_covenant or '—' }}</td>
           <td>
             <div class="td-actions">
-              <a href="{{ url_for('transaction_edit', id=t.id) }}" class="btn btn-sm btn-outline">Edit</a>
+              <a href="{{ url_for('transaction_detail', id=t.id) }}" class="btn btn-sm btn-outline">Edit</a>
               <form method="post" action="{{ url_for('transaction_delete', id=t.id) }}" class="confirm-delete">
                 <button class="btn btn-sm btn-danger" type="submit">Del</button>
               </form>

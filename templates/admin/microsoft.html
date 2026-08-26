@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% block title %}Microsoft 365{% endblock %}
+{% block topbar_title %}Microsoft 365{% endblock %}
+{% block topbar_actions %}
+  <a href="{{ url_for('dashboard') }}" class="btn btn-outline btn-sm">&larr; Organiser</a>
+{% endblock %}
+
+{% block content %}
+{# The sync actions post on their own, so nothing is nested in another form. #}
+<form id="pull-form" method="post" action="{{ url_for('admin_ms_calendar_pull') }}"></form>
+<form id="push-form" method="post" action="{{ url_for('admin_ms_calendar_push') }}"></form>
+<form id="contacts-form" method="post" action="{{ url_for('admin_ms_contacts_push') }}"></form>
+
+<div class="rec-page">
+
+  <div class="rec-header">
+    <div>
+      <h2>Microsoft 365</h2>
+      <div class="rec-facts">
+        <span>Mailbox: <strong>{{ mailbox }}</strong></span>
+        {% if last_sync %}<span>Last synchronised: <strong>{{ last_sync.strftime('%d %b %Y, %H:%M') }}</strong></span>{% endif %}
+      </div>
+    </div>
+    <div class="rec-tags">
+      {% if status.ok %}<span class="badge badge-active">Connected</span>
+      {% elif status.configured %}<span class="badge badge-hold">Needs attention</span>
+      {% else %}<span class="badge badge-muted">Not connected</span>{% endif %}
+    </div>
+  </div>
+
+  <div class="rec-cols">
+
+    <!-- ════ What is working ════ -->
+    <div class="rec-col">
+      <div class="box box--grid">
+        <div class="box-head">Connection</div>
+        {% for label, ok, hint in status.checks %}
+        <div class="frow frow--full">
+          <div class="fcell fcell--label">{{ label }}</div>
+          <div class="fcell">
+            {% if ok %}<span class="badge badge-active">Working</span>
+            {% else %}<span class="badge badge-lost">Not working</span>
+              <span style="color:var(--grey-600);font-size:11.5px">{{ hint }}</span>
+            {% endif %}
+          </div>
+        </div>
+        {% else %}
+        <div class="empty">Nothing checked yet.</div>
+        {% endfor %}
+      </div>
+
+      {% if not status.configured %}
+      <div class="box">
+        <div class="box-head">Connecting it</div>
+        <div style="padding:12px 14px;font-size:12.5px;line-height:1.6;color:var(--text)">
+          <p>Register an application in the Microsoft Entra admin centre for the
+          Cowan &amp; Rutter tenant, then set these in Railway:</p>
+          <ul style="margin:8px 0 8px 18px">
+            <li><code>MS_TENANT_ID</code> — the directory (tenant) id</li>
+            <li><code>MS_CLIENT_ID</code> — the application (client) id</li>
+            <li><code>MS_CLIENT_SECRET</code> — a client secret</li>
+            <li><code>MS_EMAIL</code> — the mailbox, currently <strong>{{ mailbox }}</strong></li>
+          </ul>
+          <p>Grant these <strong>application</strong> permissions and click
+          &ldquo;Grant admin consent&rdquo;:</p>
+          <ul style="margin:8px 0 0 18px">
+            <li><code>Mail.Read</code> and <code>Mail.Send</code> — enquiries in and out</li>
+            <li><code>Calendars.ReadWrite</code> — the diary</li>
+            <li><code>Contacts.ReadWrite</code> — the address book</li>
+            <li><code>User.Read.All</code> — to confirm the mailbox</li>
+          </ul>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- ════ What it keeps in step ════ -->
+    <div class="rec-col">
+      <div class="box box--grid">
+        <div class="box-head">Diary and Outlook calendar</div>
+        <div class="frow">
+          <div class="fcell fcell--label">In Outlook</div>
+          <div class="fcell">{{ mirrored }} appointment{{ '' if mirrored == 1 else 's' }}</div>
+          <div class="fcell fcell--label">From Outlook</div>
+          <div class="fcell">{{ from_outlook }}</div>
+        </div>
+        <div class="frow frow--full">
+          <div class="fcell fcell--label">How it works</div>
+          <div class="fcell" style="line-height:1.5">
+            Every appointment made here goes into the Outlook calendar and stays
+            in step when it is changed, moved or deleted. Appointments made in
+            Outlook are pulled in and shown, but are edited in Outlook.
+          </div>
+        </div>
+        <div class="frow frow--action">
+          <div class="fcell">
+            <button type="submit" form="pull-form" class="btn btn-primary btn-sm"
+                    {{ 'disabled' if not status.ok }}>Check Outlook now</button>
+            <button type="submit" form="push-form" class="btn btn-outline btn-sm"
+                    {{ 'disabled' if not status.ok }}>Send all appointments</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="box box--grid">
+        <div class="box-head">Address book</div>
+        <div class="frow">
+          <div class="fcell fcell--label">Shared</div>
+          <div class="fcell">{{ contacts_shared }} of {{ contacts_total }}</div>
+          <div class="fcell fcell--label">Where</div>
+          <div class="fcell">{{ mailbox }}</div>
+        </div>
+        <div class="frow frow--action">
+          <div class="fcell">
+            <button type="submit" form="contacts-form" class="btn btn-primary btn-sm"
+                    {{ 'disabled' if not status.ok }}>Share contacts with Outlook</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="box box--grid">
+        <div class="box-head">Email</div>
+        <div class="frow">
+          <div class="fcell fcell--label">Inbox</div>
+          <div class="fcell">
+            {% if email_configured %}<span class="badge badge-active">Reading {{ mailbox }}</span>
+            {% else %}<span class="badge badge-muted">Not connected</span>{% endif %}
+          </div>
+        </div>
+        <div class="frow frow--full">
+          <div class="fcell fcell--label fcell--top">What it does</div>
+          <div class="fcell" style="line-height:1.5">
+            Portal leads and client emails arriving at {{ mailbox }} become
+            enquiries, and replies sent from an enquiry go out from that mailbox.
+            <a href="{{ url_for('enquiries_list') }}">Enquiries</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
