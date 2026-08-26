@@ -2610,7 +2610,9 @@ def contact_new():
 def contact_detail(id):
     contact = Contact.query.get_or_404(id)
     return render_template('crm/contact_detail.html',
-                           all_organisations=Organisation.query.order_by(Organisation.name).all(), contact=contact)
+                           all_organisations=Organisation.query.order_by(Organisation.name).all(),
+                           matched_properties=match_properties_to_contact(contact),
+                           contact=contact)
 
 
 @app.route('/contacts/<int:id>/edit', methods=['GET', 'POST'])
@@ -3440,45 +3442,93 @@ def auto_link_contact_to_projects(contact):
     return linked
 
 
+def score_requirement(c, prop):
+    """How well one property answers one applicant's requirements.
+
+    Returns (score, reasons). Both directions of matching use this, so an
+    applicant's matched properties and a property's matched applicants can
+    never disagree about what counts as a match.
+    """
+    score = 0
+    reasons = []
+    if c is None or prop is None:
+        return 0, reasons
+    # Category
+    if c.req_category and prop.website_category and c.req_category == prop.website_category:
+        score += 3; reasons.append('Category match')
+    # Use class
+    if c.req_use_class and prop.use_class and c.req_use_class.lower() == prop.use_class.lower():
+        score += 2; reasons.append('Use class match')
+    # Property type
+    if c.req_property_type and prop.property_type:
+        if c.req_property_type.lower() in prop.property_type.lower() or prop.property_type.lower() in c.req_property_type.lower():
+            score += 2; reasons.append('Type match')
+    # Area
+    if c.req_area and (prop.area or prop.postcode):
+        for area in c.req_area.split(','):
+            area = area.strip().lower()
+            if area and (area in (prop.area or '').lower() or area in prop.postcode.lower()):
+                score += 2; reasons.append(f'Area match ({area.title()})'); break
+    # Size and budget are ranges, so falling outside one rules a property out
+    # rather than merely scoring it lower.
+    if prop.size:
+        if c.req_size_min and prop.size < c.req_size_min:
+            return 0, []
+        if c.req_size_max and prop.size > c.req_size_max:
+            return 0, []
+        if c.req_size_min or c.req_size_max:
+            score += 2; reasons.append('Size in range')
+    if prop.listing_price:
+        if c.req_budget_min and prop.listing_price < c.req_budget_min:
+            return 0, []
+        if c.req_budget_max and prop.listing_price > c.req_budget_max:
+            return 0, []
+        if c.req_budget_min or c.req_budget_max:
+            score += 2; reasons.append('Within budget')
+    # For sale or to let: the applicant's budget basis says which they want, and
+    # a sale is no use at all to somebody looking to rent.
+    if c.req_budget_unit and prop.listing_price_unit:
+        wants_sale = c.req_budget_unit == 'sale'
+        is_sale = prop.listing_price_unit == 'sale'
+        if wants_sale != is_sale:
+            return 0, []
+        score += 2
+        reasons.append('For sale' if is_sale else 'To let')
+    return score, reasons
+
+
 def match_contacts_to_property(prop):
-    """Return [(score, contact)] sorted best-first for contacts with requirements."""
+    """Return [(score, reasons, contact)] best first, for a property."""
     if not prop:
         return []
-    candidates = Contact.query.filter(Contact.req_category != None).all()
     results = []
-    for c in candidates:
-        score = 0
-        reasons = []
-        # Category
-        if c.req_category and prop.website_category and c.req_category == prop.website_category:
-            score += 3; reasons.append('Category match')
-        # Use class
-        if c.req_use_class and prop.use_class and c.req_use_class.lower() == prop.use_class.lower():
-            score += 2; reasons.append('Use class match')
-        # Property type
-        if c.req_property_type and prop.property_type:
-            if c.req_property_type.lower() in prop.property_type.lower() or prop.property_type.lower() in c.req_property_type.lower():
-                score += 2; reasons.append('Type match')
-        # Area
-        if c.req_area and (prop.area or prop.postcode):
-            for area in c.req_area.split(','):
-                area = area.strip().lower()
-                if area and (area in (prop.area or '').lower() or area in prop.postcode.lower()):
-                    score += 2; reasons.append(f'Area match ({area.title()})'); break
-        # Size
-        if prop.size:
-            if c.req_size_min and prop.size >= c.req_size_min:
-                score += 1
-            if c.req_size_max and prop.size <= c.req_size_max:
-                score += 1; reasons.append('Size in range')
-        # Budget
-        if prop.listing_price and c.req_budget_max and prop.listing_price <= c.req_budget_max:
-            score += 2; reasons.append('Within budget')
-        if prop.listing_price and c.req_budget_min and prop.listing_price >= c.req_budget_min:
-            score += 1
+    for c in Contact.query.filter(Contact.req_category != None).all():
+        score, reasons = score_requirement(c, prop)
         if score > 0:
             results.append((score, reasons, c))
     return sorted(results, key=lambda x: x[0], reverse=True)
+
+
+def match_properties_to_contact(contact, limit=12):
+    """Properties answering an applicant's requirements, best first.
+
+    Read live from the property register, so the list follows whatever is
+    currently saved against the applicant — change a requirement and this
+    changes with it.
+    """
+    if contact is None:
+        return []
+    if not any([contact.req_category, contact.req_use_class, contact.req_property_type,
+                contact.req_area, contact.req_size_min, contact.req_size_max,
+                contact.req_budget_min, contact.req_budget_max]):
+        return []                       # nothing asked for, so nothing to match
+    results = []
+    for prop in Property.query.all():
+        score, reasons = score_requirement(contact, prop)
+        if score > 0:
+            results.append({'score': score, 'reasons': reasons, 'prop': prop})
+    results.sort(key=lambda r: (-r['score'], r['prop'].address or ''))
+    return results[:limit]
 
 
 # ── Project Tasks ─────────────────────────────────────────────────────────────

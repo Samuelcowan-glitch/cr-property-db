@@ -47,17 +47,17 @@
   <!-- ════ LEFT ════ -->
   <div class="rec-col">
 
-    <div class="box">
+    <div class="box box--grid">
       <div class="frow">
-        <div class="fcell fcell--label w-narrow">First name</div>
+        <div class="fcell fcell--label">First name</div>
         <div class="fcell fcell--edit"><input type="text" name="first_name" value="{{ contact.first_name }}" placeholder="First name" required></div>
-        <div class="fcell fcell--label w-narrow">Surname</div>
+        <div class="fcell fcell--label">Surname</div>
         <div class="fcell fcell--edit"><input type="text" name="last_name" value="{{ contact.last_name }}" placeholder="Surname" required></div>
       </div>
       <div class="frow">
-        <div class="fcell fcell--label w-narrow">Type</div>
+        <div class="fcell fcell--label">Type</div>
         <div class="fcell fcell--edit"><input type="text" name="contact_type" value="{{ contact.contact_type or '' }}" placeholder="Not set"></div>
-        <div class="fcell fcell--label w-narrow">Company</div>
+        <div class="fcell fcell--label">Company</div>
         <div class="fcell fcell--edit">
           <select name="organisation_id">
             <option value="">— None —</option>
@@ -70,42 +70,40 @@
       <div class="frow">
         <div class="fcell fcell--label">Job title</div>
         <div class="fcell fcell--edit"><input type="text" name="job_title" value="{{ contact.job_title or '' }}" placeholder="Not added"></div>
-        <div class="fcell fcell--label w-narrow">Registered</div>
+        <div class="fcell fcell--label">Registered</div>
         <div class="fcell is-empty">{{ contact.created_at.strftime('%d %b %Y') if contact.created_at else '—' }}</div>
       </div>
-      <div>
-        <div class="frow">
-          <div class="fcell fcell--label">Status</div>
-          <div class="fcell fcell--edit">
-            <select name="status">
-              {% for s in CONTACT_STATUSES %}
-              <option value="{{ s }}" {{ 'selected' if contact.status == s else '' }}>{{ s }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <div class="fcell fcell--label w-narrow">Agent</div>
-          <div class="fcell fcell--edit"><input type="text" name="assigned_agent" value="{{ contact.assigned_agent or '' }}" placeholder="Not set"></div>
+      <div class="frow">
+        <div class="fcell fcell--label">Status</div>
+        <div class="fcell fcell--edit">
+          <select name="status">
+            {% for s in CONTACT_STATUSES %}
+            <option value="{{ s }}" {{ 'selected' if contact.status == s else '' }}>{{ s }}</option>
+            {% endfor %}
+          </select>
         </div>
+        <div class="fcell fcell--label">Agent</div>
+        <div class="fcell fcell--edit"><input type="text" name="assigned_agent" value="{{ contact.assigned_agent or '' }}" placeholder="Not set"></div>
       </div>
     </div>
 
-    <div class="box">
+    <div class="box box--grid">
       <div class="box-head">Contact Details</div>
       <div class="frow">
-        <div class="fcell fcell--label w-narrow">Mobile</div>
+        <div class="fcell fcell--label">Mobile</div>
         <div class="fcell fcell--edit"><input type="text" name="mobile" value="{{ contact.mobile or '' }}" placeholder="Not added"></div>
       </div>
       <div class="frow">
-        <div class="fcell fcell--label w-narrow">Telephone</div>
+        <div class="fcell fcell--label">Telephone</div>
         <div class="fcell fcell--edit"><input type="text" name="phone" value="{{ contact.phone or '' }}" placeholder="Not added"></div>
       </div>
       <div class="frow">
-        <div class="fcell fcell--label w-narrow">E-mail</div>
+        <div class="fcell fcell--label">E-mail</div>
         <div class="fcell fcell--edit"><input type="text" name="email" value="{{ contact.email or '' }}" placeholder="Not added"></div>
       </div>
     </div>
 
-    <div class="box">
+    <div class="box box--grid">
       <div class="box-head">Requirement</div>
       <div class="frow">
         <div class="fcell fcell--label">Category</div>
@@ -116,7 +114,7 @@
             <option value="residential" {{ 'selected' if contact.req_category == 'residential' else '' }}>Residential</option>
           </select>
         </div>
-        <div class="fcell fcell--label w-narrow">Use</div>
+        <div class="fcell fcell--label">Use</div>
         <div class="fcell fcell--edit">
           <select name="req_use_class">
             <option value="">— Any —</option>
@@ -137,15 +135,15 @@
       <div class="frow">
         <div class="fcell fcell--label">Size</div>
         <div class="fcell fcell--edit"><input type="number" name="req_size_min" value="{{ contact.req_size_min|int if contact.req_size_min else '' }}" placeholder="Min sq ft"></div>
-        <div class="fcell fcell--label w-narrow">to</div>
+        <div class="fcell fcell--label">to</div>
         <div class="fcell fcell--edit"><input type="number" name="req_size_max" value="{{ contact.req_size_max|int if contact.req_size_max else '' }}" placeholder="Max sq ft"></div>
-        <div class="fcell fcell--label w-narrow">Budget</div>
+        <div class="fcell fcell--label">Budget</div>
         <div class="fcell fcell--edit"><input type="number" name="req_budget_max" value="{{ contact.req_budget_max|int if contact.req_budget_max else '' }}" placeholder="Max £"></div>
       </div>
       <div class="frow">
         <div class="fcell fcell--label">Move-in</div>
         <div class="fcell fcell--edit"><input type="date" name="preferred_move_in" value="{{ contact.preferred_move_in.isoformat() if contact.preferred_move_in else '' }}"></div>
-        <div class="fcell fcell--label w-narrow">Lease</div>
+        <div class="fcell fcell--label">Lease</div>
         <div class="fcell fcell--edit"><input type="text" name="lease_length" value="{{ contact.lease_length or '' }}" placeholder="e.g. 5 years"></div>
       </div>
       <div class="frow">
@@ -159,7 +157,7 @@
   <!-- ════ RIGHT ════ -->
   <div class="rec-col">
 
-    <div class="box">
+    <div class="box box--grid">
       <div class="box-head">
         Follow-up
         {% if contact.follow_up_overdue %}<span class="badge badge-lost">Overdue</span>{% endif %}
@@ -178,8 +176,10 @@
           {% if contact.last_activity %}{{ contact.last_activity.created_at.strftime('%d %b %Y') }} &middot; {{ contact.last_activity.kind|replace('_',' ') }}{% else %}None{% endif %}
         </div>
       </div>
-      <div class="frow">
-        <div class="fcell fcell--edit grow-2">
+      {# An action row, not a label and value: the field takes the width and the
+         button sits in the last column. #}
+      <div class="frow frow--action">
+        <div class="fcell fcell--edit">
           <input type="text" name="body" form="log-form" placeholder="Log a call, email or meeting…" required>
         </div>
         <div class="fcell" style="flex:0 0 74px;justify-content:center">
@@ -234,6 +234,43 @@
       {% else %}
       <div class="empty">No activity recorded yet.</div>
       {% endfor %}
+    </div>
+
+    {# Read live from the property register against whatever is saved in the
+       Requirement box above, so changing a requirement changes this list. #}
+    <div class="box" id="matched-properties">
+      <div class="box-head">
+        <span>Matched Properties</span>
+        <span class="box-actions">{{ matched_properties|length }} found</span>
+      </div>
+      {% if matched_properties %}
+      <div class="match-list">
+        {% for m in matched_properties %}
+        <a class="match-row" href="{{ url_for('property_detail', id=m.prop.id) }}">
+          <span class="match-main">
+            <span class="match-title">{{ m.prop.address }}</span>
+            <span class="match-meta">
+              {{ m.prop.postcode }}{% if m.prop.property_type %} &middot; {{ m.prop.property_type }}{% endif %}
+              {% if m.prop.size %} &middot; {{ format_size(m.prop.size) }}{% endif %}
+              {% if m.prop.listing_price %} &middot; {{ format_rent(m.prop.listing_price, m.prop.listing_price_unit) }}{% endif %}
+            </span>
+            {% if m.reasons %}
+            <span class="match-why">{{ m.reasons | join(' &middot; ') | safe }}</span>
+            {% endif %}
+          </span>
+        </a>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="empty">
+        {% if contact.req_category or contact.req_area or contact.req_size_min
+              or contact.req_size_max or contact.req_budget_max %}
+        Nothing on the register matches these requirements yet.
+        {% else %}
+        Fill in the Requirement box above and matching properties will appear here.
+        {% endif %}
+      </div>
+      {% endif %}
     </div>
 
   </div>
