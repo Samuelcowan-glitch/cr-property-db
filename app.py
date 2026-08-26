@@ -1906,6 +1906,58 @@ def transaction_delete(id):
 
 # ── Projects ────────────────────────────────────────────────────────────────
 
+def format_rent(price, unit=None):
+    """An asking price written the same way everywhere: £18,500 per annum."""
+    if not price:
+        return 'Not provided'
+    words = {'pa': ' per annum', 'pcm': ' per calendar month', 'sale': '', 'poa': ''}
+    if unit == 'poa':
+        return 'Price on application'
+    return f"£{price:,.0f}{words.get(unit, ' per annum')}"
+
+
+def format_size(size):
+    """A floor area written the same way everywhere: 430 sq. ft."""
+    if not size:
+        return 'Not provided'
+    return f'{size:,.0f} sq. ft.'
+
+
+app.jinja_env.globals['format_rent'] = format_rent
+app.jinja_env.globals['format_size'] = format_size
+
+
+def project_row_summary(project):
+    """What the Projects sidebar shows for one project.
+
+    The asking price, size and photograph come from the project's website
+    listing where there is one, and from the property itself otherwise.
+    """
+    listing = project.project_listings[0] if project.project_listings else None
+    prop = project.property
+
+    price = unit = size = None
+    if listing:
+        price, unit, size = listing.listing_price, listing.listing_price_unit, listing.size
+    if not price and prop:
+        price, unit = prop.listing_price, prop.listing_price_unit
+    if not size and prop:
+        size = prop.size
+
+    photo = listing.photos[0] if (listing and listing.photos) else None
+    address = ', '.join(b for b in ((prop.address if prop else None),
+                                    (prop.postcode if prop else None)) if b)
+
+    return {
+        'project': project,
+        'photo': photo,
+        'ref': project.project_ref or project.name,
+        'address': address or 'No property linked',
+        'rent': format_rent(price, unit),
+        'size': format_size(size),
+    }
+
+
 @app.route('/projects')
 def projects_list():
     q = request.args.get('q', '')
@@ -1919,7 +1971,13 @@ def projects_list():
     if status:
         query = query.filter(Project.status == status)
     projects = query.order_by(Project.created_at.desc()).all()
-    return render_template('projects/list.html', projects=projects, q=q, status=status)
+    rows = [project_row_summary(p) for p in projects]
+    # Which project the details panel opens on: the one asked for, else the first.
+    selected = _fint(request.args.get('selected'))
+    if selected not in {p.id for p in projects}:
+        selected = projects[0].id if projects else None
+    return render_template('projects/list.html', projects=projects, rows=rows,
+                           selected_id=selected, q=q, status=status)
 
 
 def _upsert_client_contact(form):
@@ -2210,7 +2268,11 @@ def project_detail(id):
     listing = project.project_listings[0] if project.project_listings else None
     pub = listing_publish_state(listing) if listing else None
 
-    return render_template('projects/detail.html', project=project,
+    # ?panel=1 returns the same overview without the sidebar and top bar, for
+    # the Projects list to drop into its details panel.
+    layout = '_bare.html' if request.args.get('panel') else 'base.html'
+
+    return render_template('projects/detail.html', project=project, layout=layout,
                            folder_labels=FOLDER_LABELS, today=date.today(),
                            matches=matches, registered_ids=registered_ids,
                            activity=activity, enquiries=enquiries,

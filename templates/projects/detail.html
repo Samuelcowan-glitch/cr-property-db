@@ -1,4 +1,6 @@
-{% extends "base.html" %}
+{# Rendered inside the full page normally, and on its own when the Projects
+   sidebar loads it into the details panel. #}
+{% extends layout|default("base.html") %}
 {% import "projects/_record_boxes.html" as rb %}
 {% set pv = project_form_values(project) %}
 {% block title %}{{ project.name }}{% endblock %}
@@ -200,7 +202,7 @@
     <div class="box">
       <div class="box-head">Fees &amp; Rent</div>
       <div style="padding:12px 14px">
-        <div style="display:grid;grid-template-columns:1fr 1fr">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
           {% macro dfield(lbl, val) %}
           <div class="frow" style="border-right:1px solid var(--cell-line)">
             <div class="fcell fcell--label">{{ lbl }}</div>
@@ -254,7 +256,7 @@
       {# The listing record is what the website and the Zoopla feed read, so
          publishing sets a flag on it — nothing is copied anywhere. #}
       {% for t, label in [('website', 'Website'), ('zoopla', 'Zoopla')] %}
-      <div class="frow">
+      <div class="frow" style="flex-wrap:wrap">
         <div class="fcell fcell--label">{{ label }}</div>
         <div class="fcell">
           {% if pub[t].live %}
@@ -265,7 +267,7 @@
             <span class="badge badge-muted">Draft</span>
           {% endif %}
         </div>
-        <div class="fcell" style="flex:0 0 200px;justify-content:flex-end;gap:6px">
+        <div class="fcell" style="flex:1 1 100%;justify-content:flex-end;gap:6px;flex-wrap:wrap">
           <button type="submit" form="publish-form"
                   formaction="{{ url_for('listing_publish', id=lst.id, target=t, live=('0' if pub[t].live else '1'), next=url_for('project_detail', id=project.id)) }}"
                   class="btn btn-sm {{ 'btn-outline' if pub[t].live else 'btn-primary' }}">
@@ -276,7 +278,7 @@
       </div>
       {% endfor %}
       <form method="post" action="{{ url_for('listing_edit', id=lst.id) }}" class="listing-edit-form" style="padding:16px">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:12px">
 
 <div style="grid-column:span 2;background:#0e1f44;color:#fff;padding:8px 14px;border-radius:5px;font-size:12px;font-weight:700;margin-top:4px">🏢 Listing Details</div>
 

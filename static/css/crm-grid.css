@@ -61,10 +61,20 @@
    Panels line up on a shared grid; the small gap keeps panels distinct while
    their vertical edges stay in line down the page. */
 .rec-cols   { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-items: start; }
-.rec-cols-3 { display: grid; grid-template-columns: 260px 1fr 320px; gap: 8px; align-items: start; }
-.rec-cols-narrow { display: grid; grid-template-columns: 1fr 340px; gap: 8px; align-items: start; }
+/* minmax(0,1fr) so the middle column can shrink: a plain 1fr refuses to go
+   below its content and pushes the right-hand column off the page when the
+   record is shown inside the Projects panel. */
+.rec-cols-3 { display: grid; grid-template-columns: 260px minmax(0, 1fr) 320px; gap: 8px; align-items: start; }
+.rec-cols-narrow { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 8px; align-items: start; }
 .rec-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 @media (max-width: 1100px) {
+  .rec-cols, .rec-cols-3, .rec-cols-narrow { grid-template-columns: 1fr; }
+}
+
+/* A record shown inside a panel is measured on the panel's own width, not the
+   window's: on a wide monitor it keeps its columns, on a narrower one it
+   stacks rather than being squeezed into columns too narrow to read. */
+@container (max-width: 980px) {
   .rec-cols, .rec-cols-3, .rec-cols-narrow { grid-template-columns: 1fr; }
 }
 
@@ -103,7 +113,9 @@
 }
 .fcell:last-child { border-right: 0; }
 .fcell--label {
-  flex: 0 0 120px;
+  /* 0 1 rather than 0 0: in a narrow column a label that cannot give up any
+     width pushes its own value out of the row. */
+  flex: 0 1 120px; min-width: 76px;
   background: var(--cell-label);
   color: var(--grey-600);
   font-size: 11.5px;

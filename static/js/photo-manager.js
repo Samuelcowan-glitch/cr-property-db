@@ -9,6 +9,8 @@
   'use strict';
 
   function init(root) {
+    if (root.dataset.photoReady) return;       // never bind the same box twice
+    root.dataset.photoReady = '1';
     var listingId = root.dataset.listing;
     var grid = root.querySelector('[data-photo-grid]');
     var drop = root.querySelector('[data-drop]');
@@ -130,9 +132,12 @@
     markPositions();
   }
 
-  function start() {
-    Array.prototype.forEach.call(document.querySelectorAll('[data-photo-manager]'), init);
+  function start(root) {
+    Array.prototype.forEach.call(
+      (root || document).querySelectorAll('[data-photo-manager]'), init);
   }
+
+  window.CRPhotoManager = {start: start};
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
   else start();
 })();

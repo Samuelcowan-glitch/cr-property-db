@@ -1,0 +1,28 @@
+{#
+  One property row, as used by the Organiser's "To Let – Available" panel and
+  the Projects sidebar. Both call this macro, so the two stay identical: same
+  thumbnail size, hierarchy, spacing, type, dividers and hover state.
+
+    href     where the row goes
+    photo    a ListingPhoto, or none for the standard placeholder
+    title    the leading line — the address on the Organiser, the reference
+             in the Projects sidebar
+    meta     the second line
+    sub      the third line
+    selected true to mark this row as the one currently open
+    attrs    any extra attributes (used for the panel loading)
+#}
+{% macro property_row(href, photo, title, meta, sub, selected=false, attrs='') %}
+<a class="org-row{{ ' is-selected' if selected else '' }}" href="{{ href }}" {{ attrs|safe }}>
+  {% if photo %}
+  <img class="org-thumb" src="{{ url_for('listing_photo_image', id=photo.id, w=160) }}" alt="">
+  {% else %}
+  <div class="org-thumb is-empty" title="No photograph yet">&#127968;</div>
+  {% endif %}
+  <div class="org-main">
+    <span class="org-title">{{ title }}</span>
+    <div class="org-meta">{{ meta }}</div>
+    <div class="org-sub">{{ sub }}</div>
+  </div>
+</a>
+{% endmacro %}

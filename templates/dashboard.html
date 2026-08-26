@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_property_row.html" as pr %}
 {% block title %}Organiser{% endblock %}
 {% block topbar_title %}Organiser{% endblock %}
 {% block topbar_actions %}
@@ -47,27 +48,13 @@
       </header>
       <div class="org-body">
         {% for l in to_let %}
-        <div class="org-row">
-          {% if l.photos %}
-          <img class="org-thumb" src="{{ url_for('listing_photo_image', id=l.photos[0].id, w=160) }}" alt="">
-          {% else %}
-          <div class="org-thumb is-empty">&#127968;</div>
-          {% endif %}
-          <div class="org-main">
-            <a class="org-title" href="{{ url_for('project_detail', id=l.project_id) }}">
-              {{ (l.unit_name ~ ', ') if l.unit_name else '' }}{{ l.prop.address if l.prop else l.area or 'Property' }}
-            </a>
-            <div class="org-meta">
-              {% if l.price_display %}{{ l.price_display }}
-              {% elif l.listing_price %}&pound;{{ '{:,.0f}'.format(l.listing_price) }}{{ ' per annum' if l.listing_price_unit == 'pa' else (' per calendar month' if l.listing_price_unit == 'pcm' else '') }}
-              {% else %}Price on application{% endif %}
-              {% if l.size %} &middot; {{ '{:,.0f}'.format(l.size) }} sq ft{% endif %}
-            </div>
-            <div class="org-sub">
-              To Let &ndash; Available{% if l.prop and l.prop.postcode %} &middot; {{ l.prop.postcode }}{% endif %}
-            </div>
-          </div>
-        </div>
+        {# The same row component the Projects sidebar uses. #}
+        {{ pr.property_row(
+             url_for('project_detail', id=l.project_id),
+             l.photos[0] if l.photos else none,
+             (l.unit_name ~ ', ' if l.unit_name else '') ~ (l.prop.address if l.prop else l.area or 'Property'),
+             (l.price_display or format_rent(l.listing_price, l.listing_price_unit)) ~ ' · ' ~ format_size(l.size),
+             'To Let – Available' ~ (' · ' ~ l.prop.postcode if l.prop and l.prop.postcode else '')) }}
         {% else %}
         <div class="org-empty">No lettings instructions are currently available.</div>
         {% endfor %}
@@ -81,27 +68,12 @@
       </header>
       <div class="org-body">
         {% for l in for_sale %}
-        <div class="org-row">
-          {% if l.photos %}
-          <img class="org-thumb" src="{{ url_for('listing_photo_image', id=l.photos[0].id, w=160) }}" alt="">
-          {% else %}
-          <div class="org-thumb is-empty">&#127968;</div>
-          {% endif %}
-          <div class="org-main">
-            <a class="org-title" href="{{ url_for('project_detail', id=l.project_id) }}">
-              {{ (l.unit_name ~ ', ') if l.unit_name else '' }}{{ l.prop.address if l.prop else l.area or 'Property' }}
-            </a>
-            <div class="org-meta">
-              {% if l.price_display %}{{ l.price_display }}
-              {% elif l.listing_price %}&pound;{{ '{:,.0f}'.format(l.listing_price) }}
-              {% else %}Price on application{% endif %}
-              {% if l.size %} &middot; {{ '{:,.0f}'.format(l.size) }} sq ft{% endif %}
-            </div>
-            <div class="org-sub">
-              For Sale &ndash; Available{% if l.prop and l.prop.postcode %} &middot; {{ l.prop.postcode }}{% endif %}
-            </div>
-          </div>
-        </div>
+        {{ pr.property_row(
+             url_for('project_detail', id=l.project_id),
+             l.photos[0] if l.photos else none,
+             (l.unit_name ~ ', ' if l.unit_name else '') ~ (l.prop.address if l.prop else l.area or 'Property'),
+             (l.price_display or format_rent(l.listing_price, 'sale')) ~ ' · ' ~ format_size(l.size),
+             'For Sale – Available' ~ (' · ' ~ l.prop.postcode if l.prop and l.prop.postcode else '')) }}
         {% else %}
         <div class="org-empty">No sales instructions are currently available.</div>
         {% endfor %}

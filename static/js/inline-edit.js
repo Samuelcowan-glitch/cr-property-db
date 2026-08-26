@@ -26,6 +26,8 @@
   }
 
   function setup(form) {
+    if (form.dataset.inlineReady) return;      // never bind the same form twice
+    form.dataset.inlineReady = '1';
     var save = form.querySelector('[data-save]');
     var status = form.querySelector('[data-save-status]');
     var initial = snapshot(form);
@@ -73,9 +75,13 @@
     refresh();
   }
 
-  function start() {
-    Array.prototype.forEach.call(document.querySelectorAll('form[data-inline-edit]'), setup);
+  function start(root) {
+    Array.prototype.forEach.call(
+      (root || document).querySelectorAll('form[data-inline-edit]'), setup);
   }
+
+  // Panels that load a record after the page has opened call this themselves.
+  window.CRInlineEdit = {start: start};
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
   else start();
