@@ -2018,44 +2018,167 @@ def _inject_crm_constants():
 @app.route('/projects/new', methods=['GET', 'POST'])
 def project_new():
     properties = Property.query.order_by(Property.address).all()
+
+    def render(v, errors=None):
+        return render_template('projects/form.html', properties=properties,
+                               project=None, v=v, errors=errors or {})
+
     if request.method == 'POST':
-        def parse_date(val):
-            return datetime.strptime(val, '%Y-%m-%d').date() if val else None
-        def parse_float(val):
-            return float(val.replace(',', '')) if val and val.strip() else None
-        mode = request.form.get('property_mode', 'new')
-        if mode == 'existing' and request.form.get('property_id'):
-            prop = Property.query.get(int(request.form['property_id']))
+        form = request.form
+        errors = _validate_project_form(form)
+        if errors:
+            # Nothing is written, and everything typed comes straight back.
+            return render(form, errors)
+
+        mode = form.get('property_mode', 'existing')
+        if mode == 'existing':
+            # A property chosen from the register is used as it stands — no
+            # second copy is made of a property already on file.
+            prop = Property.query.get(_fint(form.get('property_id')) or 0)
         else:
-            prop = _find_or_create_property(request.form)
-        raw_name = request.form.get('name', '').strip()
-        name = raw_name or f"{request.form.get('instruction_type') or 'Instruction'} — {prop.address if prop else ''}".strip(' —')
+            prop = _find_or_create_property(form)   # reuses a matching address
+
+        name = (form.get('name') or '').strip() or \
+            f"{form.get('instruction_type') or 'Instruction'} — {prop.address if prop else ''}".strip(' —')
+
         p = Project(
             property_id=prop.id if prop else None,
             name=name,
-            project_ref=request.form.get('project_ref'),
-            status=request.form.get('status', 'Active'),
-            fee_earner=request.form.get('fee_earner'),
-            client=request.form.get('client'),
-            instruction_date=parse_date(request.form.get('instruction_date')),
-            instruction_type=request.form.get('instruction_type') or None,
-            fee_percent=parse_float(request.form.get('fee_percent')),
-            fee_fixed=parse_float(request.form.get('fee_fixed')),
-            available_from=parse_date(request.form.get('available_from')),
-            next_call=parse_date(request.form.get('next_call')),
-            client_phone=request.form.get('client_phone') or None,
-            client_mobile=request.form.get('client_mobile') or None,
-            client_email=request.form.get('client_email') or None,
-            key_contact=request.form.get('key_contact') or None,
-            notes=request.form.get('notes'),
+            project_ref=_ftext(form.get('project_ref')),
+            status=form.get('status') or 'Active',
+            fee_earner=_ftext(form.get('fee_earner')),
+            client=_ftext(form.get('client')),
+            landlord_name=_ftext(form.get('landlord_name')),
+            instruction_date=_parse_date(form.get('instruction_date')),
+            instruction_type=_ftext(form.get('instruction_type')),
+            fee_percent=_fnum(form.get('fee_percent')),
+            fee_fixed=_fnum(form.get('fee_fixed')),
+            available_from=_parse_date(form.get('available_from')),
+            next_call=_parse_date(form.get('next_call')),
+            client_phone=_ftext(form.get('client_phone')),
+            client_mobile=_ftext(form.get('client_mobile')),
+            client_email=_ftext(form.get('client_email')),
+            key_contact=_ftext(form.get('key_contact')),
+            location_description=_ftext(form.get('location_description')),
+            notes=_ftext(form.get('notes')),
         )
         db.session.add(p)
-        _upsert_client_contact(request.form)   # auto-add client to CRM
+        _upsert_client_contact(form)     # matches an existing contact first
+        db.session.flush()
+
+        _new_project_listing(p, prop, form)
         db.session.commit()
+        audit('create', entity='Project', entity_id=p.id, detail=p.instruction_type)
         flash('Project created.', 'success')
         return redirect(url_for('project_detail', id=p.id))
-    prop_id = request.args.get('property_id')
-    return render_template('projects/form.html', properties=properties, prop_id=prop_id, project=None)
+
+    # A fresh form, or one opened from a property page.
+    start = {'status': 'Active', 'property_mode': 'existing',
+             'property_id': request.args.get('property_id') or ''}
+    return render(start)
+
+
+def project_form_values(project):
+    """A project's fields as plain form values.
+
+    The record boxes are shared between the Project Overview and the New
+    Project page, so both hand them the same shape — a project's values, or
+    a rejected submission being sent back for correction.
+    """
+    if project is None:
+        return {'status': 'Active', 'property_mode': 'existing'}
+
+    def d(val):
+        return val.isoformat() if val else ''
+
+    return {
+        'name': project.name or '', 'project_ref': project.project_ref or '',
+        'client': project.client or '', 'landlord_name': project.landlord_name or '',
+        'status': project.status or 'Active',
+        'instruction_type': project.instruction_type or '',
+        'instruction_date': d(project.instruction_date),
+        'available_from': d(project.available_from),
+        'next_call': d(project.next_call),
+        'fee_earner': project.fee_earner or '',
+        'fee_percent': project.fee_percent or '', 'fee_fixed': project.fee_fixed or '',
+        'key_contact': project.key_contact or '',
+        'client_phone': project.client_phone or '', 'client_mobile': project.client_mobile or '',
+        'client_email': project.client_email or '',
+        'location_description': project.location_description or '',
+        'notes': project.notes or '',
+        'property_id': project.property_id or '',
+        'property_mode': 'existing',
+    }
+
+
+app.jinja_env.globals['project_form_values'] = project_form_values
+
+
+def _validate_project_form(form):
+    """What is missing or wrong on a new project, keyed by field."""
+    errors = {}
+    if not (form.get('instruction_type') or '').strip():
+        errors['instruction_type'] = 'Choose what kind of instruction this is.'
+
+    if form.get('property_mode', 'existing') == 'existing':
+        prop = Property.query.get(_fint(form.get('property_id')) or 0)
+        if prop is None:
+            errors['property_id'] = ('Choose a property from the register, or switch to '
+                                     '“Add a new one”.')
+    else:
+        if not (form.get('address') or '').strip():
+            errors['address'] = 'A new property needs an address.'
+        if not (form.get('postcode') or '').strip():
+            errors['postcode'] = 'A new property needs a postcode.'
+
+    email = (form.get('client_email') or '').strip()
+    if email and '@' not in email:
+        errors['client_email'] = 'That does not look like an email address.'
+    return errors
+
+
+def _new_project_listing(project, prop, form):
+    """Create the website listing for a brand new project, if one is wanted.
+
+    Only made when an asking price is given or a publishing option is ticked —
+    otherwise the project starts without one, exactly as before, and a listing
+    can be added later from the Project Overview.
+    """
+    price = _fnum(form.get('listing_price'))
+    to_web = form.get('publish_website') == '1'
+    to_zoopla = form.get('publish_zoopla') == '1'
+    photos = [f for f in request.files.getlist('photos') if f and f.filename]
+    if not (price or to_web or to_zoopla or photos):
+        return None
+
+    listing = Listing(project_id=project.id, property_id=prop.id if prop else None)
+    if price:
+        listing.listing_price = price
+        listing.listing_price_unit = form.get('listing_price_unit') or 'pa'
+    # Publishing happens only where it was actually asked for.
+    if to_web:
+        listing.website_listed = True
+        listing.website_published_at = datetime.utcnow()
+    if to_zoopla:
+        listing.zoopla_listed = True
+        listing.zoopla_published_at = datetime.utcnow()
+    db.session.add(listing)
+    db.session.flush()
+
+    for position, f in enumerate(photos):
+        ok, why = _read_image_upload(f)
+        if not ok:
+            flash(f'{f.filename} {why}', 'warning')
+            continue
+        data, mime, name = ok
+        db.session.add(ListingPhoto(
+            listing_id=listing.id, file_data=data, filename=name, file_mime=mime,
+            file_size=len(data), sort_order=position,   # kept in the order chosen
+        ))
+    if to_web or to_zoopla:
+        audit('publish', entity='Listing', entity_id=listing.id,
+              detail=','.join(t for t, on in (('website', to_web), ('zoopla', to_zoopla)) if on))
+    return listing
 
 
 @app.route('/projects/<int:id>')
@@ -2101,7 +2224,10 @@ def project_edit(id):
     if request.method == 'POST':
         # Presence-guarded: the Project Overview is editable in place and posts
         # only the fields on screen, so a save must not blank the others.
+        was_named = project.name
         apply_form_fields(project, request.form, PROJECT_FIELDS)
+        if not (project.name or '').strip():
+            project.name = was_named          # a project is never left nameless
         if 'property_id' in request.form:
             raw = request.form.get('property_id')
             project.property_id = int(raw) if raw else None
@@ -2110,7 +2236,8 @@ def project_edit(id):
         db.session.commit()
         flash('Project updated.', 'success')
         return _back_to('project_detail', id=project.id)
-    return render_template('projects/form.html', properties=properties, prop_id=project.property_id, project=project)
+    return render_template('projects/form.html', properties=properties, project=project,
+                           v=project_form_values(project), errors={})
 
 
 @app.route('/projects/<int:id>/delete', methods=['POST'])

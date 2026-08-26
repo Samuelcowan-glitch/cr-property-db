@@ -1,0 +1,160 @@
+{#
+  Project record fields, shared by the Project Overview and the New Project
+  page so the two never drift apart.
+
+  Each macro takes:
+    v        a dict of current values (project_form_values(), or request.form
+             when a submission has been sent back for correction)
+    form_id  the id of the form the fields belong to, so a box can sit
+             anywhere on the page without nesting forms
+    errors   {field: message}, shown beside the field it belongs to
+#}
+
+{% macro _err(errors, field) -%}
+  {%- if errors and errors.get(field) %}<span class="fmsg">{{ errors[field] }}</span>{% endif -%}
+{%- endmacro %}
+
+{% macro _cls(errors, field) -%}
+  {{- 'fcell--edit is-invalid' if errors and errors.get(field) else 'fcell--edit' -}}
+{%- endmacro %}
+
+
+{# ── Instruction detail ───────────────────────────────────────────────────#}
+{% macro instruction_box(v, form_id, errors={}, statuses=['Active','Complete','On Hold'],
+                         types=['Letting','Sale','Rent Review','Lease Renewal','Valuation',
+                                'Building Survey','Lease Advisory','Business Rates','Other']) %}
+<div class="box">
+  <div class="box-head">Instruction Detail</div>
+
+  <div class="frow">
+    <div class="fcell fcell--label">Project name</div>
+    <div class="{{ _cls(errors, 'name') }}">
+      <input type="text" name="name" value="{{ v.get('name') or '' }}"
+             placeholder="Left blank, built from the type and address" form="{{ form_id }}">
+      {{ _err(errors, 'name') }}
+    </div>
+    <div class="fcell fcell--label w-narrow">Reference</div>
+    <div class="fcell fcell--edit">
+      <input type="text" name="project_ref" value="{{ v.get('project_ref') or '' }}"
+             placeholder="e.g. CR/2026/001" form="{{ form_id }}">
+    </div>
+  </div>
+
+  <div class="frow">
+    <div class="fcell fcell--label">Client</div>
+    <div class="fcell fcell--edit">
+      <input type="text" name="client" value="{{ v.get('client') or '' }}"
+             placeholder="Not set" form="{{ form_id }}">
+    </div>
+    <div class="fcell fcell--label w-narrow">Landlord</div>
+    <div class="fcell fcell--edit">
+      <input type="text" name="landlord_name" value="{{ v.get('landlord_name') or '' }}"
+             placeholder="Not set" form="{{ form_id }}">
+    </div>
+  </div>
+
+  <div class="frow">
+    <div class="fcell fcell--label">Status</div>
+    <div class="fcell fcell--edit">
+      <select name="status" form="{{ form_id }}">
+        {% for st in statuses %}
+        <option value="{{ st }}" {{ 'selected' if v.get('status') == st else '' }}>{{ st }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="fcell fcell--label">Instruction type</div>
+    <div class="{{ _cls(errors, 'instruction_type') }}">
+      <select name="instruction_type" form="{{ form_id }}">
+        <option value="">— Select —</option>
+        {% for it in types %}
+        <option value="{{ it }}" {{ 'selected' if v.get('instruction_type') == it else '' }}>{{ it }}</option>
+        {% endfor %}
+      </select>
+      {{ _err(errors, 'instruction_type') }}
+    </div>
+  </div>
+
+  <div class="frow">
+    <div class="fcell fcell--label">Instructed on</div>
+    <div class="fcell fcell--edit">
+      <input type="date" name="instruction_date" value="{{ v.get('instruction_date') or '' }}" form="{{ form_id }}">
+    </div>
+    <div class="fcell fcell--label">Available from</div>
+    <div class="fcell fcell--edit">
+      <input type="date" name="available_from" value="{{ v.get('available_from') or '' }}" form="{{ form_id }}">
+    </div>
+  </div>
+
+  <div class="frow">
+    <div class="fcell fcell--label">Fee earner</div>
+    <div class="fcell fcell--edit">
+      <input type="text" name="fee_earner" value="{{ v.get('fee_earner') or '' }}"
+             placeholder="Not set" form="{{ form_id }}">
+    </div>
+    <div class="fcell fcell--label">Fee</div>
+    <div class="fcell fcell--edit" style="gap:6px">
+      <input type="number" name="fee_percent" step="0.01" min="0" style="max-width:80px"
+             value="{{ v.get('fee_percent') or '' }}" placeholder="%" form="{{ form_id }}">
+      <input type="number" name="fee_fixed" step="1" min="0"
+             value="{{ v.get('fee_fixed') or '' }}" placeholder="£ fixed" form="{{ form_id }}">
+    </div>
+  </div>
+</div>
+{% endmacro %}
+
+
+{# ── Client contact details ───────────────────────────────────────────────#}
+{% macro client_box(v, form_id, errors={}) %}
+<div class="box">
+  <div class="box-head">Client Contact</div>
+  <div class="frow">
+    <div class="fcell fcell--label">Key contact</div>
+    <div class="fcell fcell--edit">
+      <input type="text" name="key_contact" value="{{ v.get('key_contact') or '' }}"
+             placeholder="e.g. Cara Mason" form="{{ form_id }}">
+    </div>
+    <div class="fcell fcell--label w-narrow">Phone</div>
+    <div class="fcell fcell--edit">
+      <input type="tel" name="client_phone" value="{{ v.get('client_phone') or '' }}"
+             placeholder="Not set" form="{{ form_id }}">
+    </div>
+  </div>
+  <div class="frow">
+    <div class="fcell fcell--label">Mobile</div>
+    <div class="fcell fcell--edit">
+      <input type="tel" name="client_mobile" value="{{ v.get('client_mobile') or '' }}"
+             placeholder="Not set" form="{{ form_id }}">
+    </div>
+    <div class="fcell fcell--label w-narrow">Email</div>
+    <div class="{{ _cls(errors, 'client_email') }}">
+      <input type="email" name="client_email" value="{{ v.get('client_email') or '' }}"
+             placeholder="Not set" form="{{ form_id }}">
+      {{ _err(errors, 'client_email') }}
+    </div>
+  </div>
+</div>
+{% endmacro %}
+
+
+{# ── Location description ─────────────────────────────────────────────────#}
+{% macro location_box(v, form_id) %}
+<div class="box">
+  <div class="box-head">Location</div>
+  <div style="padding:12px 14px">
+    <textarea name="location_description" rows="4" class="fin" form="{{ form_id }}"
+              placeholder="Where the property sits, transport, local occupiers…">{{ v.get('location_description') or '' }}</textarea>
+  </div>
+</div>
+{% endmacro %}
+
+
+{# ── Notes ────────────────────────────────────────────────────────────────#}
+{% macro notes_box(v, form_id, heading='Description &amp; Notes') %}
+<div class="box">
+  <div class="box-head">{{ heading|safe }}</div>
+  <div style="padding:12px 14px">
+    <textarea name="notes" rows="5" class="fin" form="{{ form_id }}"
+              placeholder="Scope of instruction, key dates, relevant background…">{{ v.get('notes') or '' }}</textarea>
+  </div>
+</div>
+{% endmacro %}

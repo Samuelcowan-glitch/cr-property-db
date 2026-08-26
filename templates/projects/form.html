@@ -1,261 +1,245 @@
-﻿{% extends "base.html" %}
-{% block title %}{{ 'Edit Project' if project else 'New Project' }}{% endblock %}
-{% block topbar_title %}{{ 'Edit Project' if project else 'New Project / Instruction' }}{% endblock %}
+{% extends "base.html" %}
+{% import "projects/_record_boxes.html" as rb %}
+
+{% set editing = project is not none %}
+{% block title %}{{ 'Edit Project' if editing else 'New Project' }}{% endblock %}
+{% block topbar_title %}{{ 'Edit Project' if editing else 'New Project / Instruction' }}{% endblock %}
 {% block topbar_actions %}
-  <a href="{{ url_for('projects_list') }}" class="btn btn-outline btn-sm">← Projects</a>
+  <a href="{{ url_for('projects_list') }}" class="btn btn-outline btn-sm">&larr; Projects</a>
 {% endblock %}
 
 {% block content %}
-<script>
-function switchPropMode(mode) {
-  var isNew = mode === 'new';
-  document.getElementById('prop-new').style.display = isNew ? '' : 'none';
-  document.getElementById('prop-existing').style.display = isNew ? 'none' : '';
-  var lblNew = document.getElementById('lbl-new');
-  var lblExist = document.getElementById('lbl-existing');
-  if (isNew) {
-    lblNew.style.background = '#0e1f44'; lblNew.style.color = '#fff'; lblNew.style.borderColor = '#0e1f44';
-    lblExist.style.background = '#fff'; lblExist.style.color = '#0e1f44'; lblExist.style.borderColor = '#cdd2d8';
-  } else {
-    lblExist.style.background = '#0e1f44'; lblExist.style.color = '#fff'; lblExist.style.borderColor = '#0e1f44';
-    lblNew.style.background = '#fff'; lblNew.style.color = '#0e1f44'; lblNew.style.borderColor = '#cdd2d8';
-  }
-  // check the right radio
-  document.querySelector('[name="property_mode"][value="' + mode + '"]').checked = true;
-}
-</script>
+{% set form_id = 'project-form' %}
+
+{# The record form is declared on its own so the boxes below can sit in any
+   column without one form ending up inside another. #}
+<form id="{{ form_id }}" method="post" enctype="multipart/form-data"
+      action="{{ url_for('project_edit', id=project.id) if editing else url_for('project_new') }}"></form>
+{% if editing %}
+<form id="project-delete-form" method="post" class="confirm-delete"
+      action="{{ url_for('project_delete', id=project.id) }}"></form>
+{% endif %}
+
 <div class="breadcrumb">
-  <a href="{{ url_for('dashboard') }}">Dashboard</a>
-  <span class="sep">/</span>
-  <a href="{{ url_for('projects_list') }}">Projects</a>
-  <span class="sep">/</span>
-  <span class="current">{{ 'Edit' if project else 'New' }}</span>
+  <a href="{{ url_for('projects_list') }}">Projects</a><span class="sep">/</span>
+  <span class="current">{{ 'Edit' if editing else 'New project' }}</span>
 </div>
 
-<div class="card" style="max-width:760px">
-  <div class="card-header">
-    <div class="card-title">{{ 'Edit Project Details' if project else 'New Project / Instruction' }}</div>
+{% if errors %}
+<div class="cal-warn" style="margin-bottom:12px">
+  <strong>This project has not been created yet.</strong>
+  {{ errors|length }} field{{ '' if errors|length == 1 else 's' }} need
+  {{ 's' if errors|length == 1 else '' }} attention below. Everything you have
+  already typed has been kept.
+</div>
+{% endif %}
+
+<div class="rec-toolbar">
+  <span style="border:0;background:none;padding:0 6px 0 0;font-weight:700;color:#0e1f44">
+    {{ 'Project' if editing else 'New project' }}
+  </span>
+  <span class="sp"></span>
+  <a href="{{ url_for('project_detail', id=project.id) if editing else url_for('projects_list') }}"
+     class="btn btn-outline btn-sm">Cancel</a>
+  {% if editing %}
+  <button type="submit" form="project-delete-form" class="btn btn-danger btn-sm">Delete Project</button>
+  {% endif %}
+  <span class="rec-save">
+    <button type="submit" class="btn btn-primary btn-save" form="{{ form_id }}">
+      {{ 'Save Changes' if editing else 'Create Project' }}
+    </button>
+  </span>
+</div>
+
+<div class="rec-cols-3">
+
+  <!-- ════ LEFT: property, next call, photographs ════ -->
+  <div class="rec-col">
+
+    <div class="box">
+      <div class="box-head">Property</div>
+
+      <div class="prop-mode">
+        <label class="prop-pill">
+          <input type="radio" name="property_mode" value="existing" form="{{ form_id }}"
+                 {{ 'checked' if v.get('property_mode', 'existing') == 'existing' }}>
+          <span>On the register</span>
+        </label>
+        <label class="prop-pill">
+          <input type="radio" name="property_mode" value="new" form="{{ form_id }}"
+                 {{ 'checked' if v.get('property_mode') == 'new' }}>
+          <span>Add a new one</span>
+        </label>
+      </div>
+
+      {# Existing property — searchable, so nothing is keyed in twice. #}
+      <div class="frow" data-prop-pane="existing">
+        <div class="fcell fcell--label">Property</div>
+        <div class="fcell {{ 'fcell--edit is-invalid' if errors.get('property_id') else 'fcell--edit' }}">
+          <select name="property_id" data-search form="{{ form_id }}">
+            <option value="">— Choose a property —</option>
+            {% for p in properties %}
+            <option value="{{ p.id }}" {{ 'selected' if v.get('property_id')|string == p.id|string }}>
+              {{ p.address }}{% if p.postcode %}, {{ p.postcode }}{% endif %}
+            </option>
+            {% endfor %}
+          </select>
+          {% if errors.get('property_id') %}<span class="fmsg">{{ errors['property_id'] }}</span>{% endif %}
+        </div>
+      </div>
+
+      {# A property not yet on the register. Matching address and postcode are
+         reused rather than duplicated. #}
+      <div data-prop-pane="new">
+        <div class="frow">
+          <div class="fcell fcell--label">Address</div>
+          <div class="fcell {{ 'fcell--edit is-invalid' if errors.get('address') else 'fcell--edit' }}">
+            <input type="text" name="address" value="{{ v.get('address') or '' }}"
+                   placeholder="e.g. 12 King Street, London" form="{{ form_id }}">
+            {% if errors.get('address') %}<span class="fmsg">{{ errors['address'] }}</span>{% endif %}
+          </div>
+        </div>
+        <div class="frow">
+          <div class="fcell fcell--label">Postcode</div>
+          <div class="fcell {{ 'fcell--edit is-invalid' if errors.get('postcode') else 'fcell--edit' }}">
+            <input type="text" name="postcode" value="{{ v.get('postcode') or '' }}"
+                   placeholder="e.g. SW10 0SZ" style="text-transform:uppercase" form="{{ form_id }}">
+            {% if errors.get('postcode') %}<span class="fmsg">{{ errors['postcode'] }}</span>{% endif %}
+          </div>
+        </div>
+        <div class="frow">
+          <div class="fcell fcell--label">Type</div>
+          <div class="fcell fcell--edit">
+            <select name="property_type" form="{{ form_id }}">
+              <option value="">— Select —</option>
+              {% for t in ['Office','Retail','Industrial','Warehouse','Residential','Mixed Use','Land','Hotel','Leisure','Other'] %}
+              <option value="{{ t }}" {{ 'selected' if v.get('property_type') == t }}>{{ t }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="frow">
+          <div class="fcell fcell--label">Floor area</div>
+          <div class="fcell fcell--edit" style="gap:6px">
+            <input type="number" name="size" step="0.01" min="0" style="max-width:96px"
+                   value="{{ v.get('size') or '' }}" placeholder="sq ft" form="{{ form_id }}">
+            <select name="measurement_type" form="{{ form_id }}">
+              <option value="">Basis</option>
+              {% for m in ['GIA','NIA','GEA','IPMS 1','IPMS 2','IPMS 3'] %}
+              <option value="{{ m }}" {{ 'selected' if v.get('measurement_type') == m }}>{{ m }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="box">
+      <div class="box-head">Next Call</div>
+      <div style="padding:10px 12px">
+        <input type="date" name="next_call" class="fin"
+               value="{{ v.get('next_call') or '' }}" form="{{ form_id }}">
+      </div>
+    </div>
+
+    {% if not editing %}
+    <div class="box">
+      <div class="box-head">Photographs</div>
+      <div style="padding:12px 14px">
+        <div class="photo-drop" style="position:relative">
+          <strong>Choose photographs</strong><br>
+          <span style="font-size:11px">JPG, PNG or WEBP &mdash; several at once</span>
+          <input type="file" name="photos" accept="image/*" multiple form="{{ form_id }}">
+        </div>
+        <div style="font-size:11.5px;color:var(--grey-600);margin-top:8px">
+          The first photograph leads the listing. Once the project exists you can
+          drag them into any order on the Project Overview.
+        </div>
+      </div>
+    </div>
+    {% endif %}
   </div>
 
-  <form method="post">
-    <div class="form-grid" style="margin-bottom:16px">
+  <!-- ════ MIDDLE: the instruction itself ════ -->
+  <div class="rec-col">
+    {{ rb.instruction_box(v, form_id, errors) }}
+    {{ rb.client_box(v, form_id, errors) }}
+    {{ rb.location_box(v, form_id) }}
+    {{ rb.notes_box(v, form_id) }}
+  </div>
 
-      <div class="form-group span-2">
-        <label for="name">Project / Instruction Name *</label>
-        <input type="text" id="name" name="name" required
-               value="{{ project.name if project else '' }}"
-               placeholder="e.g. Rent Review — 12 King Street (auto-generated if blank)">
-      </div>
-
-      <div class="form-group">
-        <label for="project_ref">Project Reference</label>
-        <input type="text" id="project_ref" name="project_ref"
-               value="{{ project.project_ref if project else '' }}"
-               placeholder="e.g. CR/2026/001">
-      </div>
-
-      <div class="form-group">
-        <label for="status">Status</label>
-        <select id="status" name="status">
-          <option value="Active"   {{ 'selected' if project and project.status == 'Active'   else ('selected' if not project else '') }}>Active</option>
-          <option value="On Hold"  {{ 'selected' if project and project.status == 'On Hold'  else '' }}>On Hold</option>
-          <option value="Complete" {{ 'selected' if project and project.status == 'Complete' else '' }}>Complete</option>
-        </select>
-      </div>
-
-      {% if not project %}
-      {# ── Property card (new project only) ── #}
-      </div>{# close form-grid temporarily #}
-      <div class="card" style="margin-bottom:16px;border:1px solid #e0e4ea;border-radius:6px">
-        <div class="card-header" style="background:#0e1f44;color:#fff;padding:10px 16px;border-radius:6px 6px 0 0">
-          <div class="card-title" style="color:#fff">Property</div>
-        </div>
-        <div style="padding:16px">
-          <div style="display:flex;gap:8px;margin-bottom:16px">
-            <label onclick="switchPropMode('new')" style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:6px 14px;border-radius:20px;border:2px solid #0e1f44;background:#0e1f44;color:#fff;font-size:13px;font-weight:600" id="lbl-new">
-              <input type="radio" name="property_mode" value="new" checked style="position:absolute;opacity:0;width:0;height:0"> New property
-            </label>
-            <label onclick="switchPropMode('existing')" style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:6px 14px;border-radius:20px;border:2px solid #cdd2d8;background:#fff;color:#0e1f44;font-size:13px;font-weight:600" id="lbl-existing">
-              <input type="radio" name="property_mode" value="existing" style="position:absolute;opacity:0;width:0;height:0"> Link existing
-            </label>
-          </div>
-
-          {# New property inputs #}
-          <div id="prop-new" class="form-grid">
-            <div class="form-group span-2">
-              <label for="address">Address *</label>
-              <input type="text" id="address" name="address"
-                     placeholder="e.g. 12 King Street, London">
-            </div>
-            <div class="form-group">
-              <label for="postcode">Postcode *</label>
-              <input type="text" id="postcode" name="postcode"
-                     placeholder="e.g. SW10 0SZ" style="text-transform:uppercase">
-            </div>
-            <div class="form-group">
-              <label for="property_type">Property Type</label>
-              <select id="property_type" name="property_type">
-                <option value="">— Select —</option>
-                {% for t in ['Office','Retail','Industrial','Warehouse','Residential','Mixed Use','Land','Hotel','Leisure','Other'] %}
-                <option value="{{ t }}">{{ t }}</option>
-                {% endfor %}
-              </select>
-            </div>
-            <div class="form-group">
-              <label for="size">Floor Area (sq ft)</label>
-              <input type="number" id="size" name="size" step="0.01" min="0"
-                     placeholder="e.g. 2500">
-            </div>
-            <div class="form-group">
-              <label for="measurement_type">Measurement Basis</label>
-              <select id="measurement_type" name="measurement_type">
-                <option value="">— Select —</option>
-                <option value="GIA">GIA — Gross Internal Area</option>
-                <option value="NIA">NIA — Net Internal Area</option>
-                <option value="GEA">GEA — Gross External Area</option>
-                <option value="IPMS 1">IPMS 1</option>
-                <option value="IPMS 2">IPMS 2</option>
-                <option value="IPMS 3">IPMS 3</option>
-              </select>
-            </div>
-          </div>
-
-          {# Link existing dropdown #}
-          <div id="prop-existing" style="display:none">
-            <div class="form-group">
-              <label for="property_id">Select Property</label>
-              <select id="property_id" name="property_id">
-                <option value="">— No property linked —</option>
-                {% for p in properties %}
-                <option value="{{ p.id }}"
-                  {{ 'selected' if prop_id and prop_id|int == p.id else '' }}>
-                  {{ p.address }}, {{ p.postcode }}
-                </option>
-                {% endfor %}
-              </select>
-            </div>
-          </div>
+  <!-- ════ RIGHT: client, marketing ════ -->
+  <div class="rec-col">
+    {% if not editing %}
+    <div class="box">
+      <div class="box-head">Marketing &amp; Publishing</div>
+      <div class="frow">
+        <div class="fcell fcell--label">Asking price</div>
+        <div class="fcell fcell--edit" style="gap:6px">
+          <input type="number" name="listing_price" step="1" min="0"
+                 value="{{ v.get('listing_price') or '' }}" placeholder="£" form="{{ form_id }}">
+          <select name="listing_price_unit" form="{{ form_id }}">
+            <option value="pa"   {{ 'selected' if v.get('listing_price_unit', 'pa') == 'pa' }}>per annum</option>
+            <option value="pcm"  {{ 'selected' if v.get('listing_price_unit') == 'pcm' }}>per month</option>
+            <option value="sale" {{ 'selected' if v.get('listing_price_unit') == 'sale' }}>sale price</option>
+          </select>
         </div>
       </div>
-      <div class="form-grid" style="margin-bottom:16px">
-      {% else %}
-      <div class="form-group span-2">
-        <label for="property_id">Linked Property</label>
-        <select id="property_id" name="property_id">
-          <option value="">— No property linked —</option>
-          {% for p in properties %}
-          <option value="{{ p.id }}"
-            {{ 'selected' if project and project.property_id == p.id else '' }}>
-            {{ p.address }}, {{ p.postcode }}
-          </option>
-          {% endfor %}
-        </select>
+      <div class="frow">
+        <div class="fcell fcell--label">Website</div>
+        <div class="fcell fcell--edit">
+          <label class="pub-check">
+            <input type="checkbox" name="publish_website" value="1" form="{{ form_id }}"
+                   {{ 'checked' if v.get('publish_website') }}>
+            Publish now
+          </label>
+        </div>
       </div>
-      {% endif %}
-
-      <div class="form-group">
-        <label for="client">Client</label>
-        <input type="text" id="client" name="client"
-               value="{{ project.client if project else '' }}"
-               placeholder="Client name or organisation">
+      <div class="frow">
+        <div class="fcell fcell--label">Zoopla</div>
+        <div class="fcell fcell--edit">
+          <label class="pub-check">
+            <input type="checkbox" name="publish_zoopla" value="1" form="{{ form_id }}"
+                   {{ 'checked' if v.get('publish_zoopla') }}>
+            Send to the feed now
+          </label>
+        </div>
       </div>
-
-      <div class="form-group">
-        <label for="fee_earner">Fee Earner / Surveyor</label>
-        <input type="text" id="fee_earner" name="fee_earner"
-               value="{{ project.fee_earner if project else '' }}"
-               placeholder="e.g. B. Rutter">
-      </div>
-
-      <div class="form-group">
-        <label for="instruction_date">Instruction Date</label>
-        <input type="date" id="instruction_date" name="instruction_date"
-               value="{{ project.instruction_date.strftime('%Y-%m-%d') if project and project.instruction_date else '' }}">
-      </div>
-
-      <div class="form-group">
-        <label for="instruction_type">Instruction Type</label>
-        <select id="instruction_type" name="instruction_type">
-          <option value="">— Select —</option>
-          {% for t in ['Letting','Sale','Rent Review','Lease Renewal','Valuation','Building Survey','Lease Advisory','Business Rates','Other'] %}
-          <option value="{{ t }}" {{ 'selected' if project and project.instruction_type == t else '' }}>{{ t }}</option>
-          {% endfor %}
-        </select>
-      </div>
-
-      <div class="form-group">
-        <label for="available_from">Available From</label>
-        <input type="date" id="available_from" name="available_from"
-               value="{{ project.available_from.strftime('%Y-%m-%d') if project and project.available_from else '' }}">
-      </div>
-
-      <div class="form-group">
-        <label for="next_call">Next Call / Action Date</label>
-        <input type="date" id="next_call" name="next_call"
-               value="{{ project.next_call.strftime('%Y-%m-%d') if project and project.next_call else '' }}">
-      </div>
-
-      <div class="form-group">
-        <label for="fee_percent">Fee (%)</label>
-        <input type="number" id="fee_percent" name="fee_percent" step="0.01" min="0"
-               value="{{ project.fee_percent if project and project.fee_percent else '' }}"
-               placeholder="e.g. 10">
-      </div>
-
-      <div class="form-group">
-        <label for="fee_fixed">Fee (£ fixed)</label>
-        <input type="number" id="fee_fixed" name="fee_fixed" step="1" min="0"
-               value="{{ project.fee_fixed | int if project and project.fee_fixed else '' }}"
-               placeholder="e.g. 5000">
-      </div>
-
-      <div class="form-section">Client Contact Details</div>
-
-      <div class="form-group">
-        <label for="client_phone">Client Phone</label>
-        <input type="text" id="client_phone" name="client_phone"
-               value="{{ project.client_phone if project else '' }}">
-      </div>
-
-      <div class="form-group">
-        <label for="client_mobile">Client Mobile</label>
-        <input type="text" id="client_mobile" name="client_mobile"
-               value="{{ project.client_mobile if project else '' }}">
-      </div>
-
-      <div class="form-group">
-        <label for="client_email">Client Email</label>
-        <input type="text" id="client_email" name="client_email"
-               value="{{ project.client_email if project else '' }}">
-      </div>
-
-      <div class="form-group">
-        <label for="key_contact">Key Contact</label>
-        <input type="text" id="key_contact" name="key_contact"
-               value="{{ project.key_contact if project else '' }}"
-               placeholder="e.g. Cara Mason">
-      </div>
-
-      <div class="form-group span-2">
-        <label for="notes">Description / Notes</label>
-        <textarea id="notes" name="notes" rows="4"
-                  placeholder="Scope of instruction, key dates, relevant background…">{{ project.notes if project and project.notes else '' }}</textarea>
+      <div style="padding:10px 14px;font-size:11.5px;color:var(--grey-600);border-top:1px solid var(--cell-line)">
+        Both are off unless you tick them. A website listing is only created if you
+        set an asking price or choose to publish; you can add one later from the
+        Project Overview either way.
       </div>
     </div>
-
-    <div class="form-actions">
-      <button type="submit" class="btn btn-primary">{{ 'Save Changes' if project else 'Create Project' }}</button>
-      {% if project %}
-        <a href="{{ url_for('project_detail', id=project.id) }}" class="btn btn-secondary">Cancel</a>
-        <button type="submit" form="project-delete-form" class="btn btn-danger btn-sm" style="margin-left:auto">Delete Project</button>
-      {% else %}
-        <a href="{{ url_for('projects_list') }}" class="btn btn-secondary">Cancel</a>
-      {% endif %}
-    </div>
-  </form>
-  {% if project %}
-  <!-- Delete form kept OUTSIDE the edit form (nested forms are invalid HTML) -->
-  <form id="project-delete-form" method="post" action="{{ url_for('project_delete', id=project.id) }}" class="confirm-delete"></form>
-  {% endif %}
+    {% endif %}
+  </div>
 </div>
+
+<div class="rec-foot">
+  <a href="{{ url_for('project_detail', id=project.id) if editing else url_for('projects_list') }}"
+     class="btn btn-outline">Cancel</a>
+  <button type="submit" class="btn btn-primary" form="{{ form_id }}">
+    {{ 'Save Changes' if editing else 'Create Project' }}
+  </button>
+</div>
+
+<script>
+/* Only one property pane is relevant at a time. */
+(function () {
+  var radios = document.querySelectorAll('[name="property_mode"]');
+  if (!radios.length) return;
+  function show() {
+    var mode = document.querySelector('[name="property_mode"]:checked');
+    mode = mode ? mode.value : 'existing';
+    document.querySelectorAll('[data-prop-pane]').forEach(function (pane) {
+      pane.hidden = pane.dataset.propPane !== mode;
+    });
+    document.querySelectorAll('.prop-pill').forEach(function (pill) {
+      pill.classList.toggle('is-on', pill.querySelector('input').checked);
+    });
+  }
+  radios.forEach(function (r) { r.addEventListener('change', show); });
+  show();
+})();
+</script>
 {% endblock %}

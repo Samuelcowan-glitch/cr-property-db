@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{% import "projects/_record_boxes.html" as rb %}
+{% set pv = project_form_values(project) %}
 {% block title %}{{ project.name }}{% endblock %}
 {% block topbar_title %}{{ project.name }}{% endblock %}
 {% block topbar_actions %}
@@ -190,46 +192,14 @@
   <div>
 
     <!-- Status / Instruction card -->
+    {# The same fields as the New Project page, from one shared definition. #}
+    {{ rb.instruction_box(pv, 'project-form') }}
+
+    {% set has_price = project.property and project.property.listing_price and project.property.listing_price > 0 %}
+    {% if has_price or project.fee_percent or project.fee_fixed %}
     <div class="box">
-      <div class="box-head">Instruction Detail</div>
-      <div class="frow">
-        <div class="fcell fcell--label">Project name</div>
-        <div class="fcell fcell--edit"><input type="text" name="name" value="{{ project.name }}" required form="project-form"></div>
-        <div class="fcell fcell--label w-narrow">Reference</div>
-        <div class="fcell fcell--edit"><input type="text" name="project_ref" value="{{ project.project_ref or '' }}" placeholder="e.g. CR/2026/001" form="project-form"></div>
-      </div>
-      <div class="frow">
-        <div class="fcell fcell--label">Client</div>
-        <div class="fcell fcell--edit"><input type="text" name="client" value="{{ project.client or '' }}" placeholder="Not set" form="project-form"></div>
-        <div class="fcell fcell--label w-narrow">Landlord</div>
-        <div class="fcell fcell--edit"><input type="text" name="landlord_name" value="{{ project.landlord_name or '' }}" placeholder="Not set" form="project-form"></div>
-      </div>
-      <div class="frow">
-        <div class="fcell fcell--label">Status</div>
-        <div class="fcell fcell--edit">
-          <select name="status" form="project-form">
-            {% for st in ['Active','Complete','On Hold'] %}
-            <option value="{{ st }}" {{ 'selected' if project.status == st else '' }}>{{ st }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div class="fcell fcell--label">Instruction type</div>
-        <div class="fcell fcell--edit">
-          <select name="instruction_type" form="project-form">
-            <option value="">— Select —</option>
-            {% for it in ['Letting','Sale','Rent Review','Lease Renewal','Valuation','Building Survey','Lease Advisory','Business Rates','Other'] %}
-            <option value="{{ it }}" {{ 'selected' if project.instruction_type == it else '' }}>{{ it }}</option>
-            {% endfor %}
-          </select>
-        </div>
-      </div>
-      <div class="frow">
-        <div class="fcell fcell--label">Available from</div>
-        <div class="fcell fcell--edit"><input type="date" name="available_from" value="{{ project.available_from.isoformat() if project.available_from else '' }}" form="project-form"></div>
-        <div class="fcell fcell--label">Fee earner</div>
-        <div class="fcell fcell--edit"><input type="text" name="fee_earner" value="{{ project.fee_earner or '' }}" placeholder="Not set" form="project-form"></div>
-      </div>
-      <div style="padding:0">
+      <div class="box-head">Fees &amp; Rent</div>
+      <div style="padding:12px 14px">
         <div style="display:grid;grid-template-columns:1fr 1fr">
           {% macro dfield(lbl, val) %}
           <div class="frow" style="border-right:1px solid var(--cell-line)">
@@ -266,26 +236,11 @@
         </div>
       </div>
     </div>
+    {% endif %}
 
-    <!-- Location Description -->
-    <div class="box">
-      <div class="box-head">
-        <span>Location</span>
-        <button onclick="toggleLocDesc()" style="background:none;border:none;color:#e0303f;font-weight:600;cursor:pointer;font-size:11px">Edit</button>
-      </div>
-      <div style="padding:12px 14px">
-        <div id="loc-view">
-          {% if project.location_description %}
-          <p style="font-size:12.5px;line-height:1.65;color:#1a202c;white-space:pre-wrap;margin:0">{{ project.location_description }}</p>
-          {% else %}
-          <p style="font-size:12px;color:#9aa0a6;font-style:italic;margin:0">No location description yet. Click Edit to add.</p>
-          {% endif %}
-        </div>
-        <div style="margin-top:6px">
-          <textarea name="location_description" rows="4" class="fin"
-                    placeholder="Where the property sits, transport, local occupiers…" form="project-form">{{ project.location_description or '' }}</textarea>
-        </div>
-      </div>
+    {# Client contact details, the same fields as the New Project page. #}
+    {{ rb.client_box(pv, 'project-form') }}
+    {{ rb.location_box(pv, 'project-form') }}
     </div>
 
 

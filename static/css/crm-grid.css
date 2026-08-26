@@ -371,3 +371,51 @@ table.rec-table td.actions { white-space: nowrap; text-align: right; }
   font-size: 11px; color: var(--danger);
 }
 .photo-hint { padding: 0 8px 8px; font-size: 11px; color: var(--grey-400); }
+
+/* ── New project page ──────────────────────────────────────────────────────
+   The create page is the record page with empty fields, so it reuses .box,
+   .frow and .fcell throughout. These few rules cover what only the create
+   page needs: choosing between an existing and a new property, validation
+   messages, publishing tick-boxes and the closing button row. */
+
+.prop-mode { display: flex; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--cell-line); }
+.prop-pill {
+  display: inline-flex; align-items: center; cursor: pointer;
+  border: 1px solid var(--cell-edge); border-radius: 999px; padding: 5px 13px;
+  font-size: 12px; font-weight: 500; color: var(--navy); background: var(--white);
+}
+.prop-pill input { position: absolute; opacity: 0; width: 0; height: 0; }
+.prop-pill:hover { border-color: var(--grey-400); }
+.prop-pill.is-on { background: var(--navy); border-color: var(--navy); color: #fff; }
+
+/* A field that needs attention, and the reason, shown next to it. */
+.fcell--edit.is-invalid { flex-wrap: wrap; background: #fdf3f3; }
+.fcell--edit.is-invalid > input,
+.fcell--edit.is-invalid > select { border-color: var(--danger); }
+.fmsg { flex: 1 0 100%; font-size: 11px; color: var(--danger); padding: 3px 2px 0; }
+
+.pub-check { display: flex; align-items: center; gap: 8px; font-size: 12.5px;
+  font-weight: 400; color: var(--text); cursor: pointer; }
+.pub-check input { width: auto; margin: 0; }
+
+.rec-foot {
+  display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+  margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--cell-line);
+}
+
+@media (max-width: 700px) {
+  .rec-foot { flex-direction: column-reverse; align-items: stretch; }
+  .rec-foot .btn { width: 100%; text-align: center; }
+
+  /* A row of two label-and-value pairs is too wide for a phone, so the second
+     pair drops onto its own line rather than being squeezed. */
+  /* Side-by-side cells are too narrow on a phone, and wrapping them in pairs
+     leaves a label stranded from its field. Each label sits above its own
+     value instead, so nothing is ever mislabelled. */
+  .frow { flex-wrap: wrap; }
+  .fcell { flex: 1 1 100%; border-right: 0; }
+  .fcell--label, .fcell--label.w-narrow {
+    flex: 1 1 100%; min-height: 0; padding: 6px 9px 0; background: none;
+    font-weight: 600;
+  }
+}
