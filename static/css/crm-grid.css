@@ -648,3 +648,26 @@ table.rec-table td.actions { white-space: nowrap; text-align: right; }
    left and the button keeps the last column. */
 .box--grid .frow--action > .fcell:first-child { grid-column: 1 / -2; }
 .box--grid .frow--action > .fcell:last-child { justify-content: center; }
+
+/* ── Website listing, inside the project record ────────────────────────────
+   The listing sections are ordinary boxes on the shared grid, so the whole
+   project form reads as one form. They sit tighter than a standalone box
+   because there are eight of them in a row. */
+.lst-box + .lst-box { margin-top: 6px; }
+.listing-edit-form { padding: 0 0 12px; }
+.listing-edit-form .box-head { font-size: 12px; }
+.lst-start { display: none; }        /* the old grid wrapper, now empty */
+
+/* Two or three controls sharing one cell — a from/to pair, a value and its
+   N/A tick — sit side by side and share the width. */
+.fcell--pair { gap: 6px; }
+.fcell--pair > input,
+.fcell--pair > select { flex: 1 1 0; min-width: 0; width: auto; }
+.fcell--pair > label { flex: 0 0 auto; white-space: nowrap; font-size: 11.5px; }
+
+/* The "N/A" tick beside a value, and the row of publishing tick-boxes. */
+.na-check { display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11.5px; color: var(--grey-600); white-space: nowrap; cursor: pointer; }
+.na-check input { width: auto; margin: 0; }
+.lst-publish { display: flex; gap: 20px; align-items: center; flex-wrap: wrap;
+  padding: 10px 12px; border-top: 1px solid var(--cell-line); }
