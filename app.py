@@ -273,6 +273,10 @@ TRANSACTION_EXCLUDED = {'Fallen through', 'Archived'}
 # invoice is raised or paid, so those statuses count too.
 TRANSACTION_COMPLETED = {'Completed', 'Commission billed', 'Part paid', 'Paid'}
 
+# A letting goes through solicitors; a licence does not, so the solicitor
+# details are put away when one is chosen.
+AGREEMENT_TYPES = ['Letting', 'Licence']
+
 # The VAT rate used when a transaction does not carry its own.
 VAT_RATE_DEFAULT = float(os.environ.get('VAT_RATE', '20'))
 
@@ -373,6 +377,7 @@ class Transaction(db.Model):
     invoice_date      = db.Column(db.Date, index=True)
     payment_due_date  = db.Column(db.Date)
     completion_date   = db.Column(db.Date, index=True)
+    agreement_type    = db.Column(db.String(20))    # Licence / Letting
     terms_agreed_date         = db.Column(db.Date)
     solicitors_instructed_date = db.Column(db.Date)
 
@@ -435,20 +440,50 @@ class Transaction(db.Model):
     def commission_basis(self):
         """The agreed sum the fee is charged on.
 
-        The agreed figure entered on the transaction, falling back to the sale
-        price or the rent already recorded — real values from the record, never
-        an estimate. Returns 0.0 when there is nothing to charge on.
+        The agreed figure if one has been entered, otherwise whichever of the
+        sale price and the rent the record actually carries. Older records were
+        made before there was an agreed-value field, and a sale price is often
+        recorded against a transaction typed as leasehold and the other way
+        round, so the type is a preference here rather than a rule. Every
+        figure comes off the record; nothing is estimated.
         """
-        if self.agreed_value is not None:
+        if self.agreed_value:
             return float(self.agreed_value)
+        sale, rent = float(self.value or 0.0), float(self.rent_pa or 0.0)
         if self.transaction_type == 'Capital':
-            return float(self.value or 0.0)
-        return float(self.rent_pa or 0.0)
+            return sale or rent
+        return rent or sale
+
+    @property
+    def basis_source(self):
+        """Which figure the fee is being charged on, for the record to say."""
+        if self.agreed_value:
+            return 'the agreed value'
+        if not self.commission_basis:
+            return None
+        sale, rent = float(self.value or 0.0), float(self.rent_pa or 0.0)
+        if self.transaction_type == 'Capital':
+            return 'the sale price' if sale else 'the rent'
+        return 'the rent' if rent else 'the sale price'
+
+    @property
+    def charges_fixed_fee(self):
+        """Whether this transaction is on a fixed fee rather than a percentage.
+
+        A record made before the fee basis existed carries no choice at all, so
+        whichever figure was actually filled in decides it. That stops a fee
+        someone has plainly entered from being read as nothing.
+        """
+        if self.fee_type == 'Fixed':
+            return bool(self.fixed_fee) or not self.fee_percent
+        if self.fee_type == 'Percentage':
+            return not self.fee_percent and bool(self.fixed_fee)
+        return bool(self.fixed_fee) and not self.fee_percent
 
     @property
     def net_commission(self):
-        """Our fee, before VAT. A fixed fee is used as entered."""
-        if self.fee_type == 'Fixed':
+        """Our fee, before VAT."""
+        if self.charges_fixed_fee:
             return round(float(self.fixed_fee or 0.0), 2)
         if self.fee_percent:
             return round(self.commission_basis * float(self.fee_percent) / 100.0, 2)
@@ -503,11 +538,12 @@ class Transaction(db.Model):
 
     @property
     def fee_basis_label(self):
-        if self.fee_type == 'Fixed':
+        """How the fee is charged, said plainly so the sum is never a mystery."""
+        if self.charges_fixed_fee:
             return f'Fixed {money_gbp(self.fixed_fee)}' if self.fixed_fee else 'Fixed fee'
         if self.fee_percent:
             return f'{self.fee_percent:g}%'
-        return '—'
+        return 'No fee entered'
 
 
 class TransactionPayment(db.Model):
@@ -1770,6 +1806,29 @@ def dashboard():
     contacts = Contact.query.order_by(Contact.created_at.desc()).limit(20).all()
     today = date.today()
 
+    # Today's diary, in London time. An appointment is shown if any part of it
+    # falls today, so something running from yesterday evening still appears.
+    day_start = from_london(datetime.combine(to_london(datetime.utcnow()).date(),
+                                             datetime.min.time()))
+    day_end = day_start + timedelta(days=1)
+    todays_diary = []
+    for ev in (DiaryEvent.query
+               .filter(DiaryEvent.start_at < day_end, DiaryEvent.end_at > day_start)
+               .order_by(DiaryEvent.all_day.desc(), DiaryEvent.start_at)
+               .limit(30).all()):
+        start, end = to_london(ev.start_at), to_london(ev.end_at)
+        todays_diary.append({
+            'id': ev.id,
+            'title': ev.title or 'Appointment',
+            'when': 'All day' if ev.all_day else
+                    f"{start.strftime('%H:%M')}–{end.strftime('%H:%M')}",
+            'place': ev.location,
+            'owner': ev.owner,
+            'kind': ev.event_type,
+            'from_outlook': getattr(ev, 'from_outlook_only', False),
+            'past': (not ev.all_day) and end < to_london(datetime.utcnow()),
+        })
+
     to_let = _available_listings(INSTRUCTION_TO_LET)
     for_sale = _available_listings(INSTRUCTION_FOR_SALE)
     appraisals = _projects_of_type(INSTRUCTION_APPRAISAL)
@@ -1786,6 +1845,7 @@ def dashboard():
     contact_count = Contact.query.count()
 
     return render_template('dashboard.html',
+                           todays_diary=todays_diary,
                            to_let=to_let, for_sale=for_sale, appraisals=appraisals,
                            landlords_to_call=landlords_to_call, diary_items=diary_items,
                            prop_count=prop_count,
@@ -2043,6 +2103,169 @@ def transaction_dashboard(rows=None):
     }
 
 
+# How much of a deal's fee to count while it is still in progress. A deal with
+# solicitors instructed is far likelier to complete than one just agreed, and
+# counting either at its full value would overstate what is coming in. Change
+# these figures to match how the office actually converts.
+PIPELINE_WEIGHTS = {
+    'Draft': 0.0,
+    'In progress': 0.10,
+    'Terms agreed': 0.50,
+    'Solicitors instructed': 0.80,
+}
+
+
+def _annual_value(price, unit):
+    """A listing's asking figure as a yearly sum, so fees compare like for like.
+
+    A sale price is the sum itself; a rent per calendar month becomes a year's
+    rent; anything else is already yearly. Price on application is worth
+    nothing here, because there is no price to charge a fee on.
+    """
+    if not price:
+        return 0.0
+    unit = (unit or '').lower()
+    if unit == 'poa':
+        return 0.0
+    if unit == 'pcm':
+        return float(price) * 12
+    return float(price)
+
+
+def stock_fee_value():
+    """What the fee on everything currently available would come to.
+
+    Only stock carrying a fee is valued. An instruction with no fee recorded
+    is counted separately and left out of the total, rather than being valued
+    at nothing or at a rate nobody agreed to.
+    """
+    # A listing with no instruction behind it is still a unit on the market, so
+    # it is counted as stock and reported as unpriced rather than dropped.
+    available = [
+        lst for lst in Listing.query.filter(Listing.listing_status == 'available').all()
+        if lst.project is None
+        or lst.project.instruction_type in (INSTRUCTION_FOR_SALE, INSTRUCTION_TO_LET)
+    ]
+    fee_total = asking_total = 0.0
+    valued = no_fee = 0
+    sale_fee = let_fee = 0.0
+    for lst in available:
+        project = lst.project
+        value = _annual_value(lst.listing_price, lst.listing_price_unit)
+        asking_total += value
+        if project is None:
+            no_fee += 1
+            continue
+        if project.fee_fixed:
+            fee = float(project.fee_fixed)
+        elif project.fee_percent and value:
+            fee = value * float(project.fee_percent) / 100.0
+        else:
+            no_fee += 1
+            continue
+        fee_total += fee
+        valued += 1
+        if project.instruction_type == INSTRUCTION_FOR_SALE:
+            sale_fee += fee
+        else:
+            let_fee += fee
+    return {
+        'fee_total': round(fee_total, 2),
+        'sale_fee': round(sale_fee, 2),
+        'let_fee': round(let_fee, 2),
+        'asking_total': round(asking_total, 2),
+        'stock_count': len(available),
+        'valued': valued,
+        'no_fee': no_fee,
+    }
+
+
+def transaction_extras(rows, everyone):
+    """The figures behind the headline ones: pipeline, speed and conversion.
+
+    `rows` is what counts towards the totals; `everyone` includes the deals
+    that fell through, which conversion needs in order to mean anything.
+    """
+    # ── Value done, split by what kind of deal it was ──
+    sales = [t for t in rows if t.transaction_type == 'Capital']
+    lettings = [t for t in rows if t.transaction_type != 'Capital']
+
+    def summarise(group):
+        done = [t for t in group if t.has_completed]
+        return {
+            'count': len(group),
+            'value': round(sum(t.commission_basis for t in group), 2),
+            'completed': len(done),
+            'completed_value': round(sum(t.commission_basis for t in done), 2),
+            'commission': round(sum(t.net_commission for t in done), 2),
+        }
+
+    # ── Deals still in play, discounted by how far along they are ──
+    pipeline = weighted = 0.0
+    in_play = 0
+    for t in rows:
+        weight = PIPELINE_WEIGHTS.get(t.status)
+        if weight is None or t.has_completed:
+            continue
+        in_play += 1
+        pipeline += t.net_commission
+        weighted += t.net_commission * weight
+
+    # ── How long things take ──
+    def started(t):
+        """When the clock started: the instruction, or the deal itself."""
+        if t.project and t.project.instruction_date:
+            return t.project.instruction_date
+        return t.transaction_date
+
+    spans = [(t.completion_date - started(t)).days for t in rows
+             if t.has_completed and started(t) and t.completion_date
+             and t.completion_date >= started(t)]
+    waits = [(p.received_on - t.invoice_date).days
+             for t in rows for p in t.payments
+             if t.invoice_date and p.received_on and p.received_on >= t.invoice_date]
+
+    # ── Won against lost ──
+    lost = [t for t in everyone if t.status == 'Fallen through']
+    settled = len([t for t in rows if t.has_completed]) + len(lost)
+
+    # ── Who did it ──
+    board = {}
+    for t in rows:
+        if not t.fee_earner:
+            continue
+        row = board.setdefault(t.fee_earner, {
+            'name': t.fee_earner, 'completed': 0, 'billed': 0.0,
+            'received': 0.0, 'live': 0})
+        if t.has_completed:
+            row['completed'] += 1
+        else:
+            row['live'] += 1
+        if t.is_billed:
+            row['billed'] += t.net_commission
+            row['received'] += t.commission_received
+    for row in board.values():
+        row['billed'] = round(row['billed'], 2)
+        row['received'] = round(row['received'], 2)
+
+    return {
+        'sales': summarise(sales),
+        'lettings': summarise(lettings),
+        'pipeline': round(pipeline, 2),
+        'weighted': round(weighted, 2),
+        'in_play': in_play,
+        'weights': sorted(PIPELINE_WEIGHTS.items(), key=lambda kv: kv[1]),
+        'days_to_complete': round(sum(spans) / len(spans)) if spans else None,
+        'completions_measured': len(spans),
+        'days_to_paid': round(sum(waits) / len(waits)) if waits else None,
+        'payments_measured': len(waits),
+        'lost_count': len(lost),
+        'conversion': round(len([t for t in rows if t.has_completed])
+                            / settled * 100, 1) if settled else None,
+        'board': sorted(board.values(), key=lambda r: -r['billed']),
+    }
+
+
 TRANSACTION_PERIODS = [('month', 'Month'), ('quarter', 'Quarter'), ('year', 'Year')]
 
 
@@ -2147,6 +2370,7 @@ app.jinja_env.globals['status_class'] = \
 app.jinja_env.globals['money_gbp'] = money_gbp
 app.jinja_env.globals['money_short'] = money_short
 app.jinja_env.globals['TRANSACTION_STATUSES'] = TRANSACTION_STATUSES
+app.jinja_env.globals['AGREEMENT_TYPES'] = AGREEMENT_TYPES
 app.jinja_env.globals['TRANSACTION_PERIODS'] = TRANSACTION_PERIODS
 app.jinja_env.globals['VAT_RATE_DEFAULT'] = VAT_RATE_DEFAULT
 
@@ -2222,6 +2446,8 @@ def transactions_list():
     dash = transaction_dashboard(rows)
     dash['excluded_count'] = len(everyone) - len(rows)
     chart = transaction_chart(rows, request.args.get('period', 'month'))
+    extras = transaction_extras(rows, everyone)
+    stock = stock_fee_value()
 
     # Archived and fallen-through transactions are outside the figures, but
     # somebody still has to be able to find them.
@@ -2237,7 +2463,7 @@ def transactions_list():
 
     return render_template(
         'transactions/list.html',
-        transactions=listed, dash=dash, chart=chart,
+        transactions=listed, dash=dash, chart=chart, extras=extras, stock=stock,
         sort=sort, dir=direction, args=request.args, today=date.today(),
         fee_earners=sorted({t.fee_earner for t in everyone if t.fee_earner}),
         clients=sorted({t.client for t in everyone if t.client}),
@@ -2275,6 +2501,11 @@ def transaction_save(id):
     """Save the transaction page. Only the fields the page sent are written."""
     t = Transaction.query.get_or_404(id)
     form = request.form
+
+    agreement = (form.get('agreement_type') or '').strip()
+    if agreement and agreement not in AGREEMENT_TYPES:
+        flash(f'"{agreement}" is not an agreement type, so it was not saved.', 'error')
+        form = {k: v for k, v in form.items() if k != 'agreement_type'}
 
     status = (form.get('status') or '').strip()
     if status and status not in TRANSACTION_STATUSES:
@@ -3273,6 +3504,7 @@ TRANSACTION_FIELDS = [
     ('invoice_date',       'invoice_date',       _parse_date),
     ('payment_due_date',   'payment_due_date',   _parse_date),
     ('completion_date',    'completion_date',    _parse_date),
+    ('agreement_type',     'agreement_type',     _ftext),
     ('terms_agreed_date',  'terms_agreed_date',  _parse_date),
     ('solicitors_instructed_date', 'solicitors_instructed_date', _parse_date),
     ('lease_start',        'lease_start',        _parse_date),
@@ -5614,6 +5846,7 @@ def _migrate_project_columns():
             ('vat_rate',          'REAL'), ('invoice_number',   'TEXT'),
             ('invoice_date',      'DATE'), ('payment_due_date', 'DATE'),
             ('completion_date',   'DATE'), ('terms_agreed_date','DATE'),
+            ('agreement_type',    'TEXT'),
             ('solicitors_instructed_date', 'DATE'),
             ('client_solicitor',       'TEXT'),
             ('client_solicitor_firm',  'TEXT'),

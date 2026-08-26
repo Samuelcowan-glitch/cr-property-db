@@ -109,21 +109,24 @@
 
     <section class="org-panel">
       <header>
-        <span>My Contacts <span class="count">({{ contact_count }})</span></span>
-        <a href="{{ url_for('contacts_list') }}">All contacts</a>
+        <span>My Diary for the day <span class="count">({{ todays_diary|length }})</span></span>
+        <a href="{{ url_for('diary') }}">Full diary</a>
       </header>
       <div class="org-body">
-        {% for c in contacts %}
-        <div class="org-row">
+        {% for e in todays_diary %}
+        <div class="org-row{{ ' is-past' if e.past }}">
           <div class="org-main">
-            <a class="org-title" href="{{ url_for('contact_detail', id=c.id) }}">{{ c.full_name }}</a>
-            {% if c.mobile or c.phone %}<div class="org-line">&#128222; {{ c.mobile or c.phone }}</div>{% endif %}
-            {% if c.email %}<div class="org-line">&#9993; {{ c.email }}</div>{% endif %}
-            {% if c.organisation %}<div class="org-line">&#127970; {{ c.organisation.name }}</div>{% endif %}
+            <a class="org-title" href="{{ url_for('diary_event', id=e.id) }}">{{ e.title }}</a>
+            <div class="org-sub">
+              <strong>{{ e.when }}</strong>
+              {%- if e.place %} &middot; {{ e.place }}{% endif -%}
+              {%- if e.owner %} &middot; {{ e.owner }}{% endif -%}
+              {%- if e.from_outlook %} &middot; from Outlook{% endif -%}
+            </div>
           </div>
         </div>
         {% else %}
-        <div class="org-empty">No contacts yet.</div>
+        <div class="org-empty">Nothing in the diary today.</div>
         {% endfor %}
       </div>
     </section>

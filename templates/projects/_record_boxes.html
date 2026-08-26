@@ -186,3 +186,33 @@
   </div>
 </div>
 {% endmacro %}
+
+
+{# ── Fee ──────────────────────────────────────────────────────────────────
+   What this instruction is worth to the firm. It is what values the stock on
+   the Transactions page, so an instruction without a fee is counted there
+   separately rather than valued at nothing. #}
+{% macro fee_box(v, form_id) %}
+<div class="box box--grid">
+  <div class="box-head">Fee</div>
+  <div class="frow">
+    <div class="fcell fcell--label">Percentage</div>
+    <div class="fcell fcell--edit">
+      <input type="number" step="0.01" min="0" name="fee_percent" form="{{ form_id }}"
+             value="{{ v.get('fee_percent') or '' }}" placeholder="e.g. 10">
+    </div>
+    <div class="fcell fcell--label">or fixed fee</div>
+    <div class="fcell fcell--edit">
+      <input type="number" step="0.01" min="0" name="fee_fixed" form="{{ form_id }}"
+             value="{{ v.get('fee_fixed') or '' }}" placeholder="&pound;">
+    </div>
+  </div>
+  <div class="frow frow--full">
+    <div class="fcell fcell--label fcell--top">Charged on</div>
+    <div class="fcell" style="line-height:1.5">
+      The asking price on a sale, or a year&rsquo;s rent on a letting. A fixed
+      fee is used as entered and ignores the price.
+    </div>
+  </div>
+</div>
+{% endmacro %}

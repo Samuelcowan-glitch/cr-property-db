@@ -928,3 +928,44 @@ table.rec-table td.actions { white-space: nowrap; text-align: right; }
   .kpi--wide { grid-column: span 2; }
   .fin-plot-wrap { grid-template-columns: 44px minmax(0, 1fr); }
 }
+
+/* ── Transactions: the figures behind the headline ones ──────────────────── */
+.fin-pair {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px; align-items: start;
+}
+.fin-panel {
+  background: var(--white); border: 1px solid var(--grey-200);
+  border-radius: 3px; box-shadow: 0 1px 1px rgba(14, 31, 68, .03); min-width: 0;
+}
+.fin-panel-head {
+  background: var(--grey-50); border-bottom: 1px solid var(--grey-200);
+  padding: 7px 11px; font-size: 10px; font-weight: 700; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--grey-700);
+}
+.fin-panel .table-scroll { overflow-x: auto; }
+
+.stat-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0 12px; padding: 9px 11px; border-bottom: 1px solid var(--cell-line);
+}
+.stat-row:last-of-type { border-bottom: 0; }
+.stat-label { font-size: 12.5px; color: var(--grey-700); }
+.stat-value {
+  font-size: 15px; font-weight: 700; color: var(--navy);
+  font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap;
+}
+.stat-none { font-size: 12px; font-weight: 500; color: var(--grey-400); }
+.stat-note { grid-column: 1 / -1; font-size: 11px; color: var(--grey-600); line-height: 1.4; }
+.stat-foot {
+  border-top: 1px solid var(--grey-200); background: var(--grey-50);
+  padding: 7px 11px; font-size: 11px; color: var(--grey-600); line-height: 1.45;
+}
+
+@media (max-width: 1100px) {
+  .fin-pair { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* An appointment that has already finished today, still shown but stepped back. */
+.org-row.is-past .org-title { color: var(--grey-600); }
+.org-row.is-past .org-sub   { color: var(--grey-400); }

@@ -236,6 +236,19 @@
       <!-- ── 8. Important dates ── -->
       <div class="box box--grid">
         <div class="box-head">8. Important dates</div>
+        <div class="frow frow--full">
+          <div class="fcell fcell--label">Agreement</div>
+          <div class="fcell fcell--edit">
+            {# A licence does not go through solicitors, so choosing one puts
+               that section away. #}
+            <select name="agreement_type" form="trx-form" id="agreement-type">
+              <option value="">Not set</option>
+              {% for opt in AGREEMENT_TYPES %}
+              <option value="{{ opt }}" {{ 'selected' if t.agreement_type == opt }}>{{ opt }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
         <div class="frow">
           <div class="fcell fcell--label">Terms agreed</div>
           <div class="fcell fcell--edit">
@@ -269,7 +282,10 @@
       </div>
 
       <!-- ── 7. Solicitors ── -->
-      <div class="box box--grid">
+      {# Hidden here as well as in the browser, so a licence never shows them
+         even with scripting off. #}
+      <div class="box box--grid" id="solicitors-box"
+           {{ 'hidden' if t.agreement_type == 'Licence' }}>
         <div class="box-head">7. Solicitors</div>
         <div class="frow">
           <div class="fcell fcell--label">Our client's</div>
@@ -354,12 +370,20 @@
 
       <div class="box">
         <div class="box-head">Worked out from the terms above</div>
-        <div class="calc-row">
-          <span class="lbl">Agreed value<span class="how">the fee is charged on this</span></span>
+<div class="calc-row {{ 'is-owing' if not t.commission_basis }}">
+          <span class="lbl">Charged on<span class="how">
+            {%- if t.basis_source -%}{{ t.basis_source }}
+            {%- else -%}nothing entered to charge a fee on{%- endif -%}
+          </span></span>
           <span class="val">{{ money_gbp(t.commission_basis) }}</span>
         </div>
-        <div class="calc-row">
-          <span class="lbl">Net commission<span class="how">{{ t.fee_basis_label }}</span></span>
+        <div class="calc-row {{ 'is-owing' if not t.net_commission }}">
+          <span class="lbl">Net commission<span class="how">
+            {%- if t.charges_fixed_fee -%}{{ t.fee_basis_label }}
+            {%- elif t.fee_percent -%}
+              {{ money_gbp(t.commission_basis) }} &times; {{ '%g'|format(t.fee_percent) }}%
+            {%- else -%}no fee entered{%- endif -%}
+          </span></span>
           <span class="val">{{ money_gbp(t.net_commission) }}</span>
         </div>
         <div class="calc-row">
@@ -535,4 +559,18 @@
     </div>
   </div>
 </div>
+
+<script>
+  /* Choosing a licence puts the solicitor section away at once, so the page
+     matches the choice before it is saved. The server hides it too, so this
+     is a convenience rather than the rule. */
+  (function () {
+    var pick = document.getElementById('agreement-type');
+    var box = document.getElementById('solicitors-box');
+    if (!pick || !box) { return; }
+    function apply() { box.hidden = pick.value === 'Licence'; }
+    pick.addEventListener('change', apply);
+    apply();
+  }());
+</script>
 {% endblock %}

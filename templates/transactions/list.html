@@ -97,6 +97,24 @@
     </div>
 
     <div class="kpi">
+      <span class="kpi-label">Sales value</span>
+      <span class="kpi-figure is-small">{{ money_gbp(extras.sales.value) }}</span>
+      <span class="kpi-sub">
+        {{ extras.sales.count }} sale{{ '' if extras.sales.count == 1 else 's' }} &middot;
+        {{ money_gbp(extras.sales.completed_value) }} completed
+      </span>
+    </div>
+
+    <div class="kpi">
+      <span class="kpi-label">Lettings value</span>
+      <span class="kpi-figure is-small">{{ money_gbp(extras.lettings.value) }}</span>
+      <span class="kpi-sub">
+        {{ extras.lettings.count }} letting{{ '' if extras.lettings.count == 1 else 's' }} &middot;
+        {{ money_gbp(extras.lettings.completed_value) }} completed
+      </span>
+    </div>
+
+    <div class="kpi">
       <span class="kpi-label">Average commission</span>
       <span class="kpi-figure is-small">
         {{ money_gbp(dash.avg_commission) if dash.avg_commission is not none else '—' }}
@@ -106,6 +124,33 @@
           Per completed transaction
         {%- else -%}
           No completed transactions yet
+        {%- endif -%}
+      </span>
+    </div>
+
+    <div class="kpi">
+      <span class="kpi-label">Fee value of stock</span>
+      <span class="kpi-figure is-small">{{ money_gbp(stock.fee_total) }}</span>
+      <span class="kpi-sub">
+        {%- if stock.no_fee -%}
+          {{ stock.valued }} of {{ stock.stock_count }} priced &middot;
+          <a href="{{ url_for('projects_list') }}">{{ stock.no_fee }} without a fee</a>
+        {%- elif stock.stock_count -%}
+          Across {{ stock.stock_count }} available unit{{ '' if stock.stock_count == 1 else 's' }}
+        {%- else -%}
+          Nothing available at present
+        {%- endif -%}
+      </span>
+    </div>
+
+    <div class="kpi">
+      <span class="kpi-label">Weighted pipeline</span>
+      <span class="kpi-figure is-small">{{ money_gbp(extras.weighted) }}</span>
+      <span class="kpi-sub">
+        {%- if extras.in_play -%}
+          {{ money_gbp(extras.pipeline) }} in play across {{ extras.in_play }} deal{{ '' if extras.in_play == 1 else 's' }}
+        {%- else -%}
+          Nothing in progress
         {%- endif -%}
       </span>
     </div>
@@ -174,6 +219,108 @@
           {% endfor %}
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- ════ How the office is doing ════ -->
+  <div class="fin-band">
+    <h3>How the office is doing</h3>
+    <span class="fin-note">
+      Worked out from dates already on the records &mdash; nothing here is estimated
+    </span>
+  </div>
+
+  <div class="fin-pair">
+    <div class="fin-panel">
+      <div class="fin-panel-head">Speed and conversion</div>
+
+      <div class="stat-row">
+        <span class="stat-label">Deals won</span>
+        <span class="stat-value">
+          {%- if extras.conversion is not none -%}
+            {{ '%g'|format(extras.conversion) }}%
+          {%- else -%}<span class="stat-none">Nothing settled yet</span>{%- endif -%}
+        </span>
+        <span class="stat-note">
+          {%- if extras.conversion is not none -%}
+            {{ dash.completed_count }} completed against {{ extras.lost_count }} fallen through
+          {%- else -%}
+            No completions or fall-throughs to compare
+          {%- endif -%}
+        </span>
+      </div>
+
+      <div class="stat-row">
+        <span class="stat-label">Instruction to completion</span>
+        <span class="stat-value">
+          {%- if extras.days_to_complete is not none -%}
+            {{ extras.days_to_complete }} days
+          {%- else -%}<span class="stat-none">&mdash;</span>{%- endif -%}
+        </span>
+        <span class="stat-note">
+          {%- if extras.days_to_complete is not none -%}
+            Average across {{ extras.completions_measured }} completed
+          {%- else -%}
+            Needs a start date and a completion date on the same record
+          {%- endif -%}
+        </span>
+      </div>
+
+      <div class="stat-row">
+        <span class="stat-label">Invoice to payment</span>
+        <span class="stat-value">
+          {%- if extras.days_to_paid is not none -%}
+            {{ extras.days_to_paid }} days
+          {%- else -%}<span class="stat-none">&mdash;</span>{%- endif -%}
+        </span>
+        <span class="stat-note">
+          {%- if extras.days_to_paid is not none -%}
+            Average across {{ extras.payments_measured }} payment{{ '' if extras.payments_measured == 1 else 's' }}
+          {%- else -%}
+            No payments recorded against an invoice yet
+          {%- endif -%}
+        </span>
+      </div>
+
+      <div class="stat-foot">
+        Pipeline is discounted by stage:
+        {% for status, weight in extras.weights %}{% if weight %}{{ status }}
+        {{ (weight * 100)|round|int }}%{{ ', ' if not loop.last }}{% endif %}{% endfor %}.
+      </div>
+    </div>
+
+    <div class="fin-panel">
+      <div class="fin-panel-head">By fee earner</div>
+      {% if extras.board %}
+      <div class="table-scroll">
+        <table class="pay-table">
+          <thead>
+            <tr>
+              <th>Fee earner</th>
+              <th class="num">Completed</th>
+              <th class="num">In progress</th>
+              <th class="num">Billed</th>
+              <th class="num">Received</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in extras.board %}
+            <tr>
+              <td>{{ r.name }}</td>
+              <td class="num">{{ r.completed }}</td>
+              <td class="num">{{ r.live }}</td>
+              <td class="num">{{ money_gbp(r.billed) if r.billed else '—' }}</td>
+              <td class="num">{{ money_gbp(r.received) if r.received else '—' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="empty" style="padding:14px 11px">
+        No transaction has a fee earner against it yet.
+      </div>
+      {% endif %}
     </div>
   </div>
 
