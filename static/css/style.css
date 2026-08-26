@@ -1,3 +1,45 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   Mustica Pro — the one typeface in the CRM
+   ══════════════════════════════════════════════════════════════════════════
+   The licensed files live in static/fonts/. Drop them in with these names and
+   every weight below starts working; see static/fonts/README.md. Nothing is
+   fetched from a font service, so the CRM keeps working offline and no page
+   view is reported to a third party.
+
+   font-synthesis is off on purpose: if a weight is missing the browser must
+   fall back rather than smear a fake bold, so a gap is obvious instead of
+   quietly ugly.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+@font-face {
+  font-family: 'Mustica Pro';
+  src: url('../fonts/MusticaPro-Regular.woff2') format('woff2'),
+       url('../fonts/MusticaPro-Regular.woff')  format('woff'),
+       url('../fonts/MusticaPro-Regular.otf')   format('opentype');
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'Mustica Pro';
+  src: url('../fonts/MusticaPro-Medium.woff2') format('woff2'),
+       url('../fonts/MusticaPro-Medium.woff')  format('woff'),
+       url('../fonts/MusticaPro-Medium.otf')   format('opentype');
+  font-weight: 500; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'Mustica Pro';
+  src: url('../fonts/MusticaPro-SemiBold.woff2') format('woff2'),
+       url('../fonts/MusticaPro-SemiBold.woff')  format('woff'),
+       url('../fonts/MusticaPro-SemiBold.otf')   format('opentype');
+  font-weight: 600; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'Mustica Pro';
+  src: url('../fonts/MusticaPro-Bold.woff2') format('woff2'),
+       url('../fonts/MusticaPro-Bold.woff')  format('woff'),
+       url('../fonts/MusticaPro-Bold.otf')   format('opentype');
+  font-weight: 700; font-style: normal; font-display: swap;
+}
+
 /* ── Reset & base ─────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -25,13 +67,23 @@
   --danger-bg:#fce8e6;
   --info:     #0277bd;
   --info-bg:  #e1f5fe;
+  /* Type. One family; the hierarchy is made from its weights alone. */
+  --font:      'Mustica Pro', system-ui, -apple-system, 'Segoe UI', Roboto,
+               'Helvetica Neue', Arial, sans-serif;
+  --w-body:    400;   /* body text, field values, inputs, table content */
+  --w-label:   500;   /* labels, navigation, secondary buttons */
+  --w-heading: 600;   /* page and section titles, card headings, primary buttons */
+  --w-figure:  700;   /* totals, financial figures, strong emphasis */
+
   --sidebar-w: 220px;
   --topbar-h:  52px;
 }
 
 html, body {
   height: 100%;
-  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-family: var(--font);
+  font-weight: var(--w-body);
+  font-synthesis: none;
   font-feature-settings: 'cv02', 'cv03', 'cv04';   /* clearer digits and letterforms */
   font-size: 13px;
   color: var(--text);
@@ -159,35 +211,88 @@ a:hover { text-decoration: underline; color: var(--blue-l); }
 .alert-danger   { background: var(--danger-bg);  color: var(--danger); }
 .alert-info     { background: var(--info-bg);    color: var(--info); }
 
-/* ── Buttons ───────────────────────────────────────────────────────────────── */
+/* ── Buttons ───────────────────────────────────────────────────────────────
+   One definition for every action in the CRM. Squared off, a fixed height so
+   neighbours line up, and the hierarchy carried by colour and weight rather
+   than by shape. Nothing here changes what a button does.
+   ────────────────────────────────────────────────────────────────────────── */
 .btn {
-  display: inline-flex; align-items: center; gap: 5px;
-  padding: 7px 14px; border-radius: 5px; font-size: 12.5px;
-  font-family: inherit; font-weight: 500; cursor: pointer;
-  border: 1px solid transparent;
-  transition: background .12s, opacity .12s, border-color .12s;
-  text-decoration: none; white-space: nowrap;
+  --btn-h: 38px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: var(--btn-h); min-height: var(--btn-h);
+  padding: 0 16px; box-sizing: border-box;
+  border: 1px solid transparent; border-radius: 3px;
+  font-family: var(--font); font-size: 12.5px; font-weight: var(--w-heading);
+  line-height: 1; letter-spacing: .01em; white-space: nowrap;
+  text-decoration: none; cursor: pointer; flex: 0 0 auto;
+  transition: background .12s ease, border-color .12s ease, color .12s ease;
 }
 .btn:hover { text-decoration: none; }
-.btn-primary   { background: var(--blue);   color: #fff; border-color: var(--blue); }
+.btn:focus-visible {
+  outline: 2px solid var(--orange); outline-offset: 2px;
+}
+.btn:active:not(:disabled) { transform: translateY(1px); }
+.btn:disabled,
+.btn[aria-disabled="true"],
+.btn.is-disabled {
+  opacity: .5; cursor: not-allowed; pointer-events: none;
+}
+/* An icon-only button stays square rather than collapsing to a sliver. */
+.btn-icon { padding: 0; width: var(--btn-h); }
+.btn svg, .btn img { flex: 0 0 auto; }
+
+/* Primary — the navy the rest of the CRM is built from. */
+.btn-primary   { background: var(--blue); color: #fff; border-color: var(--blue); }
 .btn-primary:hover { background: var(--blue-l); color: #fff; border-color: var(--blue-l); }
+
+/* Secondary — light ground, navy border and text. */
+.btn-secondary { background: var(--white); color: var(--navy); border-color: var(--navy); font-weight: var(--w-label); }
+.btn-secondary:hover { background: var(--grey-100); }
+
+/* Outline — the quietest of the three, for a step back or a second choice. */
+.btn-outline   { background: var(--white); border-color: var(--grey-200); color: var(--grey-700); font-weight: var(--w-label); }
+.btn-outline:hover { background: var(--grey-50); border-color: var(--grey-400); color: var(--navy); }
+
+/* Destructive — restrained until you are on it. */
+.btn-danger    { background: var(--white); color: var(--danger); border-color: #e3b7b7; }
+.btn-danger:hover  { background: var(--danger); color: #fff; border-color: var(--danger); }
+
 .btn-orange    { background: var(--orange); color: #fff; border-color: var(--orange); }
-.btn-orange:hover  { background: var(--orange-l); color: #fff; }
-.btn-secondary { background: var(--grey-100); color: var(--text); border-color: var(--grey-200); }
-.btn-secondary:hover { background: var(--grey-200); }
-.btn-danger    { background: var(--danger-bg); color: var(--danger); border-color: #f5c6c6; }
-.btn-danger:hover  { background: var(--danger); color: #fff; }
-.btn-outline   { background: none; border-color: var(--grey-200); color: var(--text); }
-.btn-outline:hover { background: var(--grey-50); }
+.btn-orange:hover  { background: var(--orange-l); color: #fff; border-color: var(--orange-l); }
 .btn-teal      { background: var(--teal); color: #fff; border-color: var(--teal); }
-.btn-teal:hover    { opacity: .88; color: #fff; }
-.btn-sm  { padding: 4px 10px; font-size: 11.5px; }
-.btn-xs  { padding: 2px 7px; font-size: 11px; }
+.btn-teal:hover    { background: #00808c; color: #fff; border-color: #00808c; }
+
+/* Link — an action that belongs in a line of text rather than beside it.
+   Still the shared family and weight, but no box: turning these into 32px
+   rectangles would burst the dense rows they sit in. */
+.btn-link {
+  --btn-h: auto;
+  height: auto; min-height: 0; padding: 0; border: 0; background: none;
+  color: var(--blue); font-weight: var(--w-label); font-size: 11.5px;
+}
+.btn-link:hover { color: var(--navy); text-decoration: underline; text-underline-offset: 2px; }
+.btn-link.is-danger { color: var(--danger); }
+.btn-link.is-accent { color: var(--orange); }
+
+/* Ghost — for the dark sidebar, where a white button would shout. */
+.btn-ghost {
+  background: transparent; color: rgba(255, 255, 255, .78);
+  border-color: rgba(255, 255, 255, .25); font-weight: var(--w-label);
+}
+.btn-ghost:hover { background: rgba(255, 255, 255, .1); color: #fff; border-color: rgba(255, 255, 255, .45); }
+.btn-ghost:focus-visible { outline-color: #fff; }
+
+/* Compact — still a comfortable target, still the same shape. */
+.btn-sm  { --btn-h: 32px; padding: 0 12px; font-size: 12px; }
+.btn-xs  { --btn-h: 32px; padding: 0 10px; font-size: 11.5px; }
+
+/* Buttons sitting together share a line and wrap as a group on a small screen. */
+.btn-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
 /* ── Badges ────────────────────────────────────────────────────────────────── */
 .badge {
-  display: inline-block; padding: 2px 8px; border-radius: 10px;
-  font-size: 10.5px; font-weight: 600; letter-spacing: .2px;
+  display: inline-block; padding: 3px 8px; border-radius: 3px;
+  font-size: 10.5px; font-weight: var(--w-heading); letter-spacing: .2px;
 }
 .badge-active   { background: #e6f4ea; color: #1b7a3f; }
 .badge-complete { background: #e8eaed; color: #5f6368; }
@@ -257,7 +362,7 @@ a:hover { text-decoration: underline; color: var(--blue-l); }
 .panel-header h3 { font-size: 12.5px; font-weight: 700; letter-spacing: .2px; }
 .panel-header .panel-count {
   background: rgba(0,0,0,.2);
-  border-radius: 10px;
+  border-radius: 3px;
   padding: 1px 8px;
   font-size: 11px; font-weight: 600;
 }
@@ -581,7 +686,13 @@ select.ss-native {
 
 /* ── Typography weights, applied once for the whole CRM ────────────────────
    Page and section headings 600, labels 500, body 400. */
-body, input, select, textarea, button, table { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif; }
+body, input, select, textarea, button, table, optgroup, option,
+h1, h2, h3, h4, h5, h6, label, legend, fieldset, summary, details,
+th, td, li, a, .btn, .badge {
+  font-family: var(--font);
+}
+/* Third-party and browser-drawn controls inherit rather than reset. */
+input, select, textarea, button, optgroup, option { font-synthesis: none; }
 h1, h2, h3, .topbar-title, .card-title, .box-head, .form-section, .rec-title h2 { font-weight: 600; }
 label, .flab, .fcell--label, th, .nav-section-label, .badge { font-weight: 500; }
 body, td, p, .fcell, .fval { font-weight: 400; }
@@ -792,3 +903,45 @@ body, td, p, .fcell, .fval { font-weight: 400; }
 .cal-event.is-tiny .cal-time { display: none; }
 
 
+
+/* ══════════════════════════════════════════════════════════════════════════
+   The weight scale
+   ══════════════════════════════════════════════════════════════════════════
+   There is one typeface, so every difference in emphasis is a difference in
+   weight. These four rules are the whole hierarchy; anything setting its own
+   numeric weight elsewhere is reading from the same tokens.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* 400 — what you read. */
+body, p, td, li, input, select, textarea, .fcell, .org-line, .org-sub,
+.rec-table td, .fin-table td, .trx-history .what, .stat-note, .kpi-sub {
+  font-weight: var(--w-body);
+}
+
+/* 500 — what names a thing. */
+label, .fcell--label, .form-group label, .sidebar-nav a, .nav-more,
+.tab-bar a, .btn-secondary, .btn-outline, .enq-chip, .prop-pill,
+.fin-views a, .fin-periods a, .fin-filters .lbl {
+  font-weight: var(--w-label);
+}
+
+/* 600 — what a section is called. */
+h1, h2, h3, h4, h5, h6, .box-head, .card-title, .panel-header h3,
+.rec-header h2, .fin-band h3, .fin-panel-head, .section-header h2,
+.btn, .btn-primary, .badge, .st, .org-tag, th, .rec-table th, .fin-table th,
+.kpi-label, .trx-history .who, .topbar-title {
+  font-weight: var(--w-heading);
+}
+
+/* 700 — the figures the office is judged on. */
+.kpi-figure, .fin-total, .stat-value, .calc-row.is-total .val,
+.fin-table tfoot td, .ledger-line .amount, .fin-tip em, .kpi-delta,
+.rec-facts strong, .fin-chart-foot strong, .fin-nudge strong {
+  font-weight: var(--w-figure);
+}
+
+/* Figures line up in columns wherever they are compared. */
+.kpi-figure, .fin-total, .stat-value, .fin-table td.num, .fin-table th.num,
+.calc-row .val, .pay-table td.num, .fin-axis, .fin-tick .n {
+  font-variant-numeric: tabular-nums;
+}

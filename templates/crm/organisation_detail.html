@@ -20,7 +20,7 @@
 <div style="margin-bottom:20px">
   <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
     <h2 style="font-size:22px;font-weight:700;color:#0e1f44;margin:0">{{ org.name }}</h2>
-    <span style="display:inline-block;padding:3px 12px;border-radius:999px;font-size:12px;font-weight:700;color:#fff;background:{{ status_colors.get(org.status, '#5f6368') }}">{{ org.status or '—' }}</span>
+    <span style="display:inline-block;padding:3px 12px;border-radius:3px;font-size:12px;font-weight:700;color:#fff;background:{{ status_colors.get(org.status, '#5f6368') }}">{{ org.status or '—' }}</span>
     <form method="post" action="{{ url_for('organisation_set_status', id=org.id) }}" style="margin-left:auto;display:flex;gap:6px;align-items:center">
       <label for="status-quick" style="font-size:11px;color:#9aa0a6;text-transform:uppercase;letter-spacing:.5px">Set status</label>
       <select id="status-quick" name="status" onchange="this.form.submit()" style="padding:6px 8px;border:1px solid #d5dbe4;border-radius:6px;font-size:13px">
@@ -65,7 +65,7 @@
           <tr>
             <td><a href="{{ url_for('contact_detail', id=c.id) }}">{{ c.full_name }}</a>
               {% if c.follow_up_overdue %}<span title="Follow-up overdue" style="color:#c0392b">⚠</span>{% endif %}</td>
-            <td><span style="display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:700;color:#fff;background:{{ status_colors.get(c.status, '#5f6368') }}">{{ c.status or '—' }}</span></td>
+            <td><span style="display:inline-block;padding:2px 9px;border-radius:3px;font-size:11px;font-weight:700;color:#fff;background:{{ status_colors.get(c.status, '#5f6368') }}">{{ c.status or '—' }}</span></td>
             <td>{{ c.contact_type or '—' }}</td>
             <td>{% if c.email %}<a href="mailto:{{ c.email }}">{{ c.email }}</a>{% else %}—{% endif %}</td>
             <td><a href="{{ url_for('contact_edit', id=c.id) }}" class="btn btn-sm btn-outline">Edit</a></td>

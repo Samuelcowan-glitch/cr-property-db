@@ -4,18 +4,37 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Enquiry Schedule — {{ project.property.address if project.property else project.name }}</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
   <style>
+    @font-face { font-family: 'Mustica Pro';
+      src: url('/static/fonts/MusticaPro-Regular.woff2') format('woff2'),
+           url('/static/fonts/MusticaPro-Regular.woff') format('woff'),
+           url('/static/fonts/MusticaPro-Regular.otf') format('opentype');
+      font-weight: 400; font-display: swap; }
+    @font-face { font-family: 'Mustica Pro';
+      src: url('/static/fonts/MusticaPro-Medium.woff2') format('woff2'),
+           url('/static/fonts/MusticaPro-Medium.woff') format('woff'),
+           url('/static/fonts/MusticaPro-Medium.otf') format('opentype');
+      font-weight: 500; font-display: swap; }
+    @font-face { font-family: 'Mustica Pro';
+      src: url('/static/fonts/MusticaPro-SemiBold.woff2') format('woff2'),
+           url('/static/fonts/MusticaPro-SemiBold.woff') format('woff'),
+           url('/static/fonts/MusticaPro-SemiBold.otf') format('opentype');
+      font-weight: 600; font-display: swap; }
+    @font-face { font-family: 'Mustica Pro';
+      src: url('/static/fonts/MusticaPro-Bold.woff2') format('woff2'),
+           url('/static/fonts/MusticaPro-Bold.woff') format('woff'),
+           url('/static/fonts/MusticaPro-Bold.otf') format('opentype');
+      font-weight: 700; font-display: swap; }
     :root {
       --ink: #0e1f44; --ink-soft: #1c3160; --brass: #e0303f;
       --text: #1f2937; --muted: #5b6675; --line: rgba(14,31,68,.14);
-      --serif: "Cormorant Garamond", Georgia, serif;
-      --sans: "Jost", "Segoe UI", Helvetica, Arial, sans-serif;
+      /* One typeface here too. What was set in the display serif is now
+         Mustica Pro at a heavier weight, so the report matches the CRM. */
+      --serif: 'Mustica Pro', system-ui, -apple-system, 'Segoe UI', Arial, sans-serif;
+      --sans:  'Mustica Pro', system-ui, -apple-system, 'Segoe UI', Arial, sans-serif;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: var(--sans); font-size: 13px; color: var(--text); background: #f2f5fa; line-height: 1.55; }
+    body { font-family: var(--sans); font-synthesis: none; font-size: 13px; color: var(--text); background: #f2f5fa; line-height: 1.55; }
     .sheet { max-width: 950px; margin: 0 auto; background: #fff; padding: 44px 48px 56px; }
 
     /* Controls — screen only */
@@ -24,31 +43,31 @@
       border-radius: 7px; padding: 14px 18px; display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end;
     }
     .controls label { display: block; font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-bottom: 3px; }
-    .controls input[type=date] { border: 1px solid var(--line); border-radius: 5px; padding: 6px 9px; font-family: inherit; font-size: 12.5px; }
+    .controls input[type=date] { border: 1px solid var(--line); border-radius: 3px; padding: 6px 9px; font-family: inherit; font-size: 12.5px; }
     .btn {
       display: inline-block; border: 1px solid var(--ink); background: var(--ink); color: #fff;
-      border-radius: 5px; padding: 7px 14px; font-size: 12px; font-family: inherit; cursor: pointer; text-decoration: none;
+      border-radius: 3px; padding: 8px 14px; font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer; text-decoration: none;
     }
     .btn-light { background: #fff; color: var(--ink); border-color: var(--line); }
     .presets { display: flex; gap: 6px; flex-wrap: wrap; margin-left: auto; }
-    .presets a { font-size: 11.5px; padding: 5px 10px; border: 1px solid var(--line); border-radius: 20px; color: var(--ink-soft); text-decoration: none; }
+    .presets a { font-size: 11.5px; padding: 5px 10px; border: 1px solid var(--line); border-radius:3px; color: var(--ink-soft); text-decoration: none; }
     .presets a.is-on { background: var(--ink); color: #fff; border-color: var(--ink); }
 
     /* Letterhead */
     .head { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; border-bottom: 2px solid var(--ink); padding-bottom: 16px; }
-    .wordmark { font-family: var(--serif); font-size: 30px; font-weight: 500; color: var(--ink); line-height: 1; }
+    .wordmark { font-family: var(--serif); font-size: 27px; font-weight: 600; color: var(--ink); line-height: 1; }
     .wordmark small { display: block; font-family: var(--sans); font-size: 9.5px; letter-spacing: .3em; text-transform: uppercase; color: var(--brass); margin-top: 7px; font-weight: 400; }
     .firm { text-align: right; font-size: 11px; color: var(--muted); line-height: 1.6; }
 
     .title { margin-top: 26px; }
     .eyebrow { font-size: 10.5px; letter-spacing: .28em; text-transform: uppercase; color: var(--brass); }
-    h1 { font-family: var(--serif); font-weight: 500; font-size: 30px; color: var(--ink); line-height: 1.12; margin-top: 6px; }
+    h1 { font-family: var(--serif); font-weight: 600; font-size: 27px; color: var(--ink); line-height: 1.12; margin-top: 6px; }
     .subline { color: var(--muted); margin-top: 6px; font-size: 13px; }
 
     .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); margin-top: 22px; }
     .fact { background: #fff; padding: 12px 14px; }
     .fact .k { font-size: 9.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
-    .fact .v { font-family: var(--serif); font-size: 22px; color: var(--ink); line-height: 1.2; margin-top: 3px; }
+    .fact .v { font-family: var(--serif); font-size: 20px; font-weight: 700; color: var(--ink); line-height: 1.2; margin-top: 3px; }
     .fact .v.small { font-size: 14px; font-family: var(--sans); }
 
     h2 { font-family: var(--serif); font-weight: 500; font-size: 19px; color: var(--ink); margin: 30px 0 10px; }
@@ -60,7 +79,7 @@
     td.date { white-space: nowrap; color: var(--muted); }
     .applicant { font-weight: 500; color: var(--ink); }
     .org { color: var(--muted); font-size: 11.5px; }
-    .stage { display: inline-block; font-size: 10.5px; padding: 2px 8px; border-radius: 11px; background: rgba(14,31,68,.07); color: var(--ink); white-space: nowrap; }
+    .stage { display: inline-block; font-size: 10.5px; padding: 3px 8px; border-radius: 3px; font-weight: 600; background: rgba(14,31,68,.07); color: var(--ink); white-space: nowrap; }
     .stage.won { background: rgba(28,107,72,.12); color: #1c6b48; }
     .stage.lost { background: rgba(198,40,40,.1); color: #c62828; }
     .feedback { color: var(--muted); font-size: 11.5px; }
