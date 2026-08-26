@@ -330,7 +330,7 @@
 
     <!-- Status / Instruction card -->
     {# The same fields as the New Project page, from one shared definition. #}
-    {{ rb.instruction_box(pv, 'project-form') }}
+    {{ rb.instruction_box(pv, 'project-form', show_name=false) }}
 
     {% set has_price = project.property and project.property.listing_price and project.property.listing_price > 0 %}
     {% if has_price or project.fee_percent or project.fee_fixed %}

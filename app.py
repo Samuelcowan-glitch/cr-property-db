@@ -2136,6 +2136,22 @@ def project_new():
     return render(start)
 
 
+# What an instruction can be. Anything else on an older record is left alone
+# and flagged on screen for someone to look at, never rewritten quietly.
+INSTRUCTION_TYPES = ['Letting', 'Sale', 'Sale or Letting']
+app.jinja_env.globals['INSTRUCTION_TYPES'] = INSTRUCTION_TYPES
+
+
+def instruction_type_ok(value, existing=None):
+    """Whether an instruction type may be saved.
+
+    One of the three, or blank, or the value already on the record — so a
+    legacy instruction can be saved without being forced onto the new list.
+    """
+    value = (value or '').strip()
+    return (not value) or value in INSTRUCTION_TYPES or value == (existing or '')
+
+
 def project_form_values(project):
     """A project's fields as plain form values.
 
@@ -2177,6 +2193,8 @@ def _validate_project_form(form):
     errors = {}
     if not (form.get('instruction_type') or '').strip():
         errors['instruction_type'] = 'Choose what kind of instruction this is.'
+    elif not instruction_type_ok(form.get('instruction_type')):
+        errors['instruction_type'] = 'Choose Letting, Sale, or Sale or Letting.'
 
     if form.get('property_mode', 'existing') == 'existing':
         prop = Property.query.get(_fint(form.get('property_id')) or 0)
@@ -2287,6 +2305,11 @@ def project_edit(id):
         # Presence-guarded: the Project Overview is editable in place and posts
         # only the fields on screen, so a save must not blank the others.
         was_named = project.name
+        was_type = project.instruction_type
+        if 'instruction_type' in request.form and not instruction_type_ok(
+                request.form.get('instruction_type'), was_type):
+            flash('Choose Letting, Sale, or Sale or Letting.', 'warning')
+            return _back_to('project_detail', id=project.id)
         apply_form_fields(project, request.form, PROJECT_FIELDS)
         if not (project.name or '').strip():
             project.name = was_named          # a project is never left nameless
@@ -2296,6 +2319,9 @@ def project_edit(id):
         if any(k in request.form for k in ('client', 'client_email', 'client_phone', 'client_mobile')):
             _upsert_client_contact(request.form)   # keep CRM in sync with client details
         db.session.commit()
+        if project.instruction_type != was_type:
+            audit('edit', entity='Project', entity_id=project.id,
+                  detail=f'instruction type {was_type or "none"} to {project.instruction_type or "none"}')
         flash('Project updated.', 'success')
         return _back_to('project_detail', id=project.id)
     return render_template('projects/form.html', properties=properties, project=project,

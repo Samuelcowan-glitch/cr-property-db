@@ -524,3 +524,41 @@ table.rec-table td.actions { white-space: nowrap; text-align: right; }
 @container (max-width: 460px) { .doc-grid { grid-template-columns: 1fr; } }
 @media (max-width: 700px)  { .doc-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 520px)  { .doc-grid { grid-template-columns: 1fr; } }
+
+/* ── Aligned label/value boxes ─────────────────────────────────────────────
+   A .box lays its rows out as separate flex lines, so each row divides its
+   own width and the second label column lands somewhere different on every
+   row. .box--grid puts the whole box on one grid instead: the rows become
+   `display: contents`, so every cell is a grid item and the four columns line
+   up down the box. Row heights come from the grid, so the cells in a row are
+   the same height and the box edges stay flush. */
+.box--grid {
+  display: grid;
+  grid-template-columns: 118px minmax(0, 1fr) 118px minmax(0, 1fr);
+  align-items: stretch;
+}
+.box--grid > .box-head { grid-column: 1 / -1; }
+.box--grid .frow { display: contents; }
+
+/* The row border moves onto the cells, since the row itself no longer boxes
+   anything in. */
+.box--grid .fcell { border-bottom: 1px solid var(--cell-line); }
+.box--grid .frow:last-child .fcell { border-bottom: 0; }
+
+/* A row holding one label and one value stretches across all four columns. */
+.box--grid .frow--full > .fcell:last-child { grid-column: 2 / -1; }
+
+/* Every field is the same height, whatever it is. */
+.box--grid .fcell--edit > input,
+.box--grid .fcell--edit > select,
+.box--grid .fcell--edit > .ss-wrap > .ss-button { height: var(--cell-h); min-height: var(--cell-h); }
+.box--grid .fcell--edit > textarea { min-height: 58px; }
+.box--grid .fcell--pair { gap: 6px; }
+
+/* Stacked, each label above its own value, when there is no room for four
+   columns — measured on the panel the box is in as well as the window. */
+@container (max-width: 620px) { .box--grid { grid-template-columns: 118px minmax(0, 1fr); } }
+@container (max-width: 420px) { .box--grid { grid-template-columns: 1fr; } }
+@media (max-width: 700px) { .box--grid { grid-template-columns: 118px minmax(0, 1fr); } }
+@media (max-width: 520px) { .box--grid { grid-template-columns: 1fr; } }
+@media (max-width: 700px) { .box--grid .frow--full > .fcell:last-child { grid-column: auto; } }
