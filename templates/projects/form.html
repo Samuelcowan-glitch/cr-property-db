@@ -214,14 +214,6 @@
   </div>
 </div>
 
-<div class="rec-foot">
-  <a href="{{ url_for('project_detail', id=project.id) if editing else url_for('projects_list') }}"
-     class="btn btn-outline">Cancel</a>
-  <button type="submit" class="btn btn-primary" form="{{ form_id }}">
-    {{ 'Save Changes' if editing else 'Create Project' }}
-  </button>
-</div>
-
 <script>
 /* Only one property pane is relevant at a time. */
 (function () {

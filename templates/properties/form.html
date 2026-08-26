@@ -162,12 +162,5 @@
     and are set on the project&rsquo;s Marketing &amp; Publishing section.
   </p>
 
-  <div class="rec-foot">
-    <a href="{{ url_for('property_detail', id=prop.id) if editing else url_for('properties_list') }}"
-       class="btn btn-outline">Cancel</a>
-    <button type="submit" class="btn btn-primary" form="property-form">
-      {{ 'Save Changes' if editing else 'Create Property' }}
-    </button>
-  </div>
 </div>
 {% endblock %}

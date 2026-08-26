@@ -2,7 +2,6 @@
 {% block title %}{{ prop.address }}{% endblock %}
 {% block topbar_title %}Property Overview{% endblock %}
 {% block topbar_actions %}
-  <a href="{{ url_for('property_edit', id=prop.id) }}" class="btn btn-outline btn-sm">Edit Property</a>
   <a href="{{ url_for('transaction_new') }}?property_id={{ prop.id }}" class="btn btn-teal btn-sm">+ Record Transaction</a>
   <a href="{{ url_for('project_new') }}?property_id={{ prop.id }}" class="btn btn-primary btn-sm">+ New Project</a>
 {% endblock %}
