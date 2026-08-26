@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "crm/_org_picker.html" as op %}
 {% import "projects/_record_boxes.html" as rb %}
 {% import "projects/_doc_box.html" as db %}
 {% set pv = project_form_values(project) %}
@@ -334,6 +335,21 @@
 
     {# What the instruction is worth. Kept out of Instruction Details. #}
     {{ rb.fee_box(pv, 'project-form') }}
+
+    {# Who the instruction is for, linked to the organisation record rather
+       than typed again. The names above are kept exactly as they are. #}
+    <div class="box">
+      <div class="box-head">Linked organisations</div>
+      {% for role, legacy in [('Client', project.client),
+                              ('Landlord', project.landlord_name)] %}
+      <div class="orgpick-row">
+        <div class="orgpick-label">{{ role }}</div>
+        <div class="orgpick-field">
+          {{ op.org_picker(role, 'project', project.id, legacy) }}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
     {# Marketing & publishing continues in this column #}
 
 

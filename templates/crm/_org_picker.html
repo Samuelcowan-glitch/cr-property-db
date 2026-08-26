@@ -1,0 +1,111 @@
+{#
+   Select an existing organisation, or add one without leaving the page.
+
+   Wherever the CRM asks for a landlord, tenant or client, this is what it
+   asks with. It links the organisation's id — the record keeps a reference,
+   never a copy — so one company can hold this role here and a different role
+   somewhere else without being entered twice.
+
+   Whatever was typed as free text before is left alone and shown underneath,
+   so nothing is lost while the two are being reconciled.
+#}
+
+{% macro org_picker(role, target_kind, target_id, legacy_text=None, label=None) %}
+{% set link = current_org_link(role, **{target_kind ~ '_id': target_id}) %}
+<div class="orgpick" data-role="{{ role }}" data-target-kind="{{ target_kind }}"
+     data-target-id="{{ target_id }}">
+
+  <div class="orgpick-current" {{ 'hidden' if not link }}>
+    {% if link %}
+    <div class="orgpick-card{{ ' is-dnc' if link.organisation.do_not_contact }}">
+      <div class="orgpick-main">
+        <a class="orgpick-name" href="{{ url_for('organisation_detail', id=link.organisation.id) }}">
+          {{ link.organisation.display_name }}
+        </a>
+        <div class="orgpick-meta">
+          <span class="org-status is-{{ (link.organisation.status or 'prospect')|lower|replace(' ', '-') }}">
+            {{ link.organisation.status or 'Prospect' }}
+          </span>
+          {% for t in link.organisation.type_names[:3] %}<span class="org-type-tag">{{ t }}</span>{% endfor %}
+        </div>
+        <div class="orgpick-contact">
+          Contact for this {{ role|lower }}:
+          <select class="orgpick-contact-pick">
+            <option value="">
+              {%- if link.organisation.main_contact -%}
+                {{ link.organisation.main_contact.full_name }} (main contact)
+              {%- else -%}Not set{%- endif -%}
+            </option>
+            {% for c in link.organisation.contacts %}
+            <option value="{{ c.id }}" {{ 'selected' if link.contact_id == c.id }}>
+              {{ c.full_name }}{% if c.job_title %} — {{ c.job_title }}{% endif %}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="orgpick-act">
+        <button type="button" class="btn btn-outline btn-xs orgpick-change">Change</button>
+        <button type="button" class="btn btn-outline btn-xs orgpick-unlink">Unlink</button>
+      </div>
+    </div>
+    {% if link.organisation.do_not_contact %}
+    <div class="orgpick-dnc">Marked <strong>Do not contact</strong> — keep out of bulk sends.</div>
+    {% endif %}
+    {% endif %}
+  </div>
+
+  <div class="orgpick-choose" {{ 'hidden' if link }}>
+    <div class="orgpick-search">
+      <input type="search" class="orgpick-q" autocomplete="off"
+             placeholder="Search name, company number, contact, email or address…"
+             aria-label="Search organisations">
+      <button type="button" class="btn btn-outline btn-xs orgpick-add">Add new</button>
+    </div>
+    <div class="orgpick-results" hidden></div>
+
+    {# The compact form. It posts on its own, so nothing already typed on the
+       page behind it is lost. #}
+    <div class="orgpick-new" hidden>
+      <div class="orgpick-new-head">New organisation</div>
+      <div class="orgpick-new-grid">
+        <label>Name<input type="text" class="np-name" required></label>
+        <label>Trading name<input type="text" class="np-trading"></label>
+        <label>Fee earner<input type="text" class="np-earner" required></label>
+        <label>Status
+          <select class="np-status">
+            {% for name, meaning in ORG_STATUSES %}
+            <option value="{{ name }}" {{ 'selected' if name == 'Prospect' }}>{{ name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>Company number<input type="text" class="np-number"></label>
+        <label>Email<input type="email" class="np-email"></label>
+      </div>
+      <div class="orgpick-new-types">
+        {% for t in ORG_TYPES %}
+        <label class="type-opt">
+          <input type="checkbox" class="np-type" value="{{ t }}"
+                 {{ 'checked' if t == role }}>
+          <span>{{ t }}</span>
+        </label>
+        {% endfor %}
+      </div>
+      <div class="orgpick-new-act">
+        <button type="button" class="btn btn-secondary btn-sm orgpick-create">Create and link</button>
+        <button type="button" class="btn btn-outline btn-sm orgpick-cancel">Cancel</button>
+      </div>
+      <div class="orgpick-dupes" hidden></div>
+    </div>
+
+    <div class="orgpick-note" hidden></div>
+  </div>
+
+  {% if legacy_text %}
+  <div class="orgpick-legacy">
+    Recorded as &ldquo;{{ legacy_text }}&rdquo; before organisations were linked.
+    This text is kept as it is.
+  </div>
+  {% endif %}
+</div>
+{% endmacro %}

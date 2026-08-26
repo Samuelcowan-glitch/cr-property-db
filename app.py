@@ -4302,6 +4302,186 @@ def api_organisations():
     } for o in list(found.values())[:25]])
 
 
+def _link_target(data):
+    """Which record a link is being made against, from a form or JSON body."""
+    out = {}
+    for field in ('property_id', 'project_id', 'transaction_id'):
+        raw = str(data.get(field) or '').strip()
+        out[field] = int(raw) if raw.isdigit() else None
+    return out
+
+
+def current_org_link(role, **target):
+    """The organisation currently in this role on this record, if any.
+
+    A record can have held the same role several times over the years; this is
+    the one running now, so a field shows who the client *is* rather than who
+    it once was.
+    """
+    query = OrganisationRole.query.filter_by(role=role)
+    for field, value in target.items():
+        query = query.filter(getattr(OrganisationRole, field) == value)
+    live = [r for r in query.order_by(OrganisationRole.start_date.desc()).all()
+            if r.is_current]
+    return live[0] if live else None
+
+
+app.jinja_env.globals['current_org_link'] = current_org_link
+
+
+@app.route('/api/organisations/link', methods=['POST'])
+@requires('edit')
+def api_organisation_link():
+    """Attach an organisation to a project, transaction or property in a role.
+
+    This writes a relationship, not a copy: the record keeps the organisation's
+    id, so changing the company's name or contact anywhere changes it here too.
+    Whatever was typed as free text before is left exactly as it is.
+    """
+    data = request.get_json(silent=True) or request.form
+    role = (data.get('role') or '').strip()
+    if role not in ORG_ROLE_NAMES:
+        return jsonify({'ok': False, 'error': f'"{role}" is not a relationship.'}), 400
+
+    target = _link_target(data)
+    if not any(target.values()):
+        return jsonify({'ok': False, 'error': 'Nothing to link it to.'}), 400
+
+    raw = str(data.get('organisation_id') or '').strip()
+    if not raw.isdigit():
+        return jsonify({'ok': False, 'error': 'Choose an organisation.'}), 400
+    org = Organisation.query.get(int(raw))
+    if org is None:
+        return jsonify({'ok': False, 'error': 'That organisation no longer exists.'}), 404
+
+    contact_raw = str(data.get('contact_id') or '').strip()
+    contact_id = int(contact_raw) if contact_raw.isdigit() else None
+
+    existing = current_org_link(role, **target)
+    if existing and existing.organisation_id == org.id:
+        existing.contact_id = contact_id          # same company, different person
+        db.session.commit()
+        audit('edit', entity='Organisation', entity_id=org.id,
+              detail=f'{role} contact changed')
+        return jsonify({'ok': True, 'link': _link_json(existing)})
+
+    if existing:
+        # The role has changed hands. The old one is closed, never deleted.
+        existing.end_date = date.today()
+        existing.ended_by = getattr(current_user, 'username', None)
+
+    link = OrganisationRole(organisation_id=org.id, role=role, contact_id=contact_id,
+                            start_date=date.today(),
+                            created_by=getattr(current_user, 'username', None),
+                            **target)
+    db.session.add(link)
+    db.session.commit()
+    audit('create', entity='Organisation', entity_id=org.id,
+          detail=f'linked as {role}')
+    _log_activity('note', organisation=org, body=f'Linked as {role}.')
+    db.session.commit()
+    return jsonify({'ok': True, 'link': _link_json(link)})
+
+
+@app.route('/api/organisations/unlink', methods=['POST'])
+@requires('edit')
+def api_organisation_unlink():
+    """End the current link in this role. The relationship keeps its history."""
+    data = request.get_json(silent=True) or request.form
+    role = (data.get('role') or '').strip()
+    link = current_org_link(role, **_link_target(data))
+    if link is None:
+        return jsonify({'ok': True, 'link': None})
+    link.end_date = date.today()
+    link.ended_by = getattr(current_user, 'username', None)
+    db.session.commit()
+    audit('edit', entity='Organisation', entity_id=link.organisation_id,
+          detail=f'ended {role} link')
+    return jsonify({'ok': True, 'link': None})
+
+
+def _link_json(link):
+    org = link.organisation
+    return {
+        'role': link.role,
+        'organisation_id': org.id, 'name': org.name,
+        'trading_name': org.trading_name, 'types': org.type_names,
+        'status': org.status, 'do_not_contact': org.do_not_contact,
+        'contact_id': link.contact_id,
+        'contact': link.contact.full_name if link.contact else None,
+        'main_contact': org.main_contact.full_name if org.main_contact else None,
+        'url': url_for('organisation_detail', id=org.id),
+    }
+
+
+@app.route('/api/organisations/<int:id>/contacts')
+def api_organisation_contacts(id):
+    """Who works at this organisation, for the relationship-contact box."""
+    org = Organisation.query.get_or_404(id)
+    return jsonify([{'id': c.id, 'name': c.full_name,
+                     'job_title': c.job_title,
+                     'is_main': c.id == org.main_contact_id}
+                    for c in org.contacts])
+
+
+@app.route('/api/organisations/quick', methods=['POST'])
+@requires('create')
+def api_organisation_quick():
+    """Add an organisation without leaving the page you were filling in.
+
+    Duplicates are checked first and reported back rather than created; the
+    caller decides whether to open the existing one or insist. Nothing already
+    typed on the page behind this is touched.
+    """
+    data = request.get_json(silent=True) or request.form
+    name = (data.get('name') or '').strip()
+    if not name:
+        return jsonify({'ok': False, 'error': 'An organisation needs a name.'}), 400
+    fee_earner = (data.get('fee_earner') or '').strip()
+    if not fee_earner:
+        return jsonify({'ok': False, 'error': 'Choose an assigned fee earner.'}), 400
+    status = (data.get('status') or 'Prospect').strip()
+    if status not in ORG_STATUS_NAMES:
+        return jsonify({'ok': False, 'error': f'"{status}" is not a status.'}), 400
+    types = [t for t in (data.get('types') or []) if t in ORG_TYPES] \
+        if isinstance(data.get('types'), list) else \
+        [t for t in request.form.getlist('types') if t in ORG_TYPES]
+
+    if data.get('confirm_new') != True and str(data.get('confirm_new')) != '1':
+        near = possible_duplicates(name, data.get('trading_name'),
+                                   data.get('company_number'), data.get('email'),
+                                   data.get('phone'))
+        if near:
+            return jsonify({'ok': False, 'duplicates': [{
+                'id': h['org'].id, 'name': h['org'].name,
+                'why': h['why'], 'status': h['org'].status,
+                'types': h['org'].type_names,
+                'url': url_for('organisation_detail', id=h['org'].id),
+            } for h in near]}), 409
+
+    org = Organisation(name=name, status=status, fee_earner=fee_earner,
+                       trading_name=_ftext(data.get('trading_name')),
+                       company_number=_ftext(data.get('company_number')),
+                       email=_ftext(data.get('email')),
+                       phone=_ftext(data.get('phone')))
+    db.session.add(org)
+    db.session.commit()
+    for name_of_type in types:
+        db.session.add(OrganisationType(organisation_id=org.id, name=name_of_type))
+    org.org_type = sorted(types)[0] if types else None
+    db.session.commit()
+    _log_activity('status_change', organisation=org, new_status=org.status,
+                  body=f'Organisation created (status: {org.status})')
+    db.session.commit()
+    audit('create', entity='Organisation', entity_id=org.id,
+          detail=f'{org.name} (added from a linked record)')
+    return jsonify({'ok': True, 'organisation': {
+        'id': org.id, 'name': org.name, 'trading_name': org.trading_name,
+        'types': org.type_names, 'status': org.status,
+        'do_not_contact': org.do_not_contact, 'main_contact': None,
+        'url': url_for('organisation_detail', id=org.id)}})
+
+
 @app.route('/organisations/<int:id>/edit', methods=['GET', 'POST'])
 def organisation_edit(id):
     """Kept so older links still work. Editing happens on the record itself."""

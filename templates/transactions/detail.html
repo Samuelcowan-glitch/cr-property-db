@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "crm/_org_picker.html" as op %}
 {% set title = (t.reference or 'Transaction') ~ (' — ' ~ t.property.address if t.property else '') %}
 {% block title %}{{ t.reference or 'Transaction' }}{% endblock %}
 {% block topbar_title %}{{ t.reference or 'Transaction' }}{% endblock %}
@@ -163,35 +164,20 @@
       </div>
 
       <!-- ── 3. Client, tenant or purchaser ── -->
-      <div class="box box--grid">
+      {# Each of these links an organisation by id. The name typed in before
+         is kept underneath and never overwritten. #}
+      <div class="box">
         <div class="box-head">3. Client, tenant or purchaser</div>
-        <div class="frow frow--full">
-          <div class="fcell fcell--label">Client</div>
-          <div class="fcell fcell--edit">
-            <input name="client" form="trx-form" value="{{ t.client or '' }}"
-                   placeholder="Who we act for and invoice">
+        {% for role, legacy in [('Client', t.client), ('Landlord', t.landlord),
+                                ('Tenant', t.tenant), ('Vendor', t.vendor),
+                                ('Purchaser', t.purchaser)] %}
+        <div class="orgpick-row">
+          <div class="orgpick-label">{{ role }}</div>
+          <div class="orgpick-field">
+            {{ op.org_picker(role, 'transaction', t.id, legacy) }}
           </div>
         </div>
-        <div class="frow">
-          <div class="fcell fcell--label">Vendor</div>
-          <div class="fcell fcell--edit">
-            <input name="vendor" form="trx-form" value="{{ t.vendor or '' }}">
-          </div>
-          <div class="fcell fcell--label">Purchaser</div>
-          <div class="fcell fcell--edit">
-            <input name="purchaser" form="trx-form" value="{{ t.purchaser or '' }}">
-          </div>
-        </div>
-        <div class="frow">
-          <div class="fcell fcell--label">Landlord</div>
-          <div class="fcell fcell--edit">
-            <input name="landlord" form="trx-form" value="{{ t.landlord or '' }}">
-          </div>
-          <div class="fcell fcell--label">Tenant</div>
-          <div class="fcell fcell--edit">
-            <input name="tenant" form="trx-form" value="{{ t.tenant or '' }}">
-          </div>
-        </div>
+        {% endfor %}
       </div>
 
       <!-- ── 4. Agreed commercial terms ── -->
