@@ -6,7 +6,7 @@
 {% endblock %}
 
 {% block content %}
-{% set section_titles = {'Landlord': 'Landlords', 'Tenant': 'Tenants', 'Client': 'Clients'} %}
+{% set section_titles = {'Tenant': 'Tenants', 'Client': 'Clients'} %}
 <div class="section-header">
   <h2>{{ section_titles.get(ctype, 'All Contacts') }}</h2>
   <form class="search-bar" method="get">
@@ -17,12 +17,6 @@
   </form>
 </div>
 
-<div class="tab-bar" style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">
-  <a class="btn btn-sm {{ 'btn-primary' if not ctype else 'btn-outline' }}" href="{{ url_for('contacts_list') }}">All <span style="opacity:.6">({{ counts.all }})</span></a>
-  <a class="btn btn-sm {{ 'btn-primary' if ctype == 'Client' else 'btn-outline' }}" href="{{ url_for('contacts_list', type='Client') }}">Clients <span style="opacity:.6">({{ counts.Client }})</span></a>
-  <a class="btn btn-sm {{ 'btn-primary' if ctype == 'Landlord' else 'btn-outline' }}" href="{{ url_for('contacts_list', type='Landlord') }}">🔑 Landlords <span style="opacity:.6">({{ counts.Landlord }})</span></a>
-  <a class="btn btn-sm {{ 'btn-primary' if ctype == 'Tenant' else 'btn-outline' }}" href="{{ url_for('contacts_list', type='Tenant') }}">🏠 Tenants <span style="opacity:.6">({{ counts.Tenant }})</span></a>
-</div>
 
 {% set status_colors = {
   'New Enquiry': '#1c3160', 'Active Requirement': '#1a7f4b', 'Prospect': '#3a6ea5',

@@ -32,9 +32,6 @@
       <a href="{{ url_for('diary') }}" class="{{ 'active' if request.endpoint == 'diary' else '' }}">
         <span class="nav-icon">🗓</span> Diary
       </a>
-      <a href="{{ url_for('contacts_list', type='Tenant') }}" class="{{ 'active' if request.endpoint == 'contacts_list' and request.args.get('type') == 'Tenant' else '' }}">
-        <span class="nav-icon">👤</span> Applicants
-      </a>
       <a href="{{ url_for('properties_list') }}" class="{{ 'active' if request.endpoint and 'propert' in request.endpoint else '' }}">
         <span class="nav-icon">🏢</span> Properties
       </a>
@@ -48,8 +45,11 @@
       {# Everything else stays reachable, just out of the main list. #}
       <div class="nav-divider"></div>
       <div class="nav-section-label">More</div>
-      <a href="{{ url_for('contacts_list') }}" class="nav-more {{ 'active' if request.endpoint == 'contacts_list' and not request.args.get('type') else '' }}">Contacts</a>
-      <a href="{{ url_for('contacts_list', type='Landlord') }}" class="nav-more {{ 'active' if request.args.get('type') == 'Landlord' else '' }}">Landlords &amp; clients</a>
+      {# One page each, so there is no category filter on the pages themselves. #}
+      {% set section = request.args.get('type') if request.endpoint == 'contacts_list' else none %}
+      <a href="{{ url_for('contacts_list') }}" class="nav-more {{ 'active' if request.endpoint == 'contacts_list' and not section else '' }}">Contacts</a>
+      <a href="{{ url_for('contacts_list', type='Client') }}" class="nav-more {{ 'active' if section == 'Client' else '' }}">Clients</a>
+      <a href="{{ url_for('contacts_list', type='Tenant') }}" class="nav-more {{ 'active' if section == 'Tenant' else '' }}">Tenants</a>
       <a href="{{ url_for('organisations_list') }}" class="nav-more {{ 'active' if request.endpoint and 'organisation' in request.endpoint else '' }}">Companies</a>
       <a href="{{ url_for('enquiries_list') }}" class="nav-more {{ 'active' if request.endpoint and 'enquir' in request.endpoint else '' }}">Enquiries</a>
       <a href="{{ url_for('property_new') }}" class="nav-more">Add property</a>

@@ -2527,17 +2527,20 @@ def organisation_delete(id):
 
 # ── Contacts ─────────────────────────────────────────────────────────────────
 
+CONTACT_SECTIONS = {
+    'Client': ['Client', 'Landlord'],
+    'Tenant': ['Tenant', 'Prospective Tenant'],
+}
+
+
 @app.route('/contacts')
 def contacts_list():
     q = request.args.get('q', '')
-    ctype = request.args.get('type', '')   # Landlord / Tenant / Client section filter
+    ctype = request.args.get('type', '')   # which sidebar page this is
     query = Contact.query
-    # Section filters. Tenants include prospective tenants; landlords are exact.
-    _type_groups = {
-        'Landlord': ['Landlord'],
-        'Tenant':   ['Tenant', 'Prospective Tenant'],
-        'Client':   ['Client'],
-    }
+    # Each sidebar page is one of these. A landlord is the client on a letting
+    # instruction, so Clients covers both; Tenants covers prospective ones too.
+    _type_groups = CONTACT_SECTIONS
     if ctype in _type_groups:
         query = query.filter(Contact.contact_type.in_(_type_groups[ctype]))
     # Multi-select status filter. With none chosen, hide Archived from the default view.
