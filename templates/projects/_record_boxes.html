@@ -24,13 +24,14 @@
 {# ── Instruction detail ───────────────────────────────────────────────────#}
 {% macro instruction_box(v, form_id, errors={}, statuses=['Active','Complete','On Hold'],
                          show_name=true, types=INSTRUCTION_TYPES) %}
-{# The whole box shares one grid, so the four columns line up down every row. #}
+{# One grid for the whole box, so the four columns line up down every row.
+   Every row is a full pair — nothing is left half empty. #}
 <div class="box box--grid">
   <div class="box-head">Instruction Detail</div>
 
   {% if show_name %}
-  {# The New Project page still names a project; the record page does not,
-     so the name it was created with is never disturbed from there. #}
+  {# The New Project page names a project; the record page does not, so the
+     name it was created with is never disturbed from there. #}
   <div class="frow">
     <div class="fcell fcell--label">Project name</div>
     <div class="{{ _cls(errors, 'name') }}">
@@ -56,18 +57,37 @@
         <option value="{{ it }}" {{ 'selected' if current == it else '' }}>{{ it }}</option>
         {% endfor %}
         {% if current and current not in types %}
-        {# Something recorded before these three were settled on. It is kept
-           and stays selected until somebody chooses deliberately. #}
+        {# Recorded before these were settled on. Kept, and left selected until
+           somebody chooses deliberately. #}
         <option value="{{ current }}" selected>{{ current }} — please review</option>
         {% endif %}
       </select>
       {{ _err(errors, 'instruction_type') }}
     </div>
-    {% if not show_name %}
+    {% if show_name %}
+    <div class="fcell fcell--label">Status</div>
+    <div class="fcell fcell--edit">
+      <select name="status" form="{{ form_id }}">
+        {% for st in statuses %}
+        <option value="{{ st }}" {{ 'selected' if v.get('status') == st else '' }}>{{ st }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% else %}
     <div class="fcell fcell--label">Reference</div>
     <div class="fcell fcell--edit">
       <input type="text" name="project_ref" value="{{ v.get('project_ref') or '' }}"
              placeholder="e.g. CR/2026/001" form="{{ form_id }}">
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="frow">
+    {% if show_name %}
+    <div class="fcell fcell--label">Client</div>
+    <div class="fcell fcell--edit">
+      <input type="text" name="client" value="{{ v.get('client') or '' }}"
+             placeholder="Not set" form="{{ form_id }}">
     </div>
     {% else %}
     <div class="fcell fcell--label">Status</div>
@@ -79,40 +99,15 @@
       </select>
     </div>
     {% endif %}
-  </div>
-
-  {% if not show_name %}
-  <div class="frow">
-    <div class="fcell fcell--label">Status</div>
-    <div class="fcell fcell--edit">
-      <select name="status" form="{{ form_id }}">
-        {% for st in statuses %}
-        <option value="{{ st }}" {{ 'selected' if v.get('status') == st else '' }}>{{ st }}</option>
-        {% endfor %}
-      </select>
-    </div>
     <div class="fcell fcell--label">Fee earner</div>
     <div class="fcell fcell--edit">
       <input type="text" name="fee_earner" value="{{ v.get('fee_earner') or '' }}"
              placeholder="Not set" form="{{ form_id }}">
     </div>
   </div>
-  {% endif %}
 
   <div class="frow">
-    <div class="fcell fcell--label">Client</div>
-    <div class="fcell fcell--edit">
-      <input type="text" name="client" value="{{ v.get('client') or '' }}"
-             placeholder="Not set" form="{{ form_id }}">
-    </div>
-    <div class="fcell fcell--label">Landlord</div>
-    <div class="fcell fcell--edit">
-      <input type="text" name="landlord_name" value="{{ v.get('landlord_name') or '' }}"
-             placeholder="Not set" form="{{ form_id }}">
-    </div>
-  </div>
-
-  <div class="frow">
+    {% if show_name %}
     <div class="fcell fcell--label">Instructed on</div>
     <div class="fcell fcell--edit">
       <input type="date" name="instruction_date" value="{{ v.get('instruction_date') or '' }}" form="{{ form_id }}">
@@ -121,29 +116,29 @@
     <div class="fcell fcell--edit">
       <input type="date" name="available_from" value="{{ v.get('available_from') or '' }}" form="{{ form_id }}">
     </div>
-  </div>
-
-  <div class="frow">
-    {% if show_name %}
-    <div class="fcell fcell--label">Fee earner</div>
-    <div class="fcell fcell--edit">
-      <input type="text" name="fee_earner" value="{{ v.get('fee_earner') or '' }}"
-             placeholder="Not set" form="{{ form_id }}">
-    </div>
     {% else %}
-    <div class="fcell fcell--label">Next call</div>
+    <div class="fcell fcell--label">Instructed on</div>
     <div class="fcell fcell--edit">
-      <input type="date" name="next_call" value="{{ v.get('next_call') or '' }}" form="{{ form_id }}">
+      <input type="date" name="instruction_date" value="{{ v.get('instruction_date') or '' }}" form="{{ form_id }}">
+    </div>
+    <div class="fcell fcell--label">Available from</div>
+    <div class="fcell fcell--edit">
+      <input type="date" name="available_from" value="{{ v.get('available_from') or '' }}" form="{{ form_id }}">
     </div>
     {% endif %}
-    <div class="fcell fcell--label">Fee</div>
-    <div class="fcell fcell--edit fcell--pair">
-      <input type="number" name="fee_percent" step="0.01" min="0" style="max-width:72px"
-             value="{{ v.get('fee_percent') or '' }}" placeholder="%" form="{{ form_id }}">
-      <input type="number" name="fee_fixed" step="1" min="0"
-             value="{{ v.get('fee_fixed') or '' }}" placeholder="£ fixed" form="{{ form_id }}">
+  </div>
+
+  {% if not show_name %}
+  {# Next call has its own box in the left column, so it is not repeated here:
+     two inputs of the same name in one form would overwrite each other. #}
+  <div class="frow frow--full">
+    <div class="fcell fcell--label">Client</div>
+    <div class="fcell fcell--edit">
+      <input type="text" name="client" value="{{ v.get('client') or '' }}"
+             placeholder="Not set" form="{{ form_id }}">
     </div>
   </div>
+  {% endif %}
 </div>
 {% endmacro %}
 
@@ -176,18 +171,6 @@
              placeholder="Not set" form="{{ form_id }}">
       {{ _err(errors, 'client_email') }}
     </div>
-  </div>
-</div>
-{% endmacro %}
-
-
-{# ── Location description ─────────────────────────────────────────────────#}
-{% macro location_box(v, form_id) %}
-<div class="box">
-  <div class="box-head">Location</div>
-  <div style="padding:12px 14px">
-    <textarea name="location_description" rows="4" class="fin" form="{{ form_id }}"
-              placeholder="Where the property sits, transport, local occupiers…">{{ v.get('location_description') or '' }}</textarea>
   </div>
 </div>
 {% endmacro %}

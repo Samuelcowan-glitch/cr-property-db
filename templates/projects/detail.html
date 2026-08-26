@@ -330,52 +330,8 @@
     {# The same fields as the New Project page, from one shared definition. #}
     {{ rb.instruction_box(pv, 'project-form', show_name=false) }}
 
-    {% set has_price = project.property and project.property.listing_price and project.property.listing_price > 0 %}
-    {% if has_price or project.fee_percent or project.fee_fixed %}
-    <div class="box">
-      <div class="box-head">Fees &amp; Rent</div>
-      <div style="padding:12px 14px">
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
-          {% macro dfield(lbl, val) %}
-          <div class="frow" style="border-right:1px solid var(--cell-line)">
-            <div class="fcell fcell--label">{{ lbl }}</div>
-            <div class="fcell {{ 'is-empty' if not val }}">{{ val or 'Not set' }}</div>
-          </div>
-          {% endmacro %}
-
-          {% if project.property and project.property.listing_price and project.property.listing_price > 0 %}
-          {% set rent_pa = project.property.listing_price * 12 if project.property.listing_price_unit == 'pcm' else project.property.listing_price %}
-          <div>
-            <div style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px">Rent p.a.</div>
-            <div style="font-size:13px;font-weight:600;color:#0e1f44">&pound;{{ '{:,.0f}'.format(rent_pa) }}</div>
-          </div>
-          {% if project.property.size and project.property.size > 0 %}
-          <div>
-            <div style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px">Rent PSF</div>
-            <div style="font-size:13px;font-weight:600;color:#0e1f44">&pound;{{ (rent_pa / project.property.size)|round(2) }} psf</div>
-          </div>
-          {% endif %}
-          {% endif %}
-
-          {% if project.fee_percent or project.fee_fixed %}
-          <div>
-            <div style="font-size:10.5px;color:#5f6368;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px">{% if project.instruction_type == INSTRUCTION_FOR_SALE %}Sale Fee{% elif project.instruction_type == INSTRUCTION_TO_LET %}Letting Fee{% else %}Fee{% endif %}</div>
-            <div style="font-size:13px;font-weight:600;color:#0e1f44">
-              {% if project.fee_percent %}{{ project.fee_percent }}%{% endif %}
-              {% if project.fee_percent and project.fee_fixed %} + {% endif %}
-              {% if project.fee_fixed %}&pound;{{ '{:,.0f}'.format(project.fee_fixed) }}{% endif %}
-            </div>
-          </div>
-          {% endif %}
-
-        </div>
-      </div>
-    </div>
-    {% endif %}
-
     {# Client contact details, the same fields as the New Project page. #}
     {{ rb.client_box(pv, 'project-form') }}
-    {{ rb.location_box(pv, 'project-form') }}
     {# Marketing & publishing continues in this column #}
 
 
@@ -837,7 +793,9 @@
         {% for key, label in folder_labels.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
       </select>
       <label style="font-size:12px;color:#5f6368;display:block;margin-bottom:4px">Notes <span style="color:#9aa0a6">(optional)</span></label>
-      <textarea name="notes" rows="2" placeholder="Optional notes" style="width:100%;font-size:13px;padding:7px 10px;border:1px solid #d1d5db;border-radius:5px;box-sizing:border-box;font-family:inherit;resize:vertical;margin-bottom:16px" form="project-form"></textarea>
+      {# Belongs to the upload form it sits in. Bound to the project form it
+         would submit an empty value and wipe the project's own notes. #}
+      <textarea name="notes" rows="2" placeholder="Optional notes" style="width:100%;font-size:13px;padding:7px 10px;border:1px solid #d1d5db;border-radius:5px;box-sizing:border-box;font-family:inherit;resize:vertical;margin-bottom:16px"></textarea>
       <button type="submit" class="btn btn-primary" style="width:100%">Upload Document</button>
     </form>
   </div>
