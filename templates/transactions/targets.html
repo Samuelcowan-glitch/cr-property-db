@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}Commission targets{% endblock %}
+{% block topbar_title %}Commission targets{% endblock %}
+{% block topbar_actions %}
+  <button type="submit" form="targets-form" class="btn btn-primary btn-sm">Save targets</button>
+  <a href="{{ url_for('transactions_list', view='target') }}" class="btn btn-outline btn-sm">
+    &larr; Back to the chart
+  </a>
+{% endblock %}
+
+{#
+   A quarter or a year with nothing of its own is added up from the months
+   inside it, so filling in the monthly column is usually enough. Leaving a
+   box empty removes the target rather than setting it to nothing.
+#}
+
+{% block content %}
+<form id="targets-form" method="post" action="{{ url_for('transaction_targets') }}">
+  <input type="hidden" name="year" value="{{ year }}">
+</form>
+
+<div class="rec-page fin-page">
+
+  <div class="breadcrumb">
+    <a href="{{ url_for('transactions_list') }}">Transactions</a><span class="sep">/</span>
+    <span class="current">Targets</span>
+  </div>
+
+  <div class="rec-header">
+    <div>
+      <h2>Commission targets for {{ year }}</h2>
+      <div class="rec-facts">
+        <span>Net of VAT, to match the way commission is counted</span>
+        {% if months_total %}<span>Months entered: <strong>{{ money_gbp(months_total) }}</strong></span>{% endif %}
+      </div>
+    </div>
+    <div class="rec-tags">
+      <div class="fin-periods">
+        {% for y in years %}
+        <a href="{{ url_for('transaction_targets', year=y) }}"
+           class="{{ 'is-on' if y == year }}">{{ y }}</a>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div class="trx-cols">
+
+    <div>
+      <div class="box box--grid">
+        <div class="box-head">Month by month</div>
+        {% for m in months %}
+        <div class="frow">
+          <div class="fcell fcell--label">{{ m.label }}</div>
+          <div class="fcell fcell--edit">
+            <input type="number" step="0.01" min="0" form="targets-form"
+                   name="month:{{ m.key }}"
+                   value="{{ '%g'|format(m.amount) if m.amount else '' }}"
+                   placeholder="No target">
+          </div>
+          <div class="fcell fcell--label">Quarter</div>
+          <div class="fcell">Q{{ m.quarter }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div>
+      <div class="box box--grid">
+        <div class="box-head">Quarters</div>
+        {% for q in quarters %}
+        <div class="frow">
+          <div class="fcell fcell--label">{{ q.label }}</div>
+          <div class="fcell fcell--edit">
+            <input type="number" step="0.01" min="0" form="targets-form"
+                   name="quarter:{{ q.key }}"
+                   value="{{ '%g'|format(q.amount) if q.amount else '' }}"
+                   placeholder="{{ ('From its months: ' ~ money_gbp(q.from_months)) if q.from_months else 'No target' }}">
+          </div>
+          <div class="fcell fcell--label">From its months</div>
+          <div class="fcell {{ 'is-empty' if not q.from_months }}">
+            {{ money_gbp(q.from_months) if q.from_months else '—' }}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+
+      <div class="box box--grid">
+        <div class="box-head">The year</div>
+        <div class="frow">
+          <div class="fcell fcell--label">{{ year }}</div>
+          <div class="fcell fcell--edit">
+            <input type="number" step="0.01" min="0" form="targets-form"
+                   name="year:{{ year }}"
+                   value="{{ '%g'|format(year_target) if year_target else '' }}"
+                   placeholder="{{ ('From its months: ' ~ money_gbp(months_total)) if months_total else 'No target' }}">
+          </div>
+          <div class="fcell fcell--label">From its months</div>
+          <div class="fcell {{ 'is-empty' if not months_total }}">
+            {{ money_gbp(months_total) if months_total else '—' }}
+          </div>
+        </div>
+      </div>
+
+      <div class="box">
+        <div class="box-head">How these are used</div>
+        <div style="padding:11px 12px;font-size:12.5px;line-height:1.6;color:var(--text)">
+          <p style="margin:0 0 8px">
+            A target entered here is compared with the commission
+            <strong>secured</strong> in that period &mdash; the net commission on
+            transactions that completed in it.
+          </p>
+          <p style="margin:0 0 8px">
+            A quarter or a year you leave empty is added up from the months
+            inside it. Enter one of your own to override that.
+          </p>
+          <p style="margin:0">
+            Clearing a box removes that target. The chart then shows
+            &ldquo;no target set&rdquo; for the period rather than nought.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

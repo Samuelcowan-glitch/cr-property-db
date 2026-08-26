@@ -378,6 +378,7 @@ class Transaction(db.Model):
     payment_due_date  = db.Column(db.Date)
     completion_date   = db.Column(db.Date, index=True)
     agreement_type    = db.Column(db.String(20))    # Licence / Letting
+    expected_completion_date = db.Column(db.Date, index=True)
     terms_agreed_date         = db.Column(db.Date)
     solicitors_instructed_date = db.Column(db.Date)
 
@@ -544,6 +545,25 @@ class Transaction(db.Model):
         if self.fee_percent:
             return f'{self.fee_percent:g}%'
         return 'No fee entered'
+
+
+class CommissionTarget(db.Model):
+    """What the office is aiming to bill in a month, a quarter or a year.
+
+    Targets are held per period rather than as one figure, so a busy quarter
+    can be aimed at differently from a quiet one. A quarter or a year with no
+    target of its own is added up from the months inside it, so entering
+    twelve monthly targets is enough on its own.
+    """
+    __tablename__ = 'commission_targets'
+    id          = db.Column(db.Integer, primary_key=True)
+    period_type = db.Column(db.String(10), nullable=False)   # month / quarter / year
+    period_key  = db.Column(db.String(10), nullable=False)   # 2026-08 / 2026-Q3 / 2026
+    amount      = db.Column(db.Float, nullable=False)
+    set_by      = db.Column(db.String(80))
+    set_at      = db.Column(db.DateTime, default=datetime.utcnow)
+    __table_args__ = (db.UniqueConstraint('period_type', 'period_key',
+                                          name='uq_target_period'),)
 
 
 class TransactionPayment(db.Model):
@@ -2281,69 +2301,349 @@ def _bucket_of(when, period):
     return (when.year, when.month), when.strftime('%b %y')
 
 
-def _bucket_keys(period):
-    """The columns to draw, oldest first, ending with the one we are in."""
+def _bucket_keys(period, ahead=0):
+    """The columns to draw, oldest first.
+
+    Money already earned is behind us, so those views look back. Commission
+    still expected is ahead of us, so that view gives most of its columns to
+    the months to come. `ahead` is how many of them fall after the one we are
+    in; the number of columns stays the same either way.
+    """
     today = date.today()
     if period == 'year':
-        return [_bucket_of(date(today.year - i, 1, 1), period)
-                for i in range(4, -1, -1)]
-    if period == 'quarter':
-        firsts = [_month_shift(_month_start(today), -3 * i) for i in range(7, -1, -1)]
-        seen, out = set(), []
-        for m in firsts:
-            k = _bucket_of(m, period)
-            if k[0] not in seen:
-                seen.add(k[0])
-                out.append(k)
-        return out
-    return [_bucket_of(_month_shift(_month_start(today), -i), period)
-            for i in range(11, -1, -1)]
+        span, step = 5, lambda i: date(today.year + i, 1, 1)
+    elif period == 'quarter':
+        span, step = 8, lambda i: _month_shift(_month_start(today), 3 * i)
+    else:
+        span, step = 12, lambda i: _month_shift(_month_start(today), i)
+    ahead = max(0, min(ahead, span - 1))
+    offsets = range(ahead - span + 1, ahead + 1)
+    seen, out = set(), []
+    for i in offsets:
+        key = _bucket_of(step(i), period)
+        if key and key[0] not in seen:
+            seen.add(key[0])
+            out.append(key)
+    return out
+
+# ── The three ways of looking at the chart ───────────────────────────────────
+
+TRANSACTION_VIEWS = [
+    ('expected', 'Expected Commission'),
+    ('count',    'Number of Transactions'),
+    ('target',   'Performance Against Target'),
+]
+
+# Where commission is expected to come from. A transaction sits in exactly one
+# of these, checked in this order, so nothing is counted twice.
+EXPECTED_STAGES = [
+    ('terms',      'Terms agreed',                 '#9fb0cb'),
+    ('solicitors', 'Solicitors instructed',        '#5b7bb0'),
+    ('awaiting',   'Completed, awaiting invoice',  '#26406e'),
+    ('invoiced',   'Invoiced, awaiting payment',   '#b5762c'),
+]
+
+# Where a transaction has got to. Part paid sits with commission billed: the
+# invoice is out, so that is the stage it has reached.
+COUNT_STAGES = [
+    ('terms',      'Terms agreed',          '#9fb0cb'),
+    ('solicitors', 'Solicitors instructed', '#5b7bb0'),
+    ('completed',  'Completed',             '#26406e'),
+    ('billed',     'Commission billed',     '#b5762c'),
+    ('paid',       'Paid',                  '#2f7a4f'),
+    ('fallen',     'Fallen through',        '#b3463c'),
+]
+
+COUNT_STATUS_STAGE = {
+    'Terms agreed': 'terms', 'Solicitors instructed': 'solicitors',
+    'Completed': 'completed', 'Commission billed': 'billed',
+    'Part paid': 'billed', 'Paid': 'paid', 'Fallen through': 'fallen',
+}
+
+# How close to target still counts as close.
+TARGET_NEAR = float(os.environ.get('TARGET_NEAR', '85'))
 
 
-def transaction_chart(rows=None, period='month'):
-    """Completed transactions and commission, column by column.
+def expected_stage(t):
+    """The one stage a transaction's commission is still expected in.
 
-    Completions are placed by their completion date, billing by its invoice
-    date and receipts by the date the payment came in, so each column says
-    what actually happened in that period rather than what a record looks
-    like now.
+    Nothing that fell through, was archived or has been paid in full is
+    expected to earn again, so those return nothing at all.
     """
-    period = period if period in dict(TRANSACTION_PERIODS) else 'month'
-    rows = counting_transactions() if rows is None else rows
+    if not t.counts_towards_totals or t.status == 'Paid':
+        return None
+    if t.is_billed and t.outstanding > 0.005:
+        return 'invoiced'
+    if t.has_completed and not t.is_billed:
+        return 'awaiting'
+    if t.status == 'Solicitors instructed':
+        return 'solicitors'
+    if t.status == 'Terms agreed':
+        return 'terms'
+    return None
+
+
+def expected_date(t, stage):
+    """When the money for that stage is expected to be due."""
+    if stage == 'invoiced':
+        return t.payment_due_date or t.invoice_date
+    if stage == 'awaiting':
+        return t.completion_date
+    return t.expected_completion_date or t.completion_date
+
+
+def expected_amount(t, stage):
+    """What is still expected from it, net of VAT.
+
+    An invoice part paid is only expected to bring in what is left, and never
+    more than the commission itself, so VAT already collected is not counted
+    as commission still to come.
+    """
+    if stage == 'invoiced':
+        return round(min(t.outstanding, t.net_commission), 2)
+    return t.net_commission
+
+
+def count_stage(t):
+    return COUNT_STATUS_STAGE.get(t.status)
+
+
+def count_date(t, stage):
+    """The date that put a transaction into the stage it is in."""
+    if stage == 'paid':
+        paid = [p.received_on for p in t.payments if p.received_on]
+        return max(paid) if paid else (t.invoice_date or t.completion_date)
+    if stage == 'billed':
+        return t.invoice_date or t.completion_date
+    if stage == 'completed':
+        return t.completion_date
+    return (t.expected_completion_date or t.completion_date
+            or t.transaction_date
+            or (t.created_at.date() if t.created_at else None))
+
+
+def bucket_key_text(key, period):
+    """A period as text, for a link back to the transactions behind a column."""
+    year, second = key
+    if period == 'year':
+        return str(year)
+    if period == 'quarter':
+        return f'{year}-Q{second}'
+    return f'{year}-{second:02d}'
+
+
+def _stack(columns, stages, peak):
+    """Turn each column's per-stage figures into stacked segment heights."""
+    for col in columns:
+        running = 0.0
+        col['segments'] = []
+        for key, label, colour in stages:
+            value = col['stages'][key]['value']
+            if not value:
+                continue
+            height = value / peak * 100 if peak else 0
+            col['segments'].append({
+                'key': key, 'label': label, 'colour': colour,
+                'value': value, 'count': col['stages'][key]['count'],
+                'height': round(height, 2), 'bottom': round(running, 2),
+            })
+            running += height
+    return columns
+
+
+# How much of the expected-commission chart is given to the months to come.
+EXPECTED_AHEAD = {'month': 8, 'quarter': 5, 'year': 3}
+
+
+def expected_commission_chart(rows, period='month'):
+    """Commission still expected, by the stage it is expected from."""
+    keys = _bucket_keys(period, ahead=EXPECTED_AHEAD.get(period, 8))
+    order = {k: i for i, (k, _) in enumerate(keys)}
+    columns = [{'key': k, 'label': lbl, 'period_key': bucket_key_text(k, period),
+                'total': 0.0, 'count': 0,
+                'stages': {s: {'value': 0.0, 'count': 0} for s, _, _ in EXPECTED_STAGES}}
+               for k, lbl in keys]
+    undated = in_view = 0
+    for t in rows:
+        stage = expected_stage(t)
+        if not stage:
+            continue
+        when = expected_date(t, stage)
+        if not when:
+            undated += 1
+            continue
+        b = _bucket_of(when, period)
+        if not b or b[0] not in order:
+            continue
+        col = columns[order[b[0]]]
+        col['stages'][stage]['value'] += expected_amount(t, stage)
+        col['stages'][stage]['count'] += 1
+        col['total'] += expected_amount(t, stage)
+        col['count'] += 1
+        in_view += 1
+    for col in columns:
+        col['total'] = round(col['total'], 2)
+        for st in col['stages'].values():
+            st['value'] = round(st['value'], 2)
+    peak = max([c['total'] for c in columns] + [0.0])
+    return {
+        'view': 'expected', 'period': period, 'money': True,
+        'columns': _stack(columns, EXPECTED_STAGES, peak),
+        'stages': EXPECTED_STAGES, 'peak': peak,
+        'total': round(sum(c['total'] for c in columns), 2),
+        'count': in_view, 'undated': undated,
+        'axis': [money_short(peak * f) for f in (1, 0.75, 0.5, 0.25)],
+        'zero': '£0',
+    }
+
+
+# Two of the counting stages are placed by a date that has not happened yet,
+# so this view reaches a little way forward as well.
+COUNT_AHEAD = {'month': 3, 'quarter': 2, 'year': 1}
+
+
+def transaction_count_chart(rows, period='month'):
+    """How many transactions sit at each stage, period by period."""
+    keys = _bucket_keys(period, ahead=COUNT_AHEAD.get(period, 3))
+    order = {k: i for i, (k, _) in enumerate(keys)}
+    columns = [{'key': k, 'label': lbl, 'period_key': bucket_key_text(k, period),
+                'total': 0, 'count': 0,
+                'stages': {s: {'value': 0, 'count': 0} for s, _, _ in COUNT_STAGES}}
+               for k, lbl in keys]
+    undated = elsewhere = 0
+    for t in rows:
+        stage = count_stage(t)
+        if not stage:
+            elsewhere += 1
+            continue
+        when = count_date(t, stage)
+        if not when:
+            undated += 1
+            continue
+        b = _bucket_of(when, period)
+        if not b or b[0] not in order:
+            continue
+        col = columns[order[b[0]]]
+        col['stages'][stage]['value'] += 1
+        col['stages'][stage]['count'] += 1
+        col['total'] += 1
+        col['count'] += 1
+    peak = max([c['total'] for c in columns] + [0])
+    return {
+        'view': 'count', 'period': period, 'money': False,
+        'columns': _stack(columns, COUNT_STAGES, peak),
+        'stages': COUNT_STAGES, 'peak': peak,
+        'total': sum(c['total'] for c in columns),
+        'count': sum(c['total'] for c in columns),
+        'undated': undated, 'elsewhere': elsewhere,
+        'axis': [f'{round(peak * f):,}' for f in (1, 0.75, 0.5, 0.25)],
+        'zero': '0',
+    }
+
+
+def target_for(period, key):
+    """The target for one column, or None if nobody has set one.
+
+    A quarter or a year with no figure of its own is added up from the months
+    inside it, so entering monthly targets is enough on its own. Nothing is
+    ever invented: with no months entered either, there is no target.
+    """
+    year, second = key
+    own = CommissionTarget.query.filter_by(
+        period_type=period, period_key=bucket_key_text(key, period)).first()
+    if own:
+        return float(own.amount), True
+    if period == 'month':
+        return None, False
+    months = range((second - 1) * 3 + 1, (second - 1) * 3 + 4) if period == 'quarter' \
+        else range(1, 13)
+    parts = [t.amount for t in CommissionTarget.query.filter(
+        CommissionTarget.period_type == 'month',
+        CommissionTarget.period_key.in_([f'{year}-{m:02d}' for m in months])).all()]
+    if parts:
+        return round(float(sum(parts)), 2), False
+    if period == 'year':
+        quarters = [t.amount for t in CommissionTarget.query.filter(
+            CommissionTarget.period_type == 'quarter',
+            CommissionTarget.period_key.in_([f'{year}-Q{q}' for q in range(1, 5)])).all()]
+        if quarters:
+            return round(float(sum(quarters)), 2), False
+    return None, False
+
+
+def target_performance_chart(rows, period='month'):
+    """What was secured and billed against what the office aimed at."""
     keys = _bucket_keys(period)
     order = {k: i for i, (k, _) in enumerate(keys)}
-    cols = [{'key': k, 'label': lbl, 'completed': 0, 'billed': 0.0,
-             'received': 0.0, 'outstanding': 0.0} for k, lbl in keys]
-
+    columns = [{'key': k, 'label': lbl, 'period_key': bucket_key_text(k, period),
+                'secured': 0.0, 'billed': 0.0, 'secured_count': 0, 'billed_count': 0}
+               for k, lbl in keys]
     for t in rows:
         if t.has_completed:
             b = _bucket_of(t.completion_date, period)
             if b and b[0] in order:
-                cols[order[b[0]]]['completed'] += 1
+                columns[order[b[0]]]['secured'] += t.net_commission
+                columns[order[b[0]]]['secured_count'] += 1
         if t.is_billed:
             b = _bucket_of(t.invoice_date, period)
             if b and b[0] in order:
-                cols[order[b[0]]]['billed'] += t.net_commission
-                cols[order[b[0]]]['outstanding'] += max(t.outstanding, 0.0)
-        for p in t.payments:
-            b = _bucket_of(p.received_on, period)
-            if b and b[0] in order:
-                cols[order[b[0]]]['received'] += float(p.amount or 0.0)
+                columns[order[b[0]]]['billed'] += t.net_commission
+                columns[order[b[0]]]['billed_count'] += 1
 
-    for c in cols:
-        for k in ('billed', 'received', 'outstanding'):
-            c[k] = round(c[k], 2)
-    peak_money = max([max(c['billed'], c['received'], c['outstanding'])
-                      for c in cols] + [0.0])
-    peak_count = max([c['completed'] for c in cols] + [0])
+    any_target = False
+    for col in columns:
+        col['secured'] = round(col['secured'], 2)
+        col['billed'] = round(col['billed'], 2)
+        target, exact = target_for(period, col['key'])
+        col['target'] = target
+        col['target_is_own'] = exact
+        any_target = any_target or target is not None
+        if target:
+            col['achieved'] = round(col['secured'] / target * 100, 1)
+            col['variance'] = round(col['secured'] - target, 2)
+            col['state'] = ('over' if col['achieved'] >= 100
+                            else 'near' if col['achieved'] >= TARGET_NEAR else 'under')
+        else:
+            col['achieved'] = col['variance'] = None
+            col['state'] = 'none'
+
+    peak = max([max(c['secured'], c['billed'], c['target'] or 0.0) for c in columns] + [0.0])
+    for col in columns:
+        col['secured_h'] = round(col['secured'] / peak * 100, 2) if peak else 0
+        col['billed_h'] = round(col['billed'] / peak * 100, 2) if peak else 0
+        col['target_h'] = round(col['target'] / peak * 100, 2) if peak and col['target'] else None
+
+    totals_target = sum(c['target'] for c in columns if c['target'])
+    secured = round(sum(c['secured'] for c in columns), 2)
     return {
-        'period': period, 'columns': cols,
-        'peak_money': peak_money, 'peak_count': peak_count,
-        'total_billed':   round(sum(c['billed'] for c in cols), 2),
-        'total_received': round(sum(c['received'] for c in cols), 2),
-        'total_completed': sum(c['completed'] for c in cols),
-        'axis': [money_short(peak_money * f) for f in (1, 0.75, 0.5, 0.25)],
+        'view': 'target', 'period': period, 'money': True, 'columns': columns,
+        'peak': peak, 'any_target': any_target,
+        'total': secured,
+        'total_billed': round(sum(c['billed'] for c in columns), 2),
+        'total_target': round(totals_target, 2) if totals_target else None,
+        'total_achieved': round(secured / totals_target * 100, 1) if totals_target else None,
+        'total_variance': round(secured - totals_target, 2) if totals_target else None,
+        'near': TARGET_NEAR,
+        'axis': [money_short(peak * f) for f in (1, 0.75, 0.5, 0.25)],
+        'zero': '£0',
     }
+
+
+def transaction_chart(rows=None, period='month', view='expected', everyone=None):
+    """The dashboard chart, in whichever of the three views was asked for.
+
+    The counting view has a Fallen through stage, so it is given every
+    transaction. The two money views are given only the ones that count,
+    because nothing that fell through will ever be billed.
+    """
+    period = period if period in dict(TRANSACTION_PERIODS) else 'month'
+    view = view if view in dict(TRANSACTION_VIEWS) else 'expected'
+    rows = counting_transactions() if rows is None else rows
+    if view == 'count':
+        return transaction_count_chart(everyone if everyone is not None else rows, period)
+    if view == 'target':
+        return target_performance_chart(rows, period)
+    return expected_commission_chart(rows, period)
 
 
 def next_transaction_reference():
@@ -2420,6 +2720,23 @@ def _transaction_filters(rows, args):
     prop_id = (args.get('property') or '').strip()
     if prop_id.isdigit():
         rows = [t for t in rows if t.property_id == int(prop_id)]
+    # Clicking a chart segment asks for exactly what that segment counted, so
+    # the same stage and period rules are used rather than an approximation.
+    stage, bucket = (args.get('stage') or '').strip(), (args.get('bucket') or '').strip()
+    if stage and bucket:
+        period = args.get('period') if args.get('period') in dict(TRANSACTION_PERIODS) else 'month'
+        picker = expected_stage if args.get('view') == 'expected' else count_stage
+        dater = expected_date if args.get('view') == 'expected' else count_date
+
+        def in_segment(t):
+            got = picker(t)
+            if got != stage:
+                return False
+            when = dater(t, got)
+            b = _bucket_of(when, period) if when else None
+            return bool(b) and bucket_key_text(b[0], period) == bucket
+        rows = [t for t in rows if in_segment(t)]
+
     frm, to = _parse_date(args.get('from')), _parse_date(args.get('to'))
     if frm or to:
         def when(t):
@@ -2445,9 +2762,20 @@ def transactions_list():
     rows = [t for t in everyone if t.counts_towards_totals]
     dash = transaction_dashboard(rows)
     dash['excluded_count'] = len(everyone) - len(rows)
-    chart = transaction_chart(rows, request.args.get('period', 'month'))
     extras = transaction_extras(rows, everyone)
     stock = stock_fee_value()
+
+    # The chart answers the filters; the cards above stay firm-wide, so the
+    # summary always reports the whole book however the chart is narrowed.
+    chart_args = {k: v for k, v in request.args.items()
+                  if k not in ('stage', 'bucket', 'sort', 'dir')}
+    chart_rows = _transaction_filters(rows, chart_args)
+    chart_everyone = _transaction_filters(everyone, chart_args)
+    chart = transaction_chart(chart_rows, request.args.get('period', 'month'),
+                              request.args.get('view', 'expected'),
+                              everyone=chart_everyone)
+    filtered = any(chart_args.get(k) for k in
+                   ('q', 'type', 'status', 'fee_earner', 'client', 'property', 'from', 'to'))
 
     # Archived and fallen-through transactions are outside the figures, but
     # somebody still has to be able to find them.
@@ -2464,6 +2792,8 @@ def transactions_list():
     return render_template(
         'transactions/list.html',
         transactions=listed, dash=dash, chart=chart, extras=extras, stock=stock,
+        view=chart['view'], views=TRANSACTION_VIEWS, filtered=filtered,
+        segment=(request.args.get('stage'), request.args.get('bucket')),
         sort=sort, dir=direction, args=request.args, today=date.today(),
         fee_earners=sorted({t.fee_earner for t in everyone if t.fee_earner}),
         clients=sorted({t.client for t in everyone if t.client}),
@@ -2477,6 +2807,69 @@ def transactions_list():
             'outstanding': round(sum(t.outstanding for t in listed
                                      if t.is_billed), 2),
         })
+
+
+@app.route('/transactions/targets', methods=['GET', 'POST'])
+@requires('edit')
+def transaction_targets():
+    """Set what the office is aiming to bill, month by month and year by year.
+
+    A quarter with no figure of its own is added up from its months, so most
+    offices only need to fill in the monthly column.
+    """
+    year = request.args.get('year', type=int) or date.today().year
+    if request.method == 'POST':
+        year = request.form.get('year', type=int) or year
+        saved = cleared = 0
+        for kind, keys in (('month', [f'{year}-{m:02d}' for m in range(1, 13)]),
+                           ('quarter', [f'{year}-Q{q}' for q in range(1, 5)]),
+                           ('year', [str(year)])):
+            for key in keys:
+                field = f'{kind}:{key}'
+                if field not in request.form:
+                    continue
+                amount = _fnum(request.form.get(field))
+                existing = CommissionTarget.query.filter_by(
+                    period_type=kind, period_key=key).first()
+                if amount is None or amount < 0:
+                    if existing:
+                        db.session.delete(existing)
+                        cleared += 1
+                    continue
+                if existing:
+                    existing.amount = float(amount)
+                    existing.set_by = getattr(current_user, 'username', None)
+                    existing.set_at = datetime.utcnow()
+                else:
+                    db.session.add(CommissionTarget(
+                        period_type=kind, period_key=key, amount=float(amount),
+                        set_by=getattr(current_user, 'username', None)))
+                saved += 1
+        db.session.commit()
+        audit('edit', entity='CommissionTarget', entity_id=year,
+              detail=f'{saved} set, {cleared} cleared')
+        flash(f'Targets saved for {year}.', 'success')
+        return redirect(url_for('transaction_targets', year=year))
+
+    held = {f'{t.period_type}:{t.period_key}': t.amount for t in
+            CommissionTarget.query.filter(
+                CommissionTarget.period_key.startswith(str(year))).all()}
+    months = [{'key': f'{year}-{m:02d}',
+               'label': date(year, m, 1).strftime('%B'),
+               'amount': held.get(f'month:{year}-{m:02d}'),
+               'quarter': (m - 1) // 3 + 1} for m in range(1, 13)]
+    quarters = []
+    for q in range(1, 5):
+        own = held.get(f'quarter:{year}-Q{q}')
+        from_months = [m['amount'] for m in months if m['quarter'] == q and m['amount']]
+        quarters.append({'key': f'{year}-Q{q}', 'label': f'Quarter {q}', 'amount': own,
+                         'from_months': round(sum(from_months), 2) if from_months else None})
+    entered = [m['amount'] for m in months if m['amount']]
+    return render_template(
+        'transactions/targets.html', year=year, months=months, quarters=quarters,
+        year_target=held.get(f'year:{year}'),
+        months_total=round(sum(entered), 2) if entered else None,
+        years=range(date.today().year - 2, date.today().year + 3))
 
 
 @app.route('/transactions/<int:id>')
@@ -3505,6 +3898,7 @@ TRANSACTION_FIELDS = [
     ('payment_due_date',   'payment_due_date',   _parse_date),
     ('completion_date',    'completion_date',    _parse_date),
     ('agreement_type',     'agreement_type',     _ftext),
+    ('expected_completion_date', 'expected_completion_date', _parse_date),
     ('terms_agreed_date',  'terms_agreed_date',  _parse_date),
     ('solicitors_instructed_date', 'solicitors_instructed_date', _parse_date),
     ('lease_start',        'lease_start',        _parse_date),
@@ -5847,6 +6241,7 @@ def _migrate_project_columns():
             ('invoice_date',      'DATE'), ('payment_due_date', 'DATE'),
             ('completion_date',   'DATE'), ('terms_agreed_date','DATE'),
             ('agreement_type',    'TEXT'),
+            ('expected_completion_date', 'DATE'),
             ('solicitors_instructed_date', 'DATE'),
             ('client_solicitor',       'TEXT'),
             ('client_solicitor_firm',  'TEXT'),

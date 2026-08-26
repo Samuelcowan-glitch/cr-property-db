@@ -969,3 +969,94 @@ table.rec-table td.actions { white-space: nowrap; text-align: right; }
 /* An appointment that has already finished today, still shown but stepped back. */
 .org-row.is-past .org-title { color: var(--grey-600); }
 .org-row.is-past .org-sub   { color: var(--grey-400); }
+
+/* ── Transactions chart: three views ─────────────────────────────────────── */
+.fin-headline { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.fin-total {
+  font-size: 21px; font-weight: 700; color: var(--navy);
+  font-variant-numeric: tabular-nums; line-height: 1.2;
+}
+.fin-total-note { font-size: 11.5px; color: var(--grey-600); }
+
+.fin-views { display: flex; border: 1px solid var(--grey-200); border-radius: 3px; overflow: hidden; }
+.fin-views a {
+  font-size: 11.5px; padding: 5px 13px; color: var(--grey-700); text-decoration: none;
+  border-right: 1px solid var(--grey-200); background: var(--grey-50); white-space: nowrap;
+}
+.fin-views a:last-child { border-right: 0; }
+.fin-views a.is-on { background: var(--navy); color: #fff; font-weight: 600; }
+.fin-views a:hover:not(.is-on) { background: var(--grey-100); }
+
+.fin-chart-sub {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap; margin: 0 0 10px;
+}
+.fin-chart-sub .fin-key { margin-top: 0; }
+.fin-key i.key-line {
+  width: 14px; height: 0; border-top: 2px dashed var(--navy); border-radius: 0;
+}
+.fin-chart-foot {
+  border-top: 1px solid var(--grey-100); margin-top: 8px; padding-top: 7px;
+  font-size: 11px; color: var(--grey-600); line-height: 1.5;
+}
+.fin-chart-foot strong { color: var(--navy); }
+
+.fin-nudge {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  background: var(--grey-50); border: 1px solid var(--grey-200); border-radius: 3px;
+  padding: 9px 12px; margin: 0 0 10px; font-size: 12px; color: var(--grey-700);
+}
+.fin-nudge strong { color: var(--navy); }
+
+/* Stacked columns. Each segment is a link to what it counted. */
+.fin-col--stack { position: relative; display: block; padding: 0 3px; }
+.fin-seg {
+  position: absolute; left: 3px; right: 3px; display: block;
+  border-radius: 1px; text-decoration: none;
+}
+.fin-seg:hover { filter: brightness(1.12); }
+.fin-seg:focus-visible { outline: 2px solid var(--orange); outline-offset: 1px; }
+.fin-col--stack > .fin-bar.is-nil {
+  position: absolute; left: 3px; right: 3px; bottom: 0; height: 1px;
+}
+
+/* Target view: two columns with the target drawn across them. */
+.fin-col--target { position: relative; }
+.fin-bar.secured  { background: #26406e; }
+.fin-bar.billed-b { background: #9fb0cb; }
+.fin-col--target.is-over  .fin-bar.secured { background: #2f7a4f; }
+.fin-col--target.is-near  .fin-bar.secured { background: #b5762c; }
+.fin-col--target.is-under .fin-bar.secured { background: #b3463c; }
+.fin-target-line {
+  position: absolute; left: 1px; right: 1px; height: 0;
+  border-top: 2px dashed var(--navy); z-index: 2;
+}
+
+/* Tooltips. Plain markup shown on hover — no library, nothing loaded. */
+.fin-tip {
+  position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%);
+  min-width: 190px; max-width: 260px; padding: 8px 10px;
+  background: var(--navy); color: #fff; border-radius: 4px;
+  font-size: 11px; line-height: 1.5; text-align: left;
+  box-shadow: 0 6px 18px rgba(14, 31, 68, .28);
+  opacity: 0; visibility: hidden; transition: opacity .12s ease;
+  z-index: 6; pointer-events: none;
+}
+.fin-col:hover > .fin-tip,
+.fin-col:focus-within > .fin-tip { opacity: 1; visibility: visible; }
+.fin-tip b { display: block; margin-bottom: 3px; font-size: 11.5px; }
+.fin-tip span { display: block; color: #cdd6e6; }
+.fin-tip span i {
+  display: inline-block; width: 7px; height: 7px; border-radius: 1px; margin-right: 5px;
+}
+.fin-tip em { font-style: normal; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; }
+.fin-tip small { color: #97a5bd; }
+.fin-tip .tot { border-top: 1px solid rgba(255,255,255,.18); margin-top: 4px; padding-top: 4px; }
+/* Keep the first and last tooltips on the page. */
+.fin-cols > .fin-col:first-child .fin-tip { left: 0; transform: none; }
+.fin-cols > .fin-col:last-child  .fin-tip { left: auto; right: 0; transform: none; }
+
+@media (max-width: 900px) {
+  .fin-views { width: 100%; }
+  .fin-views a { flex: 1 1 0; text-align: center; padding: 6px 6px; }
+}

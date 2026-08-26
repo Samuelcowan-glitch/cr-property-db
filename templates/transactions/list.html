@@ -156,69 +156,201 @@
     </div>
   </div>
 
-  <!-- ════ Performance over time ════ -->
+  <!-- ════ The chart ════ -->
+  {#
+     One chart, three ways of reading it. Every figure is worked out from the
+     transactions each time the page loads, so changing a completion date, an
+     invoice, a payment, a status or a target changes the chart on the next
+     load. Counts and money never share a vertical axis: the axis is drawn in
+     pounds for the two money views and in whole numbers for the count.
+  #}
+  {% set titles = {
+       'expected': 'Expected commission',
+       'count': 'Number of transactions',
+       'target': 'Performance against target'} %}
+  {% set subtitles = {
+       'expected': 'Net of VAT, by the stage it is expected from &mdash; due date for invoices, expected completion for the rest',
+       'count': 'Each transaction counted once, at the stage it has reached',
+       'target': 'Commission secured against the target for each period'} %}
+
   <div class="fin-band">
-    <h3>Performance</h3>
-    <span class="fin-note">
-      Completions by completion date, billing by invoice date, receipts by the date the payment came in
-    </span>
+    <h3>{{ titles[view] }}</h3>
+    <span class="fin-note">{{ subtitles[view]|safe }}</span>
   </div>
 
   <div class="fin-chart">
     <div class="fin-chart-head">
+      <div class="fin-headline">
+        <span class="fin-total">
+          {%- if chart.money -%}{{ money_gbp(chart.total) }}
+          {%- else -%}{{ '{:,}'.format(chart.total) }}{%- endif -%}
+        </span>
+        <span class="fin-total-note">
+          {%- if view == 'expected' -%}
+            expected across {{ chart.count }} transaction{{ '' if chart.count == 1 else 's' }}
+          {%- elif view == 'count' -%}
+            transaction{{ '' if chart.total == 1 else 's' }} in view
+          {%- elif chart.total_target -%}
+            secured against {{ money_gbp(chart.total_target) }} targeted
+            &middot; {{ '%g'|format(chart.total_achieved) }}% achieved
+          {%- else -%}
+            secured &middot; no target set for this period
+          {%- endif -%}
+        </span>
+      </div>
+
+      {# The three views. Every other setting is carried across. #}
+      <div class="fin-views" role="tablist" aria-label="Chart view">
+        {% for key, label in views %}
+        {% set qs = {} %}{% for k, v in args.items() %}{% set _ = qs.update({k: v}) %}{% endfor %}
+        {% set _ = qs.update({'view': key}) %}{% set _ = qs.pop('stage', none) %}{% set _ = qs.pop('bucket', none) %}
+        <a href="{{ url_for('transactions_list', **qs) }}" role="tab"
+           aria-selected="{{ 'true' if view == key else 'false' }}"
+           class="{{ 'is-on' if view == key }}">{{ label }}</a>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="fin-chart-sub">
       <div class="fin-key">
-        <span><i style="background:#9aa8c0"></i>Completed ({{ chart.total_completed }})</span>
-        <span><i style="background:#26406e"></i>Commission billed ({{ money_gbp(chart.total_billed) }})</span>
-        <span><i style="background:#2f7a4f"></i>Received ({{ money_gbp(chart.total_received) }})</span>
-        <span><i style="background:#b5762c"></i>Outstanding</span>
+        {% if view == 'target' %}
+        <span><i style="background:#26406e"></i>Commission secured</span>
+        <span><i style="background:#9fb0cb"></i>Commission billed</span>
+        <span><i class="key-line"></i>Target</span>
+        {% else %}
+        {% for key, label, colour in chart.stages %}
+        <span><i style="background:{{ colour }}"></i>{{ label }}</span>
+        {% endfor %}
+        {% endif %}
       </div>
       <div class="fin-periods">
         {% for key, label in TRANSACTION_PERIODS %}
         {% set qs = {} %}{% for k, v in args.items() %}{% set _ = qs.update({k: v}) %}{% endfor %}
-        {% set _ = qs.update({'period': key}) %}
+        {% set _ = qs.update({'period': key}) %}{% set _ = qs.pop('stage', none) %}{% set _ = qs.pop('bucket', none) %}
         <a href="{{ url_for('transactions_list', **qs) }}"
            class="{{ 'is-on' if chart.period == key }}">{{ label }}</a>
         {% endfor %}
       </div>
     </div>
 
+    {% if view == 'target' and not chart.any_target %}
+    <div class="fin-nudge">
+      <strong>No target set.</strong>
+      Nothing has been entered for these periods, so there is nothing to measure against.
+      <a href="{{ url_for('transaction_targets') }}" class="btn btn-primary btn-sm">Set targets</a>
+    </div>
+    {% endif %}
+
     <div class="fin-plot-wrap">
       <div class="fin-axis" aria-hidden="true">
-        {% for label in chart.axis %}<span>{{ label if chart.peak_money else '' }}</span>{% endfor %}
-        <span>{{ '£0' if chart.peak_money else '' }}</span>
+        {% for label in chart.axis %}<span>{{ label if chart.peak else '' }}</span>{% endfor %}
+        <span>{{ chart.zero if chart.peak else '' }}</span>
       </div>
       <div class="fin-plot">
-        {# Completed transactions, counted on their own scale. #}
-        <div class="fin-counts">
-          {% for c in chart.columns %}
-          <div class="fin-count"
-               title="{{ c.label }} — {{ c.completed }} completed">
-            <i class="{{ 'is-nil' if not c.completed }}"
-               style="height:{{ (c.completed / chart.peak_count * 100)|round(1) if chart.peak_count else 0 }}%"></i>
-          </div>
-          {% endfor %}
-        </div>
-
         <div class="fin-gridlines" aria-hidden="true">
           {% for pc in [0, 25, 50, 75, 100] %}<span style="top:{{ pc }}%"></span>{% endfor %}
         </div>
+
         <div class="fin-cols">
           {% for c in chart.columns %}
-          <div class="fin-col"
-               title="{{ c.label }} — billed {{ money_gbp(c.billed) }}, received {{ money_gbp(c.received) }}, outstanding {{ money_gbp(c.outstanding) }}">
-            {% for cls, amount in [('billed', c.billed), ('received', c.received), ('outstanding', c.outstanding)] %}
-            <i class="fin-bar {{ cls }} {{ 'is-nil' if not amount }}"
-               style="height:{{ (amount / chart.peak_money * 100)|round(1) if chart.peak_money else 0 }}%"></i>
+
+          {% if view == 'target' %}
+          {# Secured and billed as columns, the target as a line across them. #}
+          <div class="fin-col fin-col--target is-{{ c.state }}">
+            {% if c.target_h is not none %}
+            <span class="fin-target-line" style="bottom:{{ c.target_h }}%"
+                  aria-hidden="true"></span>
+            {% endif %}
+            <i class="fin-bar secured {{ 'is-nil' if not c.secured }}"
+               style="height:{{ c.secured_h }}%"></i>
+            <i class="fin-bar billed-b {{ 'is-nil' if not c.billed }}"
+               style="height:{{ c.billed_h }}%"></i>
+            <div class="fin-tip" role="tooltip">
+              <b>{{ c.label }}</b>
+              <span>Target <em>{{ money_gbp(c.target) if c.target else 'none set' }}</em>
+                {%- if c.target and not c.target_is_own %} <small>(from its months)</small>{% endif -%}
+              </span>
+              <span>Secured <em>{{ money_gbp(c.secured) }}</em> · {{ c.secured_count }} transaction{{ '' if c.secured_count == 1 else 's' }}</span>
+              <span>Billed <em>{{ money_gbp(c.billed) }}</em></span>
+              {% if c.achieved is not none %}
+              <span>Achieved <em>{{ '%g'|format(c.achieved) }}%</em></span>
+              <span>{{ 'Above' if c.variance >= 0 else 'Below' }} target
+                <em>{{ money_gbp(c.variance if c.variance >= 0 else -c.variance) }}</em></span>
+              {% else %}
+              <span><small>No target set for this period</small></span>
+              {% endif %}
+            </div>
+          </div>
+
+          {% else %}
+          {# Stacked by stage. Each segment links to exactly what it counted. #}
+          <div class="fin-col fin-col--stack">
+            {% for seg in c.segments %}
+            {% set qs = {} %}{% for k, v in args.items() %}{% set _ = qs.update({k: v}) %}{% endfor %}
+            {% set _ = qs.update({'stage': seg.key, 'bucket': c.period_key,
+                                  'period': chart.period, 'view': view}) %}
+            <a class="fin-seg" href="{{ url_for('transactions_list', **qs) }}"
+               style="height:{{ seg.height }}%;bottom:{{ seg.bottom }}%;background:{{ seg.colour }}"
+               aria-label="{{ c.label }}, {{ seg.label }}, {{ seg.count }} transactions"></a>
             {% endfor %}
+            {% if not c.segments %}<i class="fin-bar is-nil"></i>{% endif %}
+            <div class="fin-tip" role="tooltip">
+              <b>{{ c.label }}</b>
+              {% for seg in c.segments %}
+              <span><i style="background:{{ seg.colour }}"></i>{{ seg.label }}
+                <em>{% if chart.money %}{{ money_gbp(seg.value) }}{% else %}{{ seg.value }}{% endif %}</em>
+                · {{ seg.count }} transaction{{ '' if seg.count == 1 else 's' }}</span>
+              {% else %}
+              <span><small>Nothing in this period</small></span>
+              {% endfor %}
+              {% if c.segments %}
+              <span class="tot">Total
+                <em>{% if chart.money %}{{ money_gbp(c.total) }}{% else %}{{ c.total }}{% endif %}</em>
+                · {{ c.count }} transaction{{ '' if c.count == 1 else 's' }}</span>
+              {% endif %}
+            </div>
+          </div>
+          {% endif %}
+
+          {% endfor %}
+        </div>
+
+        <div class="fin-ticks">
+          {% for c in chart.columns %}
+          <div class="fin-tick">
+            <span class="n">
+              {%- if view == 'target' -%}
+                {{ ('%g'|format(c.achieved) ~ '%') if c.achieved is not none else '—' }}
+              {%- elif chart.money -%}
+                {{ money_short(c.total) if c.total else '—' }}
+              {%- else -%}
+                {{ c.total or '—' }}
+              {%- endif -%}
+            </span>{{ c.label }}
           </div>
           {% endfor %}
         </div>
-        <div class="fin-ticks">
-          {% for c in chart.columns %}
-          <div class="fin-tick"><span class="n">{{ c.completed or '—' }}</span>{{ c.label }}</div>
-          {% endfor %}
-        </div>
       </div>
+    </div>
+
+    <div class="fin-chart-foot">
+      {% if view == 'expected' %}
+        Fallen through, archived and fully paid transactions are left out.
+        {% if chart.undated %}
+        <strong>{{ chart.undated }}</strong> {{ 'is' if chart.undated == 1 else 'are' }}
+        not shown for want of an expected completion date.
+        {% endif %}
+      {% elif view == 'count' %}
+        Part paid is counted with commission billed.
+        {% if chart.elsewhere %}
+        <strong>{{ chart.elsewhere }}</strong> draft or in-progress
+        transaction{{ '' if chart.elsewhere == 1 else 's' }} not shown.
+        {% endif %}
+        Click a segment to see the transactions behind it.
+      {% else %}
+        Green at or above target, amber within {{ 100 - chart.near|int }}% of it, red below.
+        <a href="{{ url_for('transaction_targets') }}">Set targets</a>
+      {% endif %}
     </div>
   </div>
 
@@ -328,7 +460,8 @@
   <div class="fin-band">
     <h3>Transactions</h3>
     <span class="fin-note">
-      {{ listed_totals.count }} shown &middot; filtering the table does not change the figures above
+      {{ listed_totals.count }} shown &middot; the filters below also narrow the chart;
+      the summary cards always report the whole book
     </span>
   </div>
 
@@ -377,14 +510,26 @@
     <input type="date" name="to" value="{{ args.get('to', '') }}">
 
     <input type="hidden" name="period" value="{{ chart.period }}">
+    <input type="hidden" name="view" value="{{ view }}">
     <input type="hidden" name="sort" value="{{ sort }}">
     <input type="hidden" name="dir" value="{{ dir }}">
     <button class="btn btn-secondary btn-sm" type="submit">Apply</button>
-    <a href="{{ url_for('transactions_list') }}" class="btn btn-outline btn-sm">Clear</a>
+    {# Reset clears the filters but keeps the view and period being looked at. #}
+    <a href="{{ url_for('transactions_list', view=view, period=chart.period) }}"
+       class="btn btn-outline btn-sm">Reset filters</a>
     <a href="{{ url_for('transactions_list', show='all') }}" class="btn btn-outline btn-sm">
       Include archived
     </a>
   </form>
+
+  {% if segment[0] and segment[1] %}
+  <div class="fin-nudge">
+    Showing the {{ listed_totals.count }} transaction{{ '' if listed_totals.count == 1 else 's' }}
+    behind one column of the chart.
+    <a href="{{ url_for('transactions_list', view=view, period=chart.period) }}"
+       class="btn btn-outline btn-sm">Show them all</a>
+  </div>
+  {% endif %}
 
   {% if transactions %}
   <div class="fin-table-wrap">
