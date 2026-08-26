@@ -235,10 +235,10 @@ class Property(db.Model):
     listing_size      = db.Column(db.Float)
     listing_size_unit = db.Column(db.String(20))
     # ── Attachments ──
-    brochure_data     = db.Column(db.LargeBinary)
+    brochure_data     = db.deferred(db.Column(db.LargeBinary))
     brochure_filename = db.Column(db.String(255))
     brochure_size     = db.Column(db.Integer)
-    floor_plan_data   = db.Column(db.LargeBinary)
+    floor_plan_data   = db.deferred(db.Column(db.LargeBinary))
     floor_plan_filename = db.Column(db.String(255))
     floor_plan_size   = db.Column(db.Integer)
 
@@ -708,13 +708,13 @@ class Listing(db.Model):
     lease_years_remaining = db.Column(db.Integer)      # years left if Long Leasehold
 
     # ── Brochure & Floor Plan ──
-    brochure_data      = db.Column(db.LargeBinary)
+    brochure_data      = db.deferred(db.Column(db.LargeBinary))
     brochure_filename  = db.Column(db.String(255))
     brochure_size      = db.Column(db.Integer)
-    floor_plan_data    = db.Column(db.LargeBinary)
+    floor_plan_data    = db.deferred(db.Column(db.LargeBinary))
     floor_plan_filename= db.Column(db.String(255))
     floor_plan_size    = db.Column(db.Integer)
-    epc_data           = db.Column(db.LargeBinary)
+    epc_data           = db.deferred(db.Column(db.LargeBinary))
     epc_filename       = db.Column(db.String(255))
     epc_size           = db.Column(db.Integer)
 
@@ -748,7 +748,7 @@ class ListingPhoto(db.Model):
     __tablename__ = 'listing_photos'
     id         = db.Column(db.Integer, primary_key=True)
     listing_id = db.Column(db.Integer, db.ForeignKey('listings.id'), nullable=False)
-    file_data  = db.Column(db.LargeBinary, nullable=False)
+    file_data  = db.deferred(db.Column(db.LargeBinary, nullable=False))
     filename   = db.Column(db.String(255))
     file_mime  = db.Column(db.String(100))
     file_size  = db.Column(db.Integer)
@@ -768,7 +768,7 @@ class ProjectDocument(db.Model):
     document_name = db.Column(db.String(255), nullable=False)
     notes = db.Column(db.Text)
     uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
-    file_data = db.Column(db.LargeBinary)
+    file_data = db.deferred(db.Column(db.LargeBinary))
     file_mime = db.Column(db.String(100))
     file_size = db.Column(db.Integer)
 
@@ -1548,39 +1548,8 @@ def dashboard():
     prop_count = Property.query.count()
     trans_count = Transaction.query.count()
     proj_count = Project.query.count()
-    # Active listings = properties that have at least one active project
-    active_listings = (Property.query
-                       .join(Project, Property.id == Project.property_id)
-                       .filter(Project.status == 'Active')
-                       .order_by(Property.created_at.desc())
-                       .limit(20).all())
-    # Fall back to all properties if none have active projects
-    if not active_listings:
-        active_listings = Property.query.order_by(Property.created_at.desc()).limit(20).all()
-
     contacts = Contact.query.order_by(Contact.created_at.desc()).limit(20).all()
     today = date.today()
-
-    # All open enquiries sorted by priority (overdue first, then by follow-up date)
-    open_enquiries = Enquiry.query.filter(Enquiry.status == 'Open').all()
-    open_enquiries.sort(key=lambda e: (
-        0 if (e.next_follow_up and e.next_follow_up <= today) else
-        1 if (e.last_contact_date and (today - e.last_contact_date).days >= 7) else
-        1 if (not e.last_contact_date and e.received_date and (today - e.received_date).days >= 7) else
-        2,
-        e.next_follow_up or today
-    ))
-
-    due_today = []  # follow-up banner removed from dashboard
-
-    # New enquiries that have NOT been contacted yet (no logged contact date).
-    new_enquiries = [e for e in open_enquiries if not e.last_contact_date]
-    # Applicants (contacts) with an overdue follow-up — flag for chasing.
-    overdue_contacts = (Contact.query
-                        .filter(Contact.next_follow_up.isnot(None),
-                                Contact.next_follow_up < today,
-                                Contact.status.notin_(ARCHIVED_STATUSES + ['Inactive']))
-                        .order_by(Contact.next_follow_up).all())
 
     to_let = _available_listings(INSTRUCTION_TO_LET)
     for_sale = _available_listings(INSTRUCTION_FOR_SALE)
@@ -1605,12 +1574,7 @@ def dashboard():
                            proj_count=proj_count,
                            contact_count=contact_count,
                            enq_count=enq_count,
-                           active_listings=active_listings,
                            contacts=contacts,
-                           open_enquiries=open_enquiries,
-                           new_enquiries=new_enquiries,
-                           overdue_contacts=overdue_contacts,
-                           due_today=due_today,
                            recent_transactions=recent_transactions,
                            today=today)
 
