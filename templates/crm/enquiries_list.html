@@ -1,182 +1,251 @@
-﻿{% extends "base.html" %}
-
+{% extends "base.html" %}
 {% block title %}Enquiries{% endblock %}
-
 {% block topbar_title %}Enquiries{% endblock %}
 
 {% block topbar_actions %}
-
   <form method="post" action="{{ url_for('email_sync_trigger') }}" style="display:inline;margin:0">
-
-    <button type="submit" class="btn btn-secondary btn-sm" title="Check the mailbox now for Zoopla leads and client emails">Check Inbox</button>
-
+    <button type="submit" class="btn btn-secondary btn-sm"
+            title="Check the mailbox now for portal leads and client emails">Check Inbox</button>
   </form>
-
-  <a href="{{ url_for('enquiry_new') }}" class="btn btn-primary btn-sm">+ New Enquiry</a>
-
+  <a href="{{ url_for('enquiry_new') }}" class="btn btn-primary btn-sm">+ Add Enquiry</a>
 {% endblock %}
 
-
+{% macro ring(slices, size=132) -%}
+  {# A donut drawn from stroke dashes: each slice is one circle whose dash
+     covers its own share of the circumference. #}
+  {% set r = 15.915 %}
+  <svg class="enq-ring" width="{{ size }}" height="{{ size }}" viewBox="0 0 42 42" role="img">
+    <circle cx="21" cy="21" r="{{ r }}" fill="none" stroke="#eef0f2" stroke-width="7"></circle>
+    {% for s in slices %}
+    <circle cx="21" cy="21" r="{{ r }}" fill="none" stroke="{{ s.colour }}" stroke-width="7"
+            stroke-dasharray="{{ s.dash }} {{ 100 - s.dash }}"
+            stroke-dashoffset="{{ 25 - s.offset }}"
+            transform="rotate(-90 21 21)"></circle>
+    {% endfor %}
+  </svg>
+{%- endmacro %}
 
 {% block content %}
-
-<div class="section-header">
-
-  <h2>Enquiries</h2>
-
-  <form class="search-bar" method="get" style="flex-wrap:wrap;gap:8px">
-
-    <input type="text" name="q" value="{{ q }}" placeholder="Search subject, type, fee earner…" style="max-width:240px">
-
-    <select name="status" style="max-width:160px">
-
-      <option value="">All Statuses</option>
-
-      <option value="Open"    {{ 'selected' if status=='Open' }}>Open</option>
-
-      <option value="Won"     {{ 'selected' if status=='Won' }}>Won</option>
-
-      <option value="Lost"    {{ 'selected' if status=='Lost' }}>Lost</option>
-
-      <option value="On Hold" {{ 'selected' if status=='On Hold' }}>On Hold</option>
-
-    </select>
-
-    <button class="btn btn-secondary btn-sm" type="submit">Filter</button>
-
-    {% if q or status %}<a href="{{ url_for('enquiries_list') }}" class="btn btn-outline btn-sm">Clear</a>{% endif %}
-
-  </form>
-
-</div>
-
-
-
-{% if enquiries %}
-
-<div class="rec-table-wrap">
-
-  <table class="rec-table">
-
-    <thead>
-
-      <tr>
-
-        <th>Subject</th>
-
-        <th>Source</th>
-
-        <th>Type</th>
-
-        <th>Property</th>
-
-        <th>Contact / Org</th>
-
-        <th>Fee Earner</th>
-
-        <th>Received</th>
-
-        <th>Linked Project</th>
-
-        <th>Status</th>
-
-        <th></th>
-
-      </tr>
-
-    </thead>
-
-    <tbody>
-
-      {% for e in enquiries %}
-
-      <tr>
-
-        <td>
-
-          <a href="{{ url_for('enquiry_detail', id=e.id) }}"><strong>{{ e.subject }}</strong></a>
-
-          <div style="font-size:11px;color:#5f6368;margin-top:2px">{{ e.stage or 'Enquiry Received' }}</div>
-
-        </td>
-
-        <td><span class="badge badge-{{ 'portal' if e.source in ['Zoopla','Rightmove','OnTheMarket'] else 'muted' }}">{{ e.source or '—' }}</span></td>
-
-        <td>{{ e.enquiry_type or '—' }}</td>
-
-        <td>{% if e.linked_property %}<a href="{{ url_for('property_detail', id=e.linked_property.id) }}" style="font-size:12px">{{ e.linked_property.address }}</a>{% else %}—{% endif %}</td>
-
-        <td style="font-size:12px">
-
-          {% if e.contact %}<a href="{{ url_for('contact_detail', id=e.contact.id) }}">{{ e.contact.full_name }}</a>{% endif %}
-
-          {% if e.contact and e.organisation %}<br>{% endif %}
-
-          {% if e.organisation %}<a href="{{ url_for('organisation_detail', id=e.organisation.id) }}">{{ e.organisation.name }}</a>{% endif %}
-
-          {% if not e.contact and not e.organisation %}—{% endif %}
-
-        </td>
-
-        <td>{{ e.fee_earner or '—' }}</td>
-
-        <td>{{ e.received_date.strftime('%d %b %Y') if e.received_date else '—' }}</td>
-
-        <td>{% if e.linked_project %}<a href="{{ url_for('project_detail', id=e.linked_project.id) }}" style="font-size:12px">{{ e.linked_project.name }}</a>{% else %}—{% endif %}</td>
-
-        <td>
-
-          <span class="badge {{ 'badge-active' if e.status == 'Open' else 'badge-complete' if e.status == 'Won' else 'badge-hold' }}">{{ e.status }}</span>
-
-        </td>
-
-        <td>
-
-          <div class="td-actions">
-
-            <a href="{{ url_for('enquiry_detail', id=e.id) }}" class="btn btn-sm btn-outline">Open</a>
-
-            <a href="{{ url_for('enquiry_edit', id=e.id) }}" class="btn btn-sm btn-outline">Edit</a>
-
-            <form method="post" action="{{ url_for('enquiry_delete', id=e.id) }}" class="confirm-delete">
-
-              <button class="btn btn-sm btn-danger" type="submit">Del</button>
-
-            </form>
-
-          </div>
-
-        </td>
-
-      </tr>
-
+<div class="enq-page">
+
+<!-- ════ Enquiries received, day by day ════ -->
+<section class="enq-section">
+  <div class="enq-head">
+    <h3>Enquiries received</h3>
+    <span class="enq-note">Last 30 days &middot; {{ overview.total }} in view</span>
+  </div>
+  <div class="enq-card">
+    <div class="enq-chart">
+      <div class="enq-gridlines">
+        {% for pc in [0, 25, 50, 75] %}<span style="top:{{ pc }}%"></span>{% endfor %}
+      </div>
+      {% for d in overview.days %}
+      <div class="enq-bar" title="{{ d.label }} — {{ d.total }} enquir{{ 'y' if d.total == 1 else 'ies' }}{% if d.late %}, {{ d.late }} overdue{% endif %}">
+        <div class="stack">
+          {% if d.late %}<div class="seg late" style="height:{{ (d.late / overview.peak * 100)|round(1) }}%"></div>{% endif %}
+          {% if d.ok %}<div class="seg ok" style="height:{{ (d.ok / overview.peak * 100)|round(1) }}%"></div>{% endif %}
+        </div>
+        <div class="tick">{{ d.label if loop.index0 % 2 == 0 else '' }}</div>
+      </div>
       {% endfor %}
+    </div>
+    <div class="enq-key">
+      <span><i style="background:#c9992b"></i>Being worked</span>
+      <span><i style="background:var(--orange)"></i>Follow-up overdue</span>
+    </div>
+  </div>
+</section>
 
-    </tbody>
-
-  </table>
-
+<!-- ════ Three summaries ════ -->
+<div class="enq-summaries">
+  {% set tints = ['#d8effa', '#fdeec9', '#efe2f2'] %}
+  {% for p in overview.panels %}
+  {% set tint = tints[loop.index0 % 3] %}
+  <section class="enq-panel">
+    <div class="enq-head"><h3>{{ p.title }}</h3></div>
+    <div class="enq-card">
+      {% for row in p.rows %}
+      <div class="enq-srow">
+        <span class="fill" style="width:calc({{ row.width }}% + 6px);--tint:{{ tint }}"></span>
+        <span class="lbl">{{ row.label }}</span>
+        <span class="num">{{ row.count }}</span>
+      </div>
+      {% endfor %}
+      <div class="enq-foot">
+        <span class="lbl">{{ p.foot_label }}</span>
+        <span class="num">{{ p.foot_value }}</span>
+      </div>
+    </div>
+  </section>
+  {% endfor %}
 </div>
 
-{% else %}
+<!-- ════ Two breakdowns ════ -->
+<div class="enq-rings">
+  {% for r in overview.rings %}
+  <section class="enq-panel">
+    <div class="enq-head"><h3>{{ r.title }}</h3></div>
+    <div class="enq-card">
+      {% if r.slices %}
+      <div class="enq-ring-body">
+        {{ ring(r.slices) }}
+        <table class="enq-legend">
+          {% for s in r.slices %}
+          <tr>
+            <td><i style="background:{{ s.colour }}"></i>{{ s.label }}</td>
+            <td class="n">{{ s.count }}</td>
+            <td class="p">{{ s.pct }}%</td>
+          </tr>
+          {% endfor %}
+        </table>
+      </div>
+      {% else %}
+      <div class="enq-ring-empty">Nothing to show for the enquiries in view.</div>
+      {% endif %}
+    </div>
+  </section>
+  {% endfor %}
+</div>
 
-<div class="card">
-
-  <div class="empty-state">
-
-    <div class="empty-icon">📩</div>
-
-    <p>{% if q or status %}No enquiries match your filter.{% else %}No enquiries recorded yet.{% endif %}</p>
-
-    <a href="{{ url_for('enquiry_new') }}" class="btn btn-primary" style="margin-top:12px">+ New Enquiry</a>
-
+<!-- ════ Search and filters ════ -->
+<section class="enq-section">
+  <div class="enq-head">
+    <h3>All enquiries <span style="font-weight:400;color:var(--grey-600)">({{ enquiries|length }})</span></h3>
+    {% if filters_on %}
+    <a class="enq-note" href="{{ url_for('enquiries_list') }}" style="text-decoration:none">Clear all filters ✕</a>
+    {% endif %}
   </div>
 
+  <div class="enq-card enq-filters">
+    {# The state chips keep whatever else is set, so filters combine. #}
+    {% set base = {'q': q, 'source': source, 'type': type_, 'negotiator': negotiator,
+                   'property_id': property_id or '', 'from': from_date, 'to': to_date,
+                   'followup': followup, 'status': status} %}
+    <div class="enq-chips">
+      <a class="enq-chip {{ 'is-on' if not bucket }}"
+         href="{{ url_for('enquiries_list', **base) }}">Open<span class="c">{{ counts.values()|sum - counts['archived'] }}</span></a>
+      {% for key, label in buckets %}
+      <a class="enq-chip {{ 'is-on' if bucket == key }}"
+         href="{{ url_for('enquiries_list', bucket=key, **base) }}">{{ label }}<span class="c">{{ counts[key] }}</span></a>
+      {% endfor %}
+    </div>
+
+    <form method="get" class="enq-controls">
+      {% if bucket %}<input type="hidden" name="bucket" value="{{ bucket }}">{% endif %}
+      <input class="grow" type="search" name="q" value="{{ q }}"
+             placeholder="Search subject, applicant, company, property, negotiator…">
+
+      <select name="source">
+        <option value="">Any source</option>
+        {% for s in all_sources %}<option value="{{ s }}" {{ 'selected' if source == s }}>{{ s }}</option>{% endfor %}
+      </select>
+
+      <select name="type">
+        <option value="">Any type</option>
+        {% for t in all_types %}<option value="{{ t }}" {{ 'selected' if type_ == t }}>{{ t }}</option>{% endfor %}
+      </select>
+
+      <select name="property_id" data-search>
+        <option value="">Any property</option>
+        {% for p in all_properties %}
+        <option value="{{ p.id }}" {{ 'selected' if property_id == p.id }}>{{ p.address }}{% if p.postcode %}, {{ p.postcode }}{% endif %}</option>
+        {% endfor %}
+      </select>
+
+      <select name="negotiator">
+        <option value="">Any negotiator</option>
+        {% for n in all_negotiators %}<option value="{{ n }}" {{ 'selected' if negotiator == n }}>{{ n }}</option>{% endfor %}
+      </select>
+
+      <select name="followup">
+        <option value="">Any follow-up</option>
+        <option value="due"     {{ 'selected' if followup == 'due' }}>Due today or sooner</option>
+        <option value="overdue" {{ 'selected' if followup == 'overdue' }}>Overdue</option>
+        <option value="none"    {{ 'selected' if followup == 'none' }}>None set</option>
+      </select>
+
+      <span class="enq-dates">Received
+        <input type="date" name="from" value="{{ from_date }}" title="From" aria-label="Received from">
+        to
+        <input type="date" name="to" value="{{ to_date }}" title="To" aria-label="Received to">
+      </span>
+
+      <button type="submit" class="btn btn-primary btn-sm">Apply</button>
+      {% if filters_on %}<a href="{{ url_for('enquiries_list') }}" class="btn btn-outline btn-sm">Clear</a>{% endif %}
+    </form>
+  </div>
+</section>
+
+<!-- ════ The list ════ -->
+<div class="enq-card" style="padding:0;overflow:hidden">
+  {% if enquiries %}
+  <div class="enq-table-wrap">
+    <table class="enq-table">
+      <thead>
+        <tr>
+          <th>Enquiry</th>
+          <th>Applicant</th>
+          <th>Property</th>
+          <th>Type</th>
+          <th>Received</th>
+          <th>Source</th>
+          <th>Status</th>
+          <th>Negotiator</th>
+          <th>Next action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in enquiries %}
+        {% set b = enquiry_state(e) %}
+        <tr class="{{ 'is-selected' if selected_id == e.id }}">
+          <td>
+            <a class="enq-subject" href="{{ url_for('enquiry_detail', id=e.id) }}">{{ e.subject }}</a>
+            <div class="enq-sub">{{ e.stage or 'Enquiry Received' }}</div>
+          </td>
+          <td>
+            {% if e.contact %}<a href="{{ url_for('contact_detail', id=e.contact.id) }}">{{ e.contact.full_name }}</a>
+            {% else %}<span style="color:var(--grey-400)">—</span>{% endif %}
+            {% if e.organisation %}
+            <div class="enq-sub"><a href="{{ url_for('organisation_detail', id=e.organisation.id) }}">{{ e.organisation.name }}</a></div>
+            {% endif %}
+          </td>
+          <td>
+            {% if e.linked_property %}
+            <a href="{{ url_for('property_detail', id=e.linked_property.id) }}">{{ e.linked_property.address }}</a>
+            {% if e.linked_property.postcode %}<div class="enq-sub">{{ e.linked_property.postcode }}</div>{% endif %}
+            {% else %}<span style="color:var(--grey-400)">Requirement only</span>{% endif %}
+          </td>
+          <td>{{ e.enquiry_type or '—' }}</td>
+          <td style="white-space:nowrap">{{ e.received_date.strftime('%d %b %Y') if e.received_date else '—' }}</td>
+          <td>{{ e.source or 'Direct' }}</td>
+          <td><span class="enq-pill {{ b }}">{{ enquiry_state_label(b) }}</span></td>
+          <td>{{ e.fee_earner or '—' }}</td>
+          <td>
+            {{ e.next_action or '—' }}
+            {% if e.next_follow_up %}
+            <div class="enq-sub {{ 'enq-due' if e.next_follow_up < today }}">
+              {{ 'Overdue' if e.next_follow_up < today else 'Due' }} {{ e.next_follow_up.strftime('%d %b') }}
+            </div>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="enq-empty">
+    <span class="icon">&#128233;</span>
+    {% if filters_on %}
+      No enquiries match these filters.
+      <div style="margin-top:12px"><a href="{{ url_for('enquiries_list') }}" class="btn btn-outline btn-sm">Clear filters</a></div>
+    {% else %}
+      No enquiries recorded yet.
+      <div style="margin-top:12px"><a href="{{ url_for('enquiry_new') }}" class="btn btn-primary btn-sm">+ Add Enquiry</a></div>
+    {% endif %}
+  </div>
+  {% endif %}
 </div>
 
-{% endif %}
-
+</div>
 {% endblock %}
-
-
-

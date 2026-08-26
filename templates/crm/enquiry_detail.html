@@ -1,271 +1,532 @@
-﻿{% extends "base.html" %}
+{% extends "base.html" %}
 {% block title %}{{ e.subject }}{% endblock %}
 {% block topbar_title %}Enquiry{% endblock %}
 {% block topbar_actions %}
-  <a href="{{ url_for('enquiry_edit', id=e.id) }}" class="btn btn-outline btn-sm">Edit</a>
-  <a href="{{ url_for('enquiries_list') }}" class="btn btn-outline btn-sm">&larr; All Enquiries</a>
+  <a href="{{ url_for('enquiries_list', selected=e.id) }}" class="btn btn-outline btn-sm">&larr; All Enquiries</a>
 {% endblock %}
 
 {% block content %}
+{% set here = url_for('enquiry_detail', id=e.id) %}
+
+{# Every action gets its own form, declared here so nothing is nested inside
+   the record form. Fields below join them with the form="…" attribute. #}
+<form id="note-form"    method="post" action="{{ url_for('enquiry_note_add', id=e.id) }}"></form>
+<form id="stage-form"   method="post" action="{{ url_for('enquiry_set_stage', id=e.id) }}"></form>
+<form id="diary-form"   method="post" action="{{ url_for('enquiry_schedule', id=e.id) }}"></form>
+<form id="email-form"   method="post" action="{{ url_for('enquiry_send_email', id=e.id) }}"></form>
+<form id="archive-form" method="post" action="{{ url_for('enquiry_archive', id=e.id) }}">
+  <input type="hidden" name="next" value="{{ here }}">
+</form>
+
 <div class="breadcrumb">
-  <a href="{{ url_for('dashboard') }}">Dashboard</a><span class="sep">/</span>
   <a href="{{ url_for('enquiries_list') }}">Enquiries</a><span class="sep">/</span>
-  <span class="current">{{ e.subject[:60] }}</span>
+  <span class="current">{{ e.subject[:70] }}</span>
 </div>
 
-{% set tl = e.traffic_light %}
-{% set tl_color = {'red':'#e53935','amber':'#f9a825','green':'#43a047','grey':'#9e9e9e'}[tl] %}
-<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:20px">
-  <div>
-    <div style="display:flex;align-items:center;gap:10px">
-      <h2 style="font-size:18px;font-weight:700;color:#0e1f44">{{ e.subject }}</h2>
-      <span style="background:{{ tl_color }};color:#fff;font-size:11px;font-weight:700;padding:3px 10px;border-radius:12px;white-space:nowrap">
-        {{ e.traffic_emoji }} {{ tl|title }}
-      </span>
-    </div>
-    <div style="color:#5f6368;font-size:12px;margin-top:4px;display:flex;gap:14px;flex-wrap:wrap">
-      {% if e.enquiry_type %}<span>{{ e.enquiry_type }}</span>{% endif %}
-      {% if e.fee_earner %}<span>Fee Earner: <strong>{{ e.fee_earner }}</strong></span>{% endif %}
-      {% if e.received_date %}<span>Received: <strong>{{ e.received_date.strftime('%d %b %Y') }}</strong></span>{% endif %}
-      {% if e.last_contact_date %}<span>Last contact: <strong>{{ e.last_contact_date.strftime('%d %b %Y') }}</strong></span>{% endif %}
-      {% if e.next_follow_up %}
-        <span style="color:{{ '#e53935' if e.next_follow_up < today else '#5f6368' }}">
-          Follow-up: <strong>{{ e.next_follow_up.strftime('%d %b %Y') }}</strong>
-          {% if e.next_follow_up < today %} &#9888; OVERDUE{% endif %}
-        </span>
-      {% endif %}
-    </div>
-  </div>
-  <div style="display:flex;gap:8px;align-items:center">
-    {% set status_colors = {'Open':'#1c3160','Won':'#2e7d32','Lost':'#c62828','On Hold':'#c52532'} %}
-    <span style="background:{{ status_colors.get(e.status,'#5f6368') }};color:#fff;padding:4px 14px;border-radius:12px;font-size:12px;font-weight:600">{{ e.status }}</span>
-  </div>
-</div>
-
-{% if tl == 'red' %}
-<div style="background:#ffebee;border-left:4px solid #e53935;padding:10px 14px;margin-bottom:16px;border-radius:4px;font-size:13px;color:#c62828">
-  &#9888; <strong>Follow-up overdue.</strong> This enquiry has not had contact in 7+ days or the follow-up date has passed. Please action immediately.
-</div>
-{% elif tl == 'amber' %}
-<div style="background:#fffde7;border-left:4px solid #f9a825;padding:10px 14px;margin-bottom:16px;border-radius:4px;font-size:13px;color:#7b5800">
-  &#9203; <strong>Follow-up due.</strong> Last contact was 3&ndash;7 days ago.
+{% if e.archived %}
+<div class="cal-warn" style="margin-bottom:14px">
+  <strong>This enquiry is archived.</strong> It is kept on file but stays out of the working list.
+  <button type="submit" form="archive-form" class="btn btn-outline btn-sm" style="margin-left:8px">Restore</button>
 </div>
 {% endif %}
 
-<!-- ════ Pipeline: enquiry → heads of terms signed ════ -->
-<div class="box" style="margin-bottom:16px">
-  <div class="box-head">
-    <span class="box-title">Progress</span>
-    <div style="font-size:11.5px;color:#5f6368">
-      {% if e.stage_changed_on %}At this stage since {{ e.stage_changed_on.strftime('%d %b %Y') }}{% endif %}
-    </div>
-  </div>
+<form method="post" action="{{ url_for('enquiry_edit', id=e.id) }}" data-inline-edit>
+<input type="hidden" name="next" value="{{ here }}">
 
-  {% set current = e.stage or 'Enquiry Received' %}
-  {% set closed = current in enquiry_stages_closed %}
-  {% set idx = enquiry_stages.index(current) if current in enquiry_stages else -1 %}
-
-  <div class="pipeline">
-    {% for st in enquiry_stages %}
-    {% set done = idx > -1 and loop.index0 < idx %}
-    {% set here = st == current %}
-    <div class="pipeline-step {{ 'is-done' if done else '' }} {{ 'is-here' if here else '' }}">
-      <span class="pipeline-dot">{{ '✓' if done else loop.index }}</span>
-      <span class="pipeline-label">{{ st }}</span>
-    </div>
-    {% endfor %}
-  </div>
-
-  {% if closed %}
-  <div style="margin-top:10px;background:#fce8e6;color:#c62828;border-radius:5px;padding:8px 12px;font-size:12.5px">
-    This enquiry is marked <strong>{{ current }}</strong>.
-  </div>
-  {% endif %}
-
-  <form method="post" action="{{ url_for('enquiry_set_stage', id=e.id) }}"
-        style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:14px">
-    <div class="form-group" style="flex:1;min-width:190px">
-      <label for="stage">Move to stage</label>
-      <select id="stage" name="stage">
-        {% for st in enquiry_stages %}
-        <option value="{{ st }}" {{ 'selected' if st == next_stage else '' }}>{{ st }}</option>
-        {% endfor %}
-        <optgroup label="Closed">
-          {% for st in enquiry_stages_closed %}<option value="{{ st }}">{{ st }}</option>{% endfor %}
-        </optgroup>
-      </select>
-    </div>
-    <div class="form-group" style="width:150px">
-      <label for="occurred_on">Date</label>
-      <input type="date" id="occurred_on" name="occurred_on" value="{{ today.isoformat() }}">
-    </div>
-    <div class="form-group" style="flex:2;min-width:200px">
-      <label for="stage_note">Note (optional)</label>
-      <input type="text" id="stage_note" name="note" placeholder="e.g. Viewing booked for Thursday 2pm">
-    </div>
-    <div class="form-group" style="width:120px">
-      <label for="stage_author">By</label>
-      <input type="text" id="stage_author" name="author" placeholder="BC">
-    </div>
-    <button type="submit" class="btn btn-primary btn-sm" style="margin-bottom:1px">Update</button>
-    {% if next_stage %}
-    <button type="submit" name="stage" value="__next__" class="btn btn-secondary btn-sm"
-            style="margin-bottom:1px" title="Move straight to {{ next_stage }}">→ {{ next_stage }}</button>
-    {% endif %}
-  </form>
-
-  {% if e.stage_events %}
-  <div style="margin-top:14px;border-top:1px solid #eef0f2;padding-top:10px">
-    <div class="form-section">History</div>
-    {% for ev in e.stage_events|reverse %}
-    <div style="display:flex;gap:10px;font-size:12.5px;padding:4px 0;border-bottom:1px solid #f6f7f8">
-      <span style="width:86px;color:#5f6368;flex-shrink:0">{{ ev.occurred_on.strftime('%d %b %Y') if ev.occurred_on else '' }}</span>
-      <span style="flex:1">
-        <strong>{{ ev.stage }}</strong>{% if ev.from_stage %} <span style="color:#9aa0a6">from {{ ev.from_stage }}</span>{% endif %}
-        {% if ev.note %}<div style="color:#5f6368">{{ ev.note }}</div>{% endif %}
-      </span>
-      {% if ev.author %}<span style="color:#9aa0a6">{{ ev.author }}</span>{% endif %}
-    </div>
-    {% endfor %}
-  </div>
-  {% endif %}
+<!-- ── Actions ── -->
+<div class="rec-toolbar">
+  <a href="#contact-box"><span class="ic">&#128100;</span>Link Contact</a>
+  <a href="#enquiry-box"><span class="ic">&#127970;</span>Link Property</a>
+  <a href="#note-box"><span class="ic">&#9998;</span>Add Note</a>
+  <a href="#diary-box"><span class="ic">&#9745;</span>Add Task</a>
+  <a href="#diary-box"><span class="ic">&#128222;</span>Schedule Call</a>
+  <a href="#diary-box"><span class="ic">&#128197;</span>Arrange Viewing</a>
+  <a href="#email-box"><span class="ic">&#9993;</span>Send Email</a>
+  <a href="#progress-box"><span class="ic">&#8644;</span>Change Status</a>
+  <span class="sp"></span>
+  <button type="submit" form="archive-form" class="btn btn-outline btn-sm">
+    {{ 'Restore' if e.archived else 'Archive' }}
+  </button>
+  <span class="rec-save">
+    <span data-save-status></span>
+    <button type="submit" class="btn btn-primary btn-save" data-save>Save</button>
+  </span>
 </div>
 
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">
+<div class="rec-title">
+  <h2>{{ e.subject }}
+    <span class="sub">&nbsp;{{ e.enquiry_type or 'Enquiry' }}{% if e.received_date %} &middot; received {{ e.received_date.strftime('%d/%m/%Y') }}{% endif %}</span>
+  </h2>
+  <span class="enq-pill {{ bucket }}">{{ enquiry_state_label(bucket) }}</span>
+</div>
 
-  <div style="display:flex;flex-direction:column;gap:16px">
+<div class="rec-cols">
 
-    <div class="box">
-      <div class="box-head"><span>Linked Records</span></div>
-      <div style="padding:14px;display:flex;flex-direction:column;gap:8px;font-size:13px">
-        {% if e.contact %}
-        <div><span style="color:#5f6368;min-width:90px;display:inline-block">Contact</span>
-          <a href="{{ url_for('contact_detail', id=e.contact.id) }}" style="color:#e07b28;font-weight:600">{{ e.contact.full_name }}</a>
-          {% if e.contact.email %} &middot; {{ e.contact.email }}{% endif %}
-          {% if e.contact.phone %} &middot; {{ e.contact.phone }}{% endif %}
-        </div>{% endif %}
-        {% if e.linked_property %}
-        <div><span style="color:#5f6368;min-width:90px;display:inline-block">Property</span>
-          <a href="{{ url_for('property_detail', id=e.linked_property.id) }}" style="color:#e07b28;font-weight:600">{{ e.linked_property.address }}, {{ e.linked_property.postcode }}</a>
-        </div>{% endif %}
-        {% if e.organisation %}
-        <div><span style="color:#5f6368;min-width:90px;display:inline-block">Organisation</span>{{ e.organisation.name }}</div>{% endif %}
-        {% if e.linked_project %}
-        <div><span style="color:#5f6368;min-width:90px;display:inline-block">Project</span>
-          <a href="{{ url_for('project_detail', id=e.linked_project.id) }}" style="color:#e07b28;font-weight:600">{{ e.linked_project.name }}</a>
-        </div>{% endif %}
-        {% if e.notes %}<div style="margin-top:6px;color:#5f6368;font-size:12px">{{ e.notes }}</div>{% endif %}
-      </div>
-    </div>
+  <!-- ════ LEFT ════ -->
+  <div class="rec-col">
 
-    {% if e.req_size_min or e.req_size_max or e.req_budget_min or e.req_budget_max or e.req_use_class %}
-    <div class="box">
-      <div class="box-head"><span>Applicant Requirements</span></div>
-      <div style="padding:14px;display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px">
-        {% if e.req_use_class %}
-        <div style="grid-column:span 2"><span style="color:#5f6368">Use Class</span><br><strong>{{ e.req_use_class|title }}</strong></div>{% endif %}
-        {% if e.req_size_min or e.req_size_max %}
-        <div><span style="color:#5f6368">Min Size</span><br><strong>{{ '{:,.0f}'.format(e.req_size_min) if e.req_size_min else 'No min' }} sq ft</strong></div>
-        <div><span style="color:#5f6368">Max Size</span><br><strong>{{ '{:,.0f}'.format(e.req_size_max) if e.req_size_max else 'No max' }} sq ft</strong></div>{% endif %}
-        {% if e.req_budget_min or e.req_budget_max %}
-        <div><span style="color:#5f6368">Min Budget</span><br><strong>&pound;{{ '{:,.0f}'.format(e.req_budget_min) if e.req_budget_min else '0' }} {{ e.req_budget_unit or 'pa' }}</strong></div>
-        <div><span style="color:#5f6368">Max Budget</span><br><strong>&pound;{{ '{:,.0f}'.format(e.req_budget_max) if e.req_budget_max else '&mdash;' }} {{ e.req_budget_unit or 'pa' }}</strong></div>{% endif %}
-      </div>
-    </div>{% endif %}
-
-    <div class="box">
-      <div class="box-head">
-        <span class="box-title">Correspondence &amp; Notes</span>
-        <form method="post" action="{{ url_for('email_sync_trigger') }}" style="margin:0">
-          <button type="submit" class="btn btn-outline btn-sm">&#8635; Sync Emails</button>
-        </form>
-      </div>
-      <div style="padding:14px">
-
-        {% if e.contact and e.contact.email %}
-        <div style="background:#e8f4fd;border-radius:6px;padding:12px;margin-bottom:14px">
-          <div style="font-size:12px;font-weight:700;color:#1c3160;margin-bottom:8px">&#9993; Send Email to {{ e.contact.full_name }} &mdash; <span style="font-weight:400">{{ e.contact.email }}</span></div>
-          <form method="post" action="{{ url_for('enquiry_send_email', id=e.id) }}">
-            <input type="hidden" name="to_address" value="{{ e.contact.email }}">
-            <input type="hidden" name="author" value="BC">
-            <input type="text" name="subject" placeholder="Subject" required style="width:100%;font-size:12px;padding:6px 8px;margin-bottom:6px;border:1px solid #c5d8ea;border-radius:4px">
-            <textarea name="body" rows="4" required placeholder="Type your email here..." style="width:100%;font-size:12px;padding:8px;margin-bottom:6px;resize:vertical;border:1px solid #c5d8ea;border-radius:4px"></textarea>
-            <div style="display:flex;gap:8px;align-items:center">
-              <input type="date" name="next_follow_up" title="Set follow-up date" style="font-size:12px;padding:6px 8px;border:1px solid #c5d8ea;border-radius:4px" value="{{ e.next_follow_up.strftime('%Y-%m-%d') if e.next_follow_up else '' }}">
-              <button type="submit" class="btn btn-primary btn-sm" style="margin-left:auto">Send &rarr;</button>
-            </div>
-          </form>
+    <!-- ── Contact details ── -->
+    <div class="box" id="contact-box">
+      <div class="box-head"><span class="box-title">Contact details</span></div>
+      <div class="frow">
+        <div class="fcell fcell--label">Applicant</div>
+        <div class="fcell fcell--edit">
+          <select name="contact_id" data-search>
+            <option value="">— None —</option>
+            {% for c in all_contacts %}
+            <option value="{{ c.id }}" {{ 'selected' if e.contact_id == c.id }}>{{ c.full_name }}</option>
+            {% endfor %}
+          </select>
         </div>
-        {% endif %}
-        {% if e.notes_chain %}
-          {% for n in e.notes_chain|reverse %}
-          <div style="border-left:3px solid {{ '#1c3160' if n.direction=='inbound' else '#e07b28' if n.direction=='outbound' else '#9e9e9e' }};padding:8px 12px;margin-bottom:10px;background:#f8f9fa;border-radius:0 4px 4px 0">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-              <span style="font-size:11px;font-weight:700;text-transform:uppercase;color:{{ '#1c3160' if n.direction=='inbound' else '#e07b28' if n.direction=='outbound' else '#5f6368' }}">
-                {{ '← Inbound' if n.direction=='inbound' else '→ Outbound' if n.direction=='outbound' else 'Note' }}
-                {% if n.subject %} &mdash; {{ n.subject }}{% endif %}
-              </span>
-              <span style="font-size:11px;color:#9aa0a6">{{ n.author }} &middot; {{ n.created_at.strftime('%d %b %Y %H:%M') }}
-                <form method="post" action="{{ url_for('enquiry_note_delete', id=n.id) }}" style="display:inline;margin-left:8px">
-                  <button type="submit" style="background:none;border:none;color:#e53935;cursor:pointer;font-size:11px">x</button>
-                </form>
-              </span>
-            </div>
-            <div style="font-size:13px;color:#0e1f44;white-space:pre-wrap">{{ n.body }}</div>
-          </div>
-          {% endfor %}
-        {% else %}
-          <p style="color:#9aa0a6;font-size:13px;text-align:center;padding:12px 0">No correspondence recorded yet.</p>
-        {% endif %}
+        <div class="fcell fcell--label w-narrow">Record</div>
+        <div class="fcell">
+          {% if e.contact %}<a href="{{ url_for('contact_detail', id=e.contact.id) }}">{{ e.contact.full_name }}</a>
+          {% else %}<span style="color:var(--grey-400)">Not linked</span>{% endif %}
+        </div>
+      </div>
+      <div class="frow">
+        <div class="fcell fcell--label">Company</div>
+        <div class="fcell fcell--edit">
+          <select name="organisation_id" data-search>
+            <option value="">— None —</option>
+            {% for o in all_organisations %}
+            <option value="{{ o.id }}" {{ 'selected' if e.organisation_id == o.id }}>{{ o.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="fcell fcell--label w-narrow">Prefers</div>
+        <div class="fcell fcell--edit">
+          <select name="preferred_contact">
+            {% for opt in ['', 'Mobile', 'Email', 'Landline', 'Post'] %}
+            <option value="{{ opt }}" {{ 'selected' if (e.preferred_contact or '') == opt }}>{{ opt or 'Not stated' }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      {% if e.contact %}
+      <div class="frow">
+        <div class="fcell fcell--label">Mobile</div>
+        <div class="fcell fcell--edit"><input type="tel" name="contact_mobile" value="{{ e.contact.mobile or '' }}" placeholder="Not added"></div>
+        <div class="fcell fcell--label w-narrow">Call</div>
+        <div class="fcell">
+          {% if e.contact.mobile %}<a href="tel:{{ e.contact.mobile|replace(' ','') }}">{{ e.contact.mobile }}</a>
+          {% else %}<span style="color:var(--grey-400)">—</span>{% endif %}
+        </div>
+      </div>
+      <div class="frow">
+        <div class="fcell fcell--label">Email</div>
+        <div class="fcell fcell--edit"><input type="email" name="contact_email" value="{{ e.contact.email or '' }}" placeholder="Not added"></div>
+        <div class="fcell fcell--label w-narrow">Write</div>
+        <div class="fcell">
+          {% if e.contact.email %}<a href="mailto:{{ e.contact.email }}">{{ e.contact.email }}</a>
+          {% else %}<span style="color:var(--grey-400)">—</span>{% endif %}
+        </div>
+      </div>
+      {% endif %}
+    </div>
 
-        <form method="post" action="{{ url_for('enquiry_note_add', id=e.id) }}" style="margin-top:12px;border-top:1px solid #e8eaed;padding-top:12px">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
-            <select name="direction" style="font-size:12px;padding:6px 8px">
-              <option value="note">Note</option>
-              <option value="outbound">&rarr; Outbound email</option>
-              <option value="inbound">&larr; Inbound email</option>
-            </select>
-            <input type="text" name="subject" placeholder="Subject (optional)" style="font-size:12px;padding:6px 8px">
-          </div>
-          <textarea name="body" rows="3" required placeholder="Email body or note content..." style="width:100%;font-size:12px;padding:8px;margin-bottom:8px;resize:vertical"></textarea>
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
-            <input type="text" name="author" placeholder="Your name" style="font-size:12px;padding:6px 8px">
-            <input type="date" name="next_follow_up" title="Set next follow-up date" style="font-size:12px;padding:6px 8px" value="{{ e.next_follow_up.strftime('%Y-%m-%d') if e.next_follow_up else '' }}">
-            <button type="submit" class="btn btn-primary btn-sm">Add</button>
-          </div>
-          <div style="font-size:11px;color:#9aa0a6;margin-top:4px">Adding a note updates the last contact date to today.</div>
-        </form>
+    <!-- ── Enquiry information ── -->
+    <div class="box" id="enquiry-box">
+      <div class="box-head"><span class="box-title">Enquiry information</span></div>
+      <div class="frow">
+        <div class="fcell fcell--label">Subject</div>
+        <div class="fcell fcell--edit" style="grid-column:span 3">
+          <input type="text" id="enq-subject" name="subject" value="{{ e.subject }}" placeholder="Leave blank to build from the type and property">
+        </div>
+      </div>
+      <div class="frow">
+        <div class="fcell fcell--label">Type</div>
+        <div class="fcell fcell--edit">
+          <input type="text" id="enq-type" name="enquiry_type" value="{{ e.enquiry_type or '' }}" placeholder="e.g. Agency — Letting">
+        </div>
+        <div class="fcell fcell--label w-narrow">Source</div>
+        <div class="fcell fcell--edit"><input type="text" name="source" value="{{ e.source or '' }}" placeholder="Website, Zoopla…"></div>
+      </div>
+      <div class="frow">
+        <div class="fcell fcell--label">Property</div>
+        <div class="fcell fcell--edit">
+          <select id="enq-property" name="property_id" data-search>
+            <option value="">— None: general requirement —</option>
+            {% for p in all_properties %}
+            <option value="{{ p.id }}" {{ 'selected' if e.property_id == p.id }}>{{ p.address }}{% if p.postcode %}, {{ p.postcode }}{% endif %}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="fcell fcell--label w-narrow">Record</div>
+        <div class="fcell">
+          {% if e.linked_property %}<a href="{{ url_for('property_detail', id=e.linked_property.id) }}">{{ e.linked_property.address }}</a>
+          {% else %}<span style="color:var(--grey-400)">Not linked</span>{% endif %}
+        </div>
+      </div>
+      <div class="frow">
+        <div class="fcell fcell--label">Project</div>
+        <div class="fcell fcell--edit">
+          <select name="project_id" data-search>
+            <option value="">— None —</option>
+            {% for p in all_projects %}
+            <option value="{{ p.id }}" {{ 'selected' if e.project_id == p.id }}>{{ p.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="fcell fcell--label w-narrow">Negotiator</div>
+        <div class="fcell fcell--edit"><input type="text" name="fee_earner" value="{{ e.fee_earner or '' }}" placeholder="Not assigned"></div>
+      </div>
+      <div class="frow">
+        <div class="fcell fcell--label">Received</div>
+        <div class="fcell fcell--edit"><input type="date" name="received_date" value="{{ e.received_date.isoformat() if e.received_date else '' }}"></div>
+        <div class="fcell fcell--label w-narrow">Logged</div>
+        <div class="fcell">{{ e.created_at.strftime('%d %b %Y, %H:%M') if e.created_at else '—' }}</div>
+      </div>
+      <div class="frow">
+        <div class="fcell fcell--label">Status</div>
+        <div class="fcell fcell--edit">
+          <select name="status">
+            {% for s in ['Open', 'Won', 'Lost', 'On Hold'] %}
+            <option value="{{ s }}" {{ 'selected' if e.status == s }}>{{ s }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="fcell fcell--label w-narrow">Priority</div>
+        <div class="fcell fcell--edit">
+          <select name="priority">
+            {% for p in ['', 'High', 'Medium', 'Low'] %}
+            <option value="{{ p }}" {{ 'selected' if (e.priority or '') == p }}>{{ p or 'Not set' }}</option>
+            {% endfor %}
+          </select>
+        </div>
       </div>
     </div>
-  </div>
 
-  <div>
+    <!-- ── Property requirement ── -->
     <div class="box">
       <div class="box-head">
-        <span class="box-title">Matched Properties</span>
-        <div style="font-size:11px;color:#5f6368">Based on size, budget &amp; use class requirements</div>
+        <span class="box-title">Property requirement</span>
+        <span style="font-size:11.5px;color:var(--grey-600)">What the applicant is looking for</span>
       </div>
-      <div style="padding:14px">
-        {% if matched_props %}
-          {% for p in matched_props %}
-          <a href="{{ url_for('property_detail', id=p.id) }}" style="display:block;text-decoration:none;border:1px solid #e8eaed;border-radius:6px;padding:10px 12px;margin-bottom:8px;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background=''">
-            <div style="font-size:13px;font-weight:600;color:#0e1f44">{{ p.address }}</div>
-            <div style="font-size:12px;color:#5f6368;margin-top:2px">{{ p.postcode }} &middot; {{ p.use_class|title if p.use_class else p.property_type }}</div>
-            <div style="display:flex;gap:12px;margin-top:6px;font-size:12px">
-              {% if p.size %}<span style="color:#e07b28;font-weight:600">{{ '{:,.0f}'.format(p.size) }} sq ft</span>{% endif %}
-              {% if p.listing_price and p.listing_price > 0 %}
-              <span style="color:#0e1f44">&pound;{{ '{:,.0f}'.format(p.listing_price) }} {{ p.listing_price_unit or '' }}</span>{% endif %}
-              {% if p.listing_status %}<span style="background:#e8f5e9;color:#2e7d32;padding:1px 7px;border-radius:10px">{{ p.listing_status|title }}</span>{% endif %}
-            </div>
-          </a>
-          {% endfor %}
+      <div class="frow">
+        <div class="fcell fcell--label">Preferred location</div>
+        <div class="fcell fcell--edit"><input type="text" name="req_area" value="{{ e.req_area or '' }}" placeholder="e.g. Fulham, Parsons Green"></div>
+        <div class="fcell fcell--label w-narrow">Property type</div>
+        <div class="fcell fcell--edit"><input type="text" name="req_property_type" value="{{ e.req_property_type or '' }}" placeholder="e.g. Shop, Office"></div>
+      </div>
+      <div class="frow">
+        <div class="fcell fcell--label">Intended use</div>
+        <div class="fcell fcell--edit"><input type="text" name="req_use_class" value="{{ e.req_use_class or '' }}" placeholder="e.g. Class E"></div>
+        <div class="fcell fcell--label w-narrow">Category</div>
+        <div class="fcell fcell--edit">
+          <select name="req_category">
+            {% for c in ['', 'commercial', 'residential'] %}
+            <option value="{{ c }}" {{ 'selected' if (e.req_category or '') == c }}>{{ c|title or 'Not set' }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="frow">
+        <div class="fcell fcell--label">Size (sq ft)</div>
+        <div class="fcell fcell--edit"><input type="text" name="req_size_min" value="{{ '{:,.0f}'.format(e.req_size_min) if e.req_size_min else '' }}" placeholder="Minimum"></div>
+        <div class="fcell fcell--label w-narrow">to</div>
+        <div class="fcell fcell--edit"><input type="text" name="req_size_max" value="{{ '{:,.0f}'.format(e.req_size_max) if e.req_size_max else '' }}" placeholder="Maximum"></div>
+      </div>
+      <div class="frow">
+        <div class="fcell fcell--label">Budget (&pound;)</div>
+        <div class="fcell fcell--edit"><input type="text" name="req_budget_min" value="{{ '{:,.0f}'.format(e.req_budget_min) if e.req_budget_min else '' }}" placeholder="Minimum"></div>
+        <div class="fcell fcell--label w-narrow">to</div>
+        <div class="fcell fcell--edit"><input type="text" name="req_budget_max" value="{{ '{:,.0f}'.format(e.req_budget_max) if e.req_budget_max else '' }}" placeholder="Maximum"></div>
+      </div>
+      <div class="frow">
+        <div class="fcell fcell--label">Basis</div>
+        <div class="fcell fcell--edit">
+          <select name="req_budget_unit">
+            {% for u, lbl in [('pa','Per annum'), ('pcm','Per calendar month'), ('sale','Purchase price')] %}
+            <option value="{{ u }}" {{ 'selected' if (e.req_budget_unit or 'pa') == u }}>{{ lbl }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="fcell fcell--label w-narrow">Lease or buy</div>
+        <div class="fcell fcell--edit">
+          <select name="req_tenure">
+            {% for t in ['', 'Lease', 'Purchase', 'Either'] %}
+            <option value="{{ t }}" {{ 'selected' if (e.req_tenure or '') == t }}>{{ t or 'Not stated' }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="frow">
+        <div class="fcell fcell--label">Wants to occupy</div>
+        <div class="fcell fcell--edit"><input type="date" name="req_occupation_date" value="{{ e.req_occupation_date.isoformat() if e.req_occupation_date else '' }}"></div>
+        <div class="fcell fcell--label w-narrow">&nbsp;</div>
+        <div class="fcell">&nbsp;</div>
+      </div>
+      <div class="frow">
+        <div class="fcell fcell--label">Anything else</div>
+        <div class="fcell fcell--edit" style="grid-column:span 3">
+          <textarea name="req_notes" rows="2" placeholder="Parking, frontage, fit-out, lease length…">{{ e.req_notes or '' }}</textarea>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Follow-up ── -->
+    <div class="box">
+      <div class="box-head"><span class="box-title">Follow-up</span></div>
+      <div class="frow">
+        <div class="fcell fcell--label">Next action</div>
+        <div class="fcell fcell--edit" style="grid-column:span 3">
+          <input type="text" name="next_action" value="{{ e.next_action or '' }}" placeholder="e.g. Send the brochure and call to arrange a second viewing">
+        </div>
+      </div>
+      <div class="frow">
+        <div class="fcell fcell--label">Next call</div>
+        <div class="fcell fcell--edit"><input type="date" name="next_call_date" value="{{ e.next_call_date.isoformat() if e.next_call_date else '' }}"></div>
+        <div class="fcell fcell--label w-narrow">Follow up by</div>
+        <div class="fcell fcell--edit"><input type="date" name="next_follow_up" value="{{ e.next_follow_up.isoformat() if e.next_follow_up else '' }}"></div>
+      </div>
+      <div class="frow">
+        <div class="fcell fcell--label">Last contact</div>
+        <div class="fcell fcell--edit"><input type="date" name="last_contact_date" value="{{ e.last_contact_date.isoformat() if e.last_contact_date else '' }}"></div>
+        <div class="fcell fcell--label w-narrow">Standing</div>
+        <div class="fcell">
+          {% if e.next_follow_up and e.next_follow_up < today %}
+          <span class="enq-due">Overdue since {{ e.next_follow_up.strftime('%d %b %Y') }}</span>
+          {% elif e.next_follow_up %}Due {{ e.next_follow_up.strftime('%d %b %Y') }}
+          {% else %}<span style="color:var(--grey-400)">No follow-up set</span>{% endif %}
+        </div>
+      </div>
+      <div class="frow">
+        <div class="fcell fcell--label">Notes</div>
+        <div class="fcell fcell--edit" style="grid-column:span 3">
+          <textarea name="notes" rows="3" placeholder="Background on the enquiry…">{{ e.notes or '' }}</textarea>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Book a call, viewing or task ── -->
+    <div class="box" id="diary-box">
+      <div class="box-head">
+        <span class="box-title">Appointments and viewings</span>
+        <span style="font-size:11.5px;color:var(--grey-600)">Goes straight into the CRM diary</span>
+      </div>
+      <div style="padding:12px 14px">
+        {% if e.property_id %}
+        <div class="enq-controls">
+          <select name="event_type" form="diary-form">
+            {% for key, (label, colour) in event_types.items() %}
+            <option value="{{ key }}" {{ 'selected' if key == 'viewing' }}>{{ label }}</option>
+            {% endfor %}
+          </select>
+          <input class="grow" type="text" name="title" form="diary-form" placeholder="Title (optional)">
+          <input type="datetime-local" name="start" form="diary-form" required>
+          <select name="minutes" form="diary-form">
+            <option value="30">30 min</option>
+            <option value="60" selected>1 hour</option>
+            <option value="90">1½ hours</option>
+          </select>
+          <input type="text" name="owner" form="diary-form" placeholder="Who" style="max-width:110px">
+          <button type="submit" form="diary-form" class="btn btn-primary btn-sm">Add to diary</button>
+        </div>
+        <div style="font-size:11.5px;color:var(--grey-600);margin-top:6px">
+          Held at {{ e.linked_property.address }}{% if e.linked_property.postcode %}, {{ e.linked_property.postcode }}{% endif %}.
+        </div>
         {% else %}
-          <p style="color:#9aa0a6;font-size:13px;text-align:center;padding:20px 0">No matching properties found.<br>
-          <span style="font-size:11px">Set size and budget requirements on the enquiry to find matches.</span></p>
+        <p style="font-size:13px;color:var(--grey-600);margin:0">
+          Link a property above and save, then calls, viewings and tasks can be booked here —
+          every diary appointment is held at a property.
+        </p>
         {% endif %}
       </div>
     </div>
+
   </div>
 
+  <!-- ════ RIGHT ════ -->
+  <div class="rec-col">
+
+    <!-- ── Progress ── -->
+    <div class="box" id="progress-box">
+      <div class="box-head">
+        <span class="box-title">Progress</span>
+        <span style="font-size:11.5px;color:var(--grey-600)">
+          {% if e.stage_changed_on %}Here since {{ e.stage_changed_on.strftime('%d %b %Y') }}{% endif %}
+        </span>
+      </div>
+      {% set current = e.stage or 'Enquiry Received' %}
+      {% set closed = current in enquiry_stages_closed %}
+      {% set idx = enquiry_stages.index(current) if current in enquiry_stages else -1 %}
+      <div class="pipeline">
+        {% for st in enquiry_stages %}
+        <div class="pipeline-step {{ 'is-done' if idx > -1 and loop.index0 < idx }} {{ 'is-here' if st == current }}">
+          <span class="pipeline-dot">{{ '✓' if idx > -1 and loop.index0 < idx else loop.index }}</span>
+          <span class="pipeline-label">{{ st }}</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% if closed %}
+      <div style="margin:10px 14px 0;background:var(--danger-bg);color:var(--danger);border-radius:5px;padding:8px 12px;font-size:12.5px">
+        This enquiry is marked <strong>{{ current }}</strong>.
+      </div>
+      {% endif %}
+      <div class="enq-controls" style="padding:12px 14px">
+        <select name="stage" form="stage-form" class="grow">
+          {% for st in enquiry_stages %}
+          <option value="{{ st }}" {{ 'selected' if st == next_stage }}>{{ st }}</option>
+          {% endfor %}
+          <optgroup label="Closed">
+            {% for st in enquiry_stages_closed %}<option value="{{ st }}">{{ st }}</option>{% endfor %}
+          </optgroup>
+        </select>
+        <input type="date" name="occurred_on" form="stage-form" value="{{ today.isoformat() }}">
+        <input class="grow" type="text" name="note" form="stage-form" placeholder="Note (optional)">
+        <input type="text" name="author" form="stage-form" placeholder="By" style="max-width:80px">
+        <button type="submit" form="stage-form" class="btn btn-primary btn-sm">Update</button>
+        {% if next_stage %}
+        <button type="submit" form="stage-form" name="stage" value="__next__" class="btn btn-secondary btn-sm"
+                title="Move straight to {{ next_stage }}">&rarr; {{ next_stage }}</button>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- ── Add a note ── -->
+    <div class="box" id="note-box">
+      <div class="box-head"><span class="box-title">Add a note</span></div>
+      <div style="padding:12px 14px">
+        <div class="enq-controls" style="margin-bottom:8px">
+          <select name="direction" form="note-form">
+            <option value="note">Note or call</option>
+            <option value="outbound">&rarr; Email sent</option>
+            <option value="inbound">&larr; Email received</option>
+          </select>
+          <input class="grow" type="text" name="subject" form="note-form" placeholder="Subject (optional)">
+        </div>
+        <textarea name="body" form="note-form" rows="3" required placeholder="What was said…"
+                  style="width:100%;font:inherit;font-size:12.5px;padding:8px;border:1px solid var(--grey-200);border-radius:4px;resize:vertical"></textarea>
+        <div class="enq-controls" style="margin-top:8px">
+          <input type="text" name="author" form="note-form" placeholder="Your name" style="max-width:130px">
+          <input type="date" name="next_follow_up" form="note-form" title="Set the next follow-up"
+                 value="{{ e.next_follow_up.isoformat() if e.next_follow_up else '' }}">
+          <button type="submit" form="note-form" class="btn btn-primary btn-sm">Add note</button>
+        </div>
+        <div style="font-size:11.5px;color:var(--grey-600);margin-top:6px">Adding a note sets the last contact date to today.</div>
+      </div>
+    </div>
+
+    <!-- ── Send an email ── -->
+    {% if e.contact and e.contact.email %}
+    <div class="box" id="email-box">
+      <div class="box-head">
+        <span class="box-title">Send an email</span>
+        <span style="font-size:11.5px;color:var(--grey-600)">{{ e.contact.email }}</span>
+      </div>
+      <div style="padding:12px 14px">
+        <input type="hidden" name="to_address" form="email-form" value="{{ e.contact.email }}">
+        <input type="text" name="subject" form="email-form" required placeholder="Subject"
+               style="width:100%;font:inherit;font-size:12.5px;padding:7px 9px;margin-bottom:8px;border:1px solid var(--grey-200);border-radius:4px">
+        <textarea name="body" form="email-form" rows="4" required placeholder="Type the email here…"
+                  style="width:100%;font:inherit;font-size:12.5px;padding:8px;border:1px solid var(--grey-200);border-radius:4px;resize:vertical"></textarea>
+        <div class="enq-controls" style="margin-top:8px">
+          <input type="text" name="author" form="email-form" placeholder="From" style="max-width:110px">
+          <input type="date" name="next_follow_up" form="email-form" title="Set the next follow-up"
+                 value="{{ e.next_follow_up.isoformat() if e.next_follow_up else '' }}">
+          <button type="submit" form="email-form" class="btn btn-primary btn-sm" style="margin-left:auto">Send &rarr;</button>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- ── Activity history ── -->
+    <div class="box">
+      <div class="box-head">
+        <span class="box-title">Activity history</span>
+        <span style="font-size:11.5px;color:var(--grey-600)">{{ activity|length }} entr{{ 'y' if activity|length == 1 else 'ies' }}</span>
+      </div>
+      <div style="padding:6px 14px 12px">
+        {% if activity %}
+        <div class="enq-activity">
+          {% for a in activity %}
+          {% set css = {'Email in':'k-emailin','Email out':'k-emailout','Status':'k-status'}.get(a.kind, 'k-diary' if a.url else '') %}
+          <div class="enq-act {{ css }}">
+            <span class="mark">{{ a.icon }}</span>
+            <div class="body">
+              <div class="top">
+                <span class="what">{% if a.url %}<a href="{{ a.url }}">{{ a.title }}</a>{% else %}{{ a.title }}{% endif %}</span>
+                <span class="kind">{{ a.kind }}</span>
+                <span class="meta">
+                  {{ a.who or '—' }} &middot; {{ a.on.strftime('%d %b %Y') if a.on else '' }}
+                  {% if a.delete %}
+                  <button type="submit" form="del-note-{{ loop.index }}" class="del" title="Remove">&#10005;</button>
+                  {% endif %}
+                </span>
+              </div>
+              {% if a.body %}<div class="text">{{ a.body }}</div>{% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p style="font-size:13px;color:var(--grey-600);padding:12px 0;margin:0">
+          Nothing recorded yet. Notes, emails, status changes and diary appointments all appear here.
+        </p>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- ── Matched properties ── -->
+    <div class="box">
+      <div class="box-head">
+        <span class="box-title">Matched properties</span>
+        <span style="font-size:11.5px;color:var(--grey-600)">On size, budget and use</span>
+      </div>
+      <div style="padding:12px 14px">
+        {% if matched_props %}
+        {% for p in matched_props %}
+        <a href="{{ url_for('property_detail', id=p.id) }}"
+           style="display:block;text-decoration:none;border:1px solid var(--grey-200);border-radius:6px;padding:10px 12px;margin-bottom:8px">
+          <div style="font-size:13px;font-weight:600;color:var(--navy)">{{ p.address }}</div>
+          <div style="font-size:12px;color:var(--grey-600);margin-top:2px">
+            {{ p.postcode }}{% if p.use_class or p.property_type %} &middot; {{ (p.use_class or p.property_type)|title }}{% endif %}
+          </div>
+          <div style="display:flex;gap:12px;margin-top:6px;font-size:12px">
+            {% if p.size %}<span style="font-weight:600">{{ '{:,.0f}'.format(p.size) }} sq ft</span>{% endif %}
+            {% if p.listing_price %}<span>&pound;{{ '{:,.0f}'.format(p.listing_price) }} {{ p.listing_price_unit or '' }}</span>{% endif %}
+          </div>
+        </a>
+        {% endfor %}
+        {% else %}
+        <p style="font-size:13px;color:var(--grey-600);margin:0">
+          No matches yet. Set the size, budget and use above to find properties on the register.
+        </p>
+        {% endif %}
+      </div>
+    </div>
+
+  </div>
 </div>
+</form>
+
+{# Note deletions: one form each, kept outside the record form. #}
+{% for a in activity %}{% if a.delete %}
+<form id="del-note-{{ loop.index }}" method="post" action="{{ a.delete }}"></form>
+{% endif %}{% endfor %}
+
+<script>
+/* The subject follows the enquiry type and property until somebody writes
+   their own, matching how the new-enquiry form behaves. */
+(function () {
+  var subject = document.getElementById('enq-subject');
+  var type    = document.getElementById('enq-type');
+  var prop    = document.getElementById('enq-property');
+  if (!subject || !type || !prop) return;
+
+  function suggestion() {
+    var t = (type.value || '').trim() || 'Enquiry';
+    var p = prop.options[prop.selectedIndex];
+    var where = (p && p.value) ? p.textContent.trim() : '';
+    return where ? t + ' — ' + where : t;
+  }
+
+  var auto = subject.value.trim() === '' || subject.value.trim() === suggestion();
+  subject.addEventListener('input', function () { auto = subject.value.trim() === ''; });
+  function refresh() { if (auto) subject.value = suggestion(); }
+  type.addEventListener('input', refresh);
+  prop.addEventListener('change', refresh);
+})();
+</script>
 {% endblock %}

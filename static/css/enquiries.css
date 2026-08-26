@@ -1,0 +1,204 @@
+/* Enquiries page.
+ *
+ * The summary band at the top follows the reference layout: a section title
+ * sitting above a plain white card, metrics shown as a tinted bar behind the
+ * label with the figure on the right, and a rule above a closing rate row.
+ * Colours are the CRM's own — navy, brass red and a muted amber — rather than
+ * the reference's purple.
+ */
+
+.enq-page { display: flex; flex-direction: column; gap: 22px; }
+
+/* ── section title, above the card as in the reference ──────────────────── */
+.enq-head { display: flex; align-items: center; gap: 10px; margin: 0 0 10px; }
+.enq-head h3 { font-size: 15px; font-weight: 600; color: var(--navy); margin: 0; }
+.enq-note {
+  margin-left: auto; font-size: 11px; font-weight: 500; color: var(--grey-600);
+  background: var(--grey-100); border-radius: 3px; padding: 3px 9px; white-space: nowrap;
+}
+
+.enq-card {
+  background: var(--white); border: 1px solid var(--grey-200); border-radius: 6px;
+  padding: 18px 20px;
+}
+
+/* ── enquiries received, by day ─────────────────────────────────────────── */
+.enq-chart { display: flex; align-items: flex-end; gap: 3px; height: 160px; position: relative; }
+.enq-gridlines { position: absolute; inset: 0 0 24px 0; pointer-events: none; }
+.enq-gridlines span {
+  position: absolute; left: 0; right: 0; border-top: 1px dashed var(--grey-200);
+}
+.enq-bar { flex: 1; display: flex; flex-direction: column; justify-content: flex-end;
+  align-items: center; height: 100%; min-width: 0; }
+.enq-bar .stack { width: 100%; max-width: 16px; display: flex; flex-direction: column;
+  justify-content: flex-end; height: calc(100% - 24px); }
+.enq-bar .seg { width: 100%; }
+.enq-bar .seg.ok { background: #c9992b; }
+.enq-bar .seg.late { background: var(--orange); }
+.enq-bar .stack .seg:first-child { border-radius: 2px 2px 0 0; }
+.enq-bar .tick {
+  height: 24px; font-size: 9.5px; color: var(--grey-600); white-space: nowrap;
+  transform: rotate(-45deg); transform-origin: top right; margin-top: 6px;
+}
+.enq-key { display: flex; gap: 16px; margin-top: 14px; font-size: 11.5px; color: var(--grey-600); }
+.enq-key i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; }
+
+/* ── the three summary panels ───────────────────────────────────────────── */
+.enq-summaries { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; }
+.enq-panel .enq-card { padding: 10px 16px 6px; }
+
+.enq-srow {
+  position: relative; display: flex; align-items: center;
+  min-height: 42px; padding: 4px 0;
+}
+.enq-srow .fill {
+  position: absolute; left: -6px; top: 6px; bottom: 6px; border-radius: 3px;
+  background: var(--tint, var(--grey-100));
+}
+.enq-srow .lbl { position: relative; font-size: 13px; color: var(--text); padding-left: 2px; }
+.enq-srow .num {
+  position: relative; margin-left: auto; padding-left: 12px;
+  font-size: 13px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums;
+}
+.enq-foot {
+  display: flex; align-items: center; border-top: 1px solid var(--grey-200);
+  margin-top: 6px; padding: 12px 0;
+}
+.enq-foot .lbl { font-size: 13px; font-weight: 600; color: var(--text); }
+.enq-foot .num {
+  margin-left: auto; font-size: 13px; font-weight: 600; color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── the two breakdown rings ────────────────────────────────────────────── */
+.enq-rings { display: grid; grid-template-columns: repeat(2, 1fr); gap: 22px; }
+.enq-ring-body { display: flex; align-items: center; gap: 26px; flex-wrap: wrap; }
+.enq-ring { flex-shrink: 0; }
+.enq-legend { flex: 1; min-width: 190px; border-collapse: collapse; }
+.enq-legend td { padding: 5px 0; font-size: 13px; color: var(--text); vertical-align: middle; }
+.enq-legend td.n, .enq-legend td.p {
+  text-align: right; padding-left: 14px; font-variant-numeric: tabular-nums; color: var(--grey-700);
+}
+.enq-legend i {
+  display: inline-block; width: 10px; height: 10px; border-radius: 2px;
+  margin-right: 9px; vertical-align: -1px;
+}
+.enq-ring-empty { color: var(--grey-400); font-size: 13px; padding: 26px 0; }
+
+/* ── search and filters ─────────────────────────────────────────────────── */
+.enq-filters { display: flex; flex-direction: column; gap: 12px; }
+.enq-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.enq-chip {
+  display: inline-flex; align-items: center; gap: 7px; text-decoration: none;
+  border: 1px solid var(--grey-200); background: var(--white); color: var(--grey-700);
+  border-radius: 999px; padding: 6px 14px; font-size: 12.5px; font-weight: 500;
+}
+.enq-chip:hover { border-color: var(--grey-400); color: var(--navy); }
+.enq-chip .c {
+  font-size: 11px; font-weight: 600; color: var(--grey-600);
+  background: var(--grey-100); border-radius: 999px; padding: 1px 7px;
+  font-variant-numeric: tabular-nums;
+}
+.enq-chip.is-on { background: var(--navy); border-color: var(--navy); color: #fff; }
+.enq-chip.is-on .c { background: rgba(255,255,255,.18); color: #fff; }
+
+.enq-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.enq-controls input, .enq-controls select {
+  font: inherit; font-size: 12.5px; padding: 7px 10px; border: 1px solid var(--grey-200);
+  border-radius: 4px; background: var(--white); color: var(--text); min-width: 0;
+}
+.enq-controls input:focus, .enq-controls select:focus { outline: none; border-color: var(--navy); }
+/* Sized so a full set of filters sits on one or two tidy rows rather than
+   one control per line. */
+.enq-controls select { flex: 0 1 168px; }
+.enq-controls .grow { flex: 2 1 240px; }
+.enq-controls .ss-wrap { flex: 0 1 200px; }
+.enq-controls .ss-button { width: 100%; }
+.enq-dates {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--grey-600); white-space: nowrap;
+}
+/* An explicit width: date inputs pick up width:100% from the base stylesheet,
+   which in a flex row makes each one claim the whole container. */
+.enq-dates input { flex: 0 0 140px; width: 140px; }
+
+/* ── the list ───────────────────────────────────────────────────────────── */
+.enq-table { width: 100%; border-collapse: collapse; background: var(--white); }
+.enq-table th {
+  text-align: left; font-size: 11px; font-weight: 600; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--grey-600); padding: 10px 12px;
+  border-bottom: 1px solid var(--grey-200); white-space: nowrap; background: var(--grey-50);
+}
+.enq-table td { padding: 11px 12px; font-size: 13px; border-bottom: 1px solid var(--grey-100);
+  vertical-align: top; }
+.enq-table tbody tr:hover { background: #f7f9fc; }
+.enq-table tbody tr.is-selected { background: #eef2f9; box-shadow: inset 3px 0 0 var(--navy); }
+.enq-table tbody tr:last-child td { border-bottom: 0; }
+.enq-subject { font-weight: 600; color: var(--navy); text-decoration: none; }
+.enq-subject:hover { text-decoration: underline; }
+.enq-sub { font-size: 11.5px; color: var(--grey-600); margin-top: 3px; }
+.enq-table td a { color: var(--blue); text-decoration: none; }
+.enq-table td a:hover { text-decoration: underline; }
+.enq-due { color: var(--danger); font-weight: 600; }
+
+.enq-pill {
+  display: inline-block; border-radius: 999px; padding: 2px 10px;
+  font-size: 11px; font-weight: 600; white-space: nowrap;
+}
+.enq-pill.new       { background: #e8eefb; color: #24417f; }
+.enq-pill.contacted { background: #e6f2f1; color: #1f6b62; }
+.enq-pill.qualified { background: #fdf1dc; color: #8a6113; }
+.enq-pill.viewing   { background: #ede4f5; color: #5c3a75; }
+.enq-pill.offer     { background: #fbe6d7; color: #8f4a17; }
+.enq-pill.closed    { background: #e7efe7; color: #33623a; }
+.enq-pill.archived  { background: var(--grey-100); color: var(--grey-600); }
+
+.enq-empty { text-align: center; padding: 40px 20px; color: var(--grey-600); font-size: 13.5px; }
+.enq-empty .icon { font-size: 26px; display: block; margin-bottom: 10px; }
+
+/* ── record page ────────────────────────────────────────────────────────── */
+/* Eight pipeline steps do not fit the record page's narrower column, so the
+   run scrolls sideways inside its own box rather than off the page. */
+#progress-box .pipeline { overflow-x: auto; }
+
+/* ── activity history ───────────────────────────────────────────────────── */
+.enq-activity { display: flex; flex-direction: column; }
+.enq-act {
+  display: flex; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--grey-100);
+}
+.enq-act:last-child { border-bottom: 0; }
+.enq-act .mark {
+  flex-shrink: 0; width: 26px; height: 26px; border-radius: 50%;
+  background: var(--grey-100); color: var(--grey-700);
+  display: flex; align-items: center; justify-content: center; font-size: 12px;
+}
+.enq-act.k-emailin  .mark { background: #e8eefb; color: #24417f; }
+.enq-act.k-emailout .mark { background: #fdf1dc; color: #8a6113; }
+.enq-act.k-status   .mark { background: #e7efe7; color: #33623a; }
+.enq-act.k-diary    .mark { background: #ede4f5; color: #5c3a75; }
+.enq-act .body { flex: 1; min-width: 0; }
+.enq-act .top { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.enq-act .what { font-size: 13px; font-weight: 600; color: var(--navy); }
+.enq-act .kind { font-size: 11px; color: var(--grey-600); text-transform: uppercase; letter-spacing: .03em; }
+.enq-act .meta { margin-left: auto; font-size: 11.5px; color: var(--grey-400); white-space: nowrap; }
+.enq-act .text { font-size: 12.5px; color: var(--grey-700); white-space: pre-wrap; margin-top: 3px; }
+.enq-act .del { background: none; border: 0; color: var(--grey-400); cursor: pointer; font-size: 12px; }
+.enq-act .del:hover { color: var(--danger); }
+
+/* ── tablet and phone ───────────────────────────────────────────────────── */
+@media (max-width: 1100px) {
+  .enq-summaries { grid-template-columns: 1fr; }
+  .enq-rings { grid-template-columns: 1fr; }
+}
+/* The list is wide by nature: it scrolls inside its own box at every width so
+   the page itself never scrolls sideways. */
+.enq-table-wrap { overflow-x: auto; }
+
+@media (max-width: 820px) {
+  .enq-chart { height: 130px; }
+  .enq-bar .tick { display: none; }
+  .enq-table { min-width: 720px; }
+  .enq-controls .grow, .enq-controls .ss-wrap,
+  .enq-controls select, .enq-dates { flex: 1 1 100%; }
+  .enq-dates input { flex: 1 1 auto; width: auto; }
+}

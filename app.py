@@ -464,9 +464,21 @@ class Enquiry(db.Model):
     req_budget_unit = db.Column(db.String(10))  # pa / pcm / sale
     req_use_class   = db.Column(db.String(30))
     req_category    = db.Column(db.String(20))  # commercial / residential
+    req_area          = db.Column(db.String(120))  # preferred location
+    req_property_type = db.Column(db.String(60))
+    req_tenure        = db.Column(db.String(20))   # lease / purchase / either
+    req_occupation_date = db.Column(db.Date)       # when they want to be in
+    req_notes         = db.Column(db.Text)         # anything else they have asked for
+    # How the applicant prefers to be reached, and how hard this is being pushed
+    preferred_contact = db.Column(db.String(20))   # phone / email / mobile / post
+    priority          = db.Column(db.String(10))   # High / Medium / Low
     # Follow-up tracking
     last_contact_date = db.Column(db.Date)
     next_follow_up    = db.Column(db.Date)
+    next_action       = db.Column(db.String(255))
+    next_call_date    = db.Column(db.Date)
+    # Kept out of the working list without being deleted.
+    archived          = db.Column(db.Boolean, default=False)
     # Where this enquiry has got to, from first contact through to signed
     # heads of terms. See ENQUIRY_STAGES.
     stage             = db.Column(db.String(40), default='Enquiry Received')
@@ -2469,6 +2481,69 @@ PROPERTY_FIELDS = [
 ]
 
 
+ENQUIRY_FIELDS = [
+    ('subject',             'subject',             None),
+    ('enquiry_type',        'enquiry_type',        _ftext),
+    ('status',              'status',              _ftext),
+    ('source',              'source',              _ftext),
+    ('fee_earner',          'fee_earner',          _ftext),
+    ('priority',            'priority',            _ftext),
+    ('preferred_contact',   'preferred_contact',   _ftext),
+    ('received_date',       'received_date',       _parse_date),
+    ('notes',               'notes',               _ftext),
+    ('req_category',        'req_category',        _ftext),
+    ('req_property_type',   'req_property_type',   _ftext),
+    ('req_use_class',       'req_use_class',       _ftext),
+    ('req_area',            'req_area',            _ftext),
+    ('req_tenure',          'req_tenure',          _ftext),
+    ('req_occupation_date', 'req_occupation_date', _parse_date),
+    ('req_size_min',        'req_size_min',        _fnum),
+    ('req_size_max',        'req_size_max',        _fnum),
+    ('req_budget_min',      'req_budget_min',      _fnum),
+    ('req_budget_max',      'req_budget_max',      _fnum),
+    ('req_budget_unit',     'req_budget_unit',     _ftext),
+    ('req_notes',           'req_notes',           _ftext),
+    ('next_action',         'next_action',         _ftext),
+    ('next_call_date',      'next_call_date',      _parse_date),
+    ('next_follow_up',      'next_follow_up',      _parse_date),
+    ('last_contact_date',   'last_contact_date',   _parse_date),
+]
+
+# Which record each enquiry is linked to. Kept apart from the plain fields
+# because an empty box means "no link", not "leave it alone".
+ENQUIRY_LINKS = ['property_id', 'contact_id', 'organisation_id', 'project_id']
+
+
+def enquiry_subject(enquiry_type, prop):
+    """The subject line an enquiry gets when nobody has written one.
+
+    Built from the enquiry type and the property, so "Agency — Letting" about
+    57B New Kings Road reads as one line in the list.
+    """
+    etype = (enquiry_type or '').strip() or 'Enquiry'
+    where = property_address(prop)
+    return f'{etype} — {where}' if where else etype
+
+
+def _save_enquiry_from_form(e, form):
+    """Apply an inline edit to an enquiry, sending back only what was shown."""
+    apply_form_fields(e, form, ENQUIRY_FIELDS)
+    for key in ENQUIRY_LINKS:
+        if key in form:
+            setattr(e, key, _fint(form.get(key)))
+    # An empty subject is filled in from the type and property, the same way
+    # the new-enquiry form does it as you type.
+    if not (e.subject or '').strip():
+        e.subject = enquiry_subject(e.enquiry_type, e.linked_property)
+    # The applicant's number and address are the contact's own, but they are
+    # shown and corrected here, so write them back to the contact record.
+    if e.contact:
+        for attr in ('mobile', 'email'):
+            key = f'contact_{attr}'
+            if key in form:
+                setattr(e.contact, attr, _ftext(form.get(key)))
+
+
 def _save_contact_from_form(contact, form):
     apply_form_fields(contact, form, CONTACT_FIELDS)
     if 'organisation_id' in form:
@@ -2530,20 +2605,253 @@ def organisation_set_status(id):
 
 # ── Enquiries ─────────────────────────────────────────────────────────────────
 
+# The working states an enquiry passes through, as shown on the filter bar.
+# These sit on top of the existing stage pipeline rather than replacing it.
+ENQUIRY_BUCKETS = [
+    ('new',       'New'),
+    ('contacted', 'Contacted'),
+    ('qualified', 'Qualified'),
+    ('viewing',   'Viewing arranged'),
+    ('offer',     'Offer made'),
+    ('closed',    'Closed'),
+    ('archived',  'Archived'),
+]
+
+
+def enquiry_bucket(e):
+    """Which of the filter bar's states this enquiry is currently in."""
+    if e.archived:
+        return 'archived'
+    stage = e.stage or 'Enquiry Received'
+    if (stage in ENQUIRY_STAGES_CLOSED or stage == 'Heads of Terms Signed'
+            or e.status in ('Won', 'Lost')):
+        return 'closed'
+    if stage in ('Offer Received', 'Terms Agreed', 'Heads of Terms Issued'):
+        return 'offer'
+    if stage in ('Viewing Arranged', 'Viewing Completed'):
+        return 'viewing'
+    if stage == 'Qualified':
+        return 'qualified'
+    if e.last_contact_date:
+        return 'contacted'
+    return 'new'
+
+
+ENQUIRY_BUCKET_LABELS = dict(ENQUIRY_BUCKETS)
+app.jinja_env.globals['enquiry_state'] = enquiry_bucket
+app.jinja_env.globals['enquiry_state_label'] = lambda key: ENQUIRY_BUCKET_LABELS.get(key, key)
+
+
+def _enquiry_haystack(e):
+    """Everything the search box should look through for one enquiry."""
+    bits = [e.subject, e.enquiry_type, e.fee_earner, e.source, e.notes,
+            e.req_area, e.next_action]
+    if e.contact:
+        bits.append(e.contact.full_name)
+        bits += [e.contact.email, e.contact.mobile, e.contact.phone]
+    if e.organisation:
+        bits.append(e.organisation.name)
+    if e.linked_property:
+        bits += [e.linked_property.address, e.linked_property.postcode]
+    return ' '.join(b for b in bits if b).lower()
+
+
+# Panel colours, kept away from the brand red so status never reads as an alert.
+ENQUIRY_CHART_COLOURS = ['#c9992b', '#1c3160', '#2f8f83', '#7b4b8a', '#4a5568',
+                         '#5b8c5a', '#b06a3b', '#8a939f']
+
+
+def _slice_counts(rows, colours=ENQUIRY_CHART_COLOURS):
+    """Turn {label: count} into ring segments, largest first, with angles."""
+    total = sum(rows.values()) or 0
+    out, offset = [], 0.0
+    for i, (label, count) in enumerate(sorted(rows.items(), key=lambda kv: -kv[1])):
+        share = (count / total * 100) if total else 0
+        out.append({'label': label, 'count': count, 'pct': round(share),
+                    'dash': round(share, 2), 'offset': round(offset, 2),
+                    'colour': colours[i % len(colours)]})
+        offset += share
+    return out
+
+
+def _enquiry_overview(enqs, today):
+    """The figures behind the summary panels at the top of the Enquiries page.
+
+    Everything is counted from the enquiries currently in view, so the panels
+    always describe the same set as the list underneath them.
+    """
+    ids = [e.id for e in enqs]
+    total = len(enqs)
+
+    # Received per day over the last month, split into worked and overdue.
+    days, by_day = [], {}
+    for e in enqs:
+        on = e.received_date or (e.created_at.date() if e.created_at else None)
+        if on and (today - on).days < 30 and on <= today:
+            slot = by_day.setdefault(on, {'ok': 0, 'late': 0})
+            late = e.next_follow_up and e.next_follow_up < today and not e.archived
+            slot['late' if late else 'ok'] += 1
+    for i in range(29, -1, -1):
+        d = today - timedelta(days=i)
+        slot = by_day.get(d, {'ok': 0, 'late': 0})
+        days.append({'date': d, 'label': d.strftime('%-d %b'),
+                     'ok': slot['ok'], 'late': slot['late'],
+                     'total': slot['ok'] + slot['late']})
+    peak = max([d['total'] for d in days] or [0]) or 1
+
+    buckets = {key: 0 for key, _ in ENQUIRY_BUCKETS}
+    for e in enqs:
+        buckets[enquiry_bucket(e)] += 1
+
+    matched   = sum(1 for e in enqs if e.property_id)
+    contacted = sum(1 for e in enqs if e.last_contact_date)
+    overdue   = sum(1 for e in enqs if e.next_follow_up and e.next_follow_up < today
+                    and not e.archived)
+    converted = sum(1 for e in enqs if (e.stage == 'Heads of Terms Signed'
+                                        or e.status == 'Won'))
+    viewings  = sum(1 for e in enqs if enquiry_bucket(e) == 'viewing')
+    terms     = sum(1 for e in enqs if e.stage in ('Terms Agreed', 'Heads of Terms Issued'))
+
+    # Correspondence, counted in one go rather than per enquiry.
+    notes = emails = 0
+    if ids:
+        rows = (db.session.query(EnquiryNote.direction, db.func.count(EnquiryNote.id))
+                .filter(EnquiryNote.enquiry_id.in_(ids))
+                .group_by(EnquiryNote.direction).all())
+        for direction, count in rows:
+            if direction in ('inbound', 'outbound'):
+                emails += count
+            else:
+                notes += count
+
+    def panel(title, rows, foot_label, foot_value):
+        top = max([r[1] for r in rows] or [0]) or 1
+        return {'title': title, 'foot_label': foot_label, 'foot_value': foot_value,
+                'rows': [{'label': l, 'count': c, 'width': round(c / top * 100)}
+                         for l, c in rows]}
+
+    def rate(part):
+        return f'{round(part / total * 100)}%' if total else '—'
+
+    look_for = {}
+    for e in enqs:
+        key = (e.req_use_class or e.req_property_type or e.req_category or '').strip()
+        look_for[key.title() if key else 'Not specified'] = \
+            look_for.get(key.title() if key else 'Not specified', 0) + 1
+
+    sources = {}
+    for e in enqs:
+        key = (e.source or 'Direct').strip()
+        sources[key] = sources.get(key, 0) + 1
+
+    return {
+        'total': total,
+        'days': days, 'peak': peak,
+        'buckets': buckets,
+        'panels': [
+            panel('Enquiry summary',
+                  [('Enquiries received', total),
+                   ('Matched to a property', matched),
+                   ('Contact made', contacted)],
+                  'Matched to a property', rate(matched)),
+            panel('Pipeline summary',
+                  [('Contact made', contacted),
+                   ('Viewing arranged', viewings),
+                   ('Terms agreed', terms),
+                   ('Converted', converted)],
+                  'Conversion rate', rate(converted)),
+            panel('Follow-up summary',
+                  [('Notes and calls logged', notes),
+                   ('Emails exchanged', emails),
+                   ('Follow-ups overdue', overdue)],
+                  'Followed up on time', rate(contacted - overdue) if total else '—'),
+        ],
+        'rings': [
+            {'title': 'What applicants are looking for', 'slices': _slice_counts(look_for)},
+            {'title': 'Enquiries received by source', 'slices': _slice_counts(sources)},
+        ],
+    }
+
+
 @app.route('/enquiries')
 def enquiries_list():
-    q = request.args.get('q', '')
-    status = request.args.get('status', '')
-    query = Enquiry.query
-    if q:
-        query = query.filter(
-            db.or_(Enquiry.subject.ilike(f'%{q}%'), Enquiry.enquiry_type.ilike(f'%{q}%'),
-                   Enquiry.fee_earner.ilike(f'%{q}%'))
-        )
-    if status:
-        query = query.filter(Enquiry.status == status)
-    enquiries = query.order_by(Enquiry.created_at.desc()).all()
-    return render_template('crm/enquiries_list.html', enquiries=enquiries, q=q, status=status)
+    today = date.today()
+    args = request.args
+    q           = args.get('q', '').strip()
+    bucket      = args.get('bucket', '')
+    status      = args.get('status', '')            # kept: older links still use it
+    source      = args.get('source', '')
+    etype       = args.get('type', '')
+    negotiator  = args.get('negotiator', '')
+    property_id = _fint(args.get('property_id'))
+    from_date   = _parse_date(args.get('from'))
+    to_date     = _parse_date(args.get('to'))
+    followup    = args.get('followup', '')
+
+    # Newest first by the date it came in, falling back to when it was keyed.
+    everything = Enquiry.query.all()
+    everything.sort(key=lambda e: (e.received_date or date.min,
+                                   e.created_at or datetime.min), reverse=True)
+
+    def keep(e, skip_bucket=False):
+        if q and q.lower() not in _enquiry_haystack(e):
+            return False
+        if status and e.status != status:
+            return False
+        if source and (e.source or 'Direct') != source:
+            return False
+        if etype and e.enquiry_type != etype:
+            return False
+        if negotiator and e.fee_earner != negotiator:
+            return False
+        if property_id and e.property_id != property_id:
+            return False
+        on = e.received_date or (e.created_at.date() if e.created_at else None)
+        if from_date and (on is None or on < from_date):
+            return False
+        if to_date and (on is None or on > to_date):
+            return False
+        if followup == 'due' and not (e.next_follow_up and e.next_follow_up <= today):
+            return False
+        if followup == 'overdue' and not (e.next_follow_up and e.next_follow_up < today):
+            return False
+        if followup == 'none' and e.next_follow_up:
+            return False
+        if not skip_bucket:
+            if bucket:
+                if enquiry_bucket(e) != bucket:
+                    return False
+            elif e.archived:
+                return False        # archived stays out of the working list
+        return True
+
+    enquiries = [e for e in everything if keep(e)]
+    # The chip counts describe what each chip would show, so they ignore the
+    # chip currently pressed but respect every other filter.
+    chip_pool = [e for e in everything if keep(e, skip_bucket=True)]
+    counts = {key: 0 for key, _ in ENQUIRY_BUCKETS}
+    for e in chip_pool:
+        counts[enquiry_bucket(e)] += 1
+
+    overview = _enquiry_overview(enquiries, today)
+    overview['buckets'] = counts
+
+    filters_on = any([q, bucket, status, source, etype, negotiator, property_id,
+                      from_date, to_date, followup])
+
+    return render_template(
+        'crm/enquiries_list.html',
+        enquiries=enquiries, overview=overview, today=today,
+        selected_id=_fint(args.get('selected')),
+        buckets=ENQUIRY_BUCKETS, counts=counts, filters_on=filters_on,
+        q=q, bucket=bucket, status=status, source=source, type_=etype,
+        negotiator=negotiator, property_id=property_id, followup=followup,
+        from_date=args.get('from', ''), to_date=args.get('to', ''),
+        all_sources=sorted({(e.source or 'Direct') for e in everything}),
+        all_types=sorted({e.enquiry_type for e in everything if e.enquiry_type}),
+        all_negotiators=sorted({e.fee_earner for e in everything if e.fee_earner}),
+        all_properties=Property.query.order_by(Property.address).all(),
+    )
 
 
 def _parse_enquiry_form(form, e=None):
@@ -2593,6 +2901,44 @@ def enquiry_new():
                            organisations=organisations, projects=projects)
 
 
+def _enquiry_activity(e):
+    """Everything that has happened on an enquiry, newest first.
+
+    Three sources are woven together: notes and correspondence, movements
+    through the pipeline, and any diary appointments booked against it.
+    """
+    items = []
+
+    for n in e.notes_chain:
+        kind = {'inbound': 'Email in', 'outbound': 'Email out'}.get(n.direction, 'Note')
+        items.append({
+            'when': n.created_at, 'on': n.created_at.date() if n.created_at else None,
+            'kind': kind, 'icon': '✉' if n.direction in ('inbound', 'outbound') else '✎',
+            'title': n.subject or kind, 'body': n.body,
+            'who': n.author, 'url': None, 'delete': url_for('enquiry_note_delete', id=n.id),
+        })
+
+    for ev in e.stage_events:
+        items.append({
+            'when': datetime.combine(ev.occurred_on or date.today(), datetime.min.time()),
+            'on': ev.occurred_on, 'kind': 'Status', 'icon': '●',
+            'title': ev.stage + (f' (from {ev.from_stage})' if ev.from_stage else ''),
+            'body': ev.note, 'who': ev.author, 'url': None, 'delete': None,
+        })
+
+    for ap in DiaryEvent.query.filter_by(enquiry_id=e.id).all():
+        label = EVENT_TYPES.get(ap.event_type, ('Appointment', ''))[0]
+        items.append({
+            'when': ap.start_at, 'on': ap.start_at.date() if ap.start_at else None,
+            'kind': label, 'icon': '\U0001f4c5', 'title': ap.title,
+            'body': ap.place or ap.notes, 'who': ap.owner,
+            'url': url_for('diary_event', id=ap.id), 'delete': None,
+        })
+
+    items.sort(key=lambda i: i['when'] or datetime.min, reverse=True)
+    return items
+
+
 @app.route('/enquiries/<int:id>')
 def enquiry_detail(id):
     e = Enquiry.query.get_or_404(id)
@@ -2616,9 +2962,16 @@ def enquiry_detail(id):
     matched_props = [p for _, p in matched[:6]]
     return render_template('crm/enquiry_detail.html', e=e, matched_props=matched_props,
                            today=date.today(),
+                           activity=_enquiry_activity(e),
                            enquiry_stages=ENQUIRY_STAGES,
                            enquiry_stages_closed=ENQUIRY_STAGES_CLOSED,
-                           next_stage=next_enquiry_stage(e.stage))
+                           next_stage=next_enquiry_stage(e.stage),
+                           bucket=enquiry_bucket(e),
+                           event_types=EVENT_TYPES,
+                           all_contacts=Contact.query.order_by(Contact.last_name).all(),
+                           all_properties=Property.query.order_by(Property.address).all(),
+                           all_organisations=Organisation.query.order_by(Organisation.name).all(),
+                           all_projects=Project.query.order_by(Project.name).all())
 
 
 @app.route('/enquiries/<int:id>/edit', methods=['GET', 'POST'])
@@ -2629,10 +2982,11 @@ def enquiry_edit(id):
     organisations = Organisation.query.order_by(Organisation.name).all()
     projects = Project.query.order_by(Project.name).all()
     if request.method == 'POST':
-        _parse_enquiry_form(request.form, e)
+        _save_enquiry_from_form(e, request.form)
         db.session.commit()
+        audit('edit', entity='Enquiry', entity_id=e.id)
         flash('Enquiry updated.', 'success')
-        return redirect(url_for('enquiry_detail', id=e.id))
+        return _back_to('enquiry_detail', id=e.id)
     return render_template('crm/enquiry_form.html', enquiry=e,
                            properties=properties, contacts=contacts,
                            organisations=organisations, projects=projects)
@@ -2649,6 +3003,63 @@ def enquiry_log_contact(id):
     db.session.commit()
     flash(f'Contact logged for "{e.subject}". Follow-up set.', 'success')
     return redirect(request.referrer or url_for('enquiries_list'))
+
+
+@app.route('/enquiries/<int:id>/archive', methods=['POST'])
+def enquiry_archive(id):
+    """Put an enquiry away, or bring it back. Nothing is deleted."""
+    e = Enquiry.query.get_or_404(id)
+    e.archived = not bool(e.archived)
+    db.session.commit()
+    audit('archive' if e.archived else 'restore', entity='Enquiry', entity_id=e.id)
+    flash('Enquiry archived.' if e.archived else 'Enquiry restored.', 'info')
+    return _back_to('enquiry_detail', id=e.id)
+
+
+@app.route('/enquiries/<int:id>/schedule', methods=['POST'])
+def enquiry_schedule(id):
+    """Book a call, viewing or task against an enquiry, in the CRM diary.
+
+    Appointments are held at a property, so the enquiry's property is used;
+    without one there is nowhere to put the appointment.
+    """
+    e = Enquiry.query.get_or_404(id)
+    if not e.property_id:
+        flash('Link a property to this enquiry before booking anything in the diary.', 'warning')
+        return redirect(url_for('enquiry_detail', id=e.id))
+
+    kind = request.form.get('event_type', 'appointment')
+    if kind not in EVENT_TYPES:
+        kind = 'appointment'
+    try:
+        local = datetime.strptime(request.form.get('start', ''), '%Y-%m-%dT%H:%M')
+    except ValueError:
+        flash('Choose a date and time.', 'warning')
+        return redirect(url_for('enquiry_detail', id=e.id))
+    minutes = _fint(request.form.get('minutes')) or 60
+    start = from_london(local)          # the diary stores UTC, shows London
+
+    prop = Property.query.get(e.property_id)
+    ev = DiaryEvent(
+        title=request.form.get('title', '').strip()
+              or f'{EVENT_TYPES[kind][0]} — {e.subject[:80]}',
+        start_at=start, end_at=start + timedelta(minutes=minutes),
+        event_type=kind,
+        owner=request.form.get('owner', '').strip() or e.fee_earner
+              or getattr(current_user, 'username', None),
+        property_id=e.property_id, contact_id=e.contact_id,
+        project_id=e.project_id, enquiry_id=e.id,
+        location=property_address(prop),
+        notes=request.form.get('notes', '').strip() or None,
+        created_by=getattr(current_user, 'username', None),
+    )
+    db.session.add(ev)
+    if kind == 'call':
+        e.next_call_date = local.date()
+    db.session.commit()
+    audit('create', entity='DiaryEvent', entity_id=ev.id, detail=f'from enquiry {e.id}')
+    flash(f'{EVENT_TYPES[kind][0]} added to the diary.', 'success')
+    return redirect(url_for('enquiry_detail', id=e.id))
 
 
 @app.route('/enquiries/<int:id>/delete', methods=['POST'])
@@ -3661,6 +4072,19 @@ def api_enquiry():
     if property_ref:
         subject = f"Viewing request — {property_ref[:80]}"
 
+    # Portals and website forms re-post the same lead when someone double-clicks
+    # or a sync runs twice. The same person, about the same property, on the
+    # same day is treated as the enquiry already on file.
+    if contact:
+        already = (Enquiry.query
+                   .filter_by(contact_id=contact.id,
+                              property_id=prop.id if prop else None,
+                              received_date=date.today())
+                   .first())
+        if already:
+            db.session.commit()          # keep any contact details picked up above
+            return jsonify({'ok': True, 'enquiry_id': already.id, 'duplicate': True}), 200
+
     enq = Enquiry(
         subject=subject,
         enquiry_type=etype_map.get(interest, 'Other'),
@@ -4222,6 +4646,11 @@ def _migrate_enquiry_columns():
             ('last_contact_date','TEXT'),('next_follow_up','TEXT'),
             ('source','TEXT'),
             ('stage',"TEXT DEFAULT 'Enquiry Received'"),('stage_changed_on','DATE'),
+            ('req_area','TEXT'),('req_property_type','TEXT'),('req_tenure','TEXT'),
+            ('req_occupation_date','DATE'),('req_notes','TEXT'),
+            ('preferred_contact','TEXT'),('priority','TEXT'),
+            ('next_action','TEXT'),('next_call_date','DATE'),
+            ('archived','BOOLEAN DEFAULT FALSE'),
         ]
         with db.engine.connect() as conn:
             for col_name, col_def in new_cols:
