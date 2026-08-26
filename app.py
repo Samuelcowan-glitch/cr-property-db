@@ -3442,58 +3442,112 @@ def auto_link_contact_to_projects(contact):
     return linked
 
 
+def property_on_the_market(prop):
+    """How a property is on the market right now, or None if it is not.
+
+    Returns the instruction type of the live instruction behind it. Only
+    For Sale – Available and To Let – Available count: a market appraisal, a
+    prospect or an archived instruction is not something to offer an
+    applicant, whatever the building itself looks like.
+    """
+    if prop is None:
+        return None
+    for pj in prop.projects:
+        if pj.status != 'Active':
+            continue
+        if pj.instruction_type not in (INSTRUCTION_FOR_SALE, INSTRUCTION_TO_LET):
+            continue
+        # Where the instruction has a website listing, that listing must still
+        # be available — a let-agreed or sold unit is off the market.
+        listings = list(pj.project_listings)
+        if listings and not any((l.listing_status or 'available').lower() == 'available'
+                                for l in listings):
+            continue
+        return pj.instruction_type
+    return None
+
+
 def score_requirement(c, prop):
     """How well one property answers one applicant's requirements.
 
-    Returns (score, reasons). Both directions of matching use this, so an
-    applicant's matched properties and a property's matched applicants can
-    never disagree about what counts as a match.
+    Returns (score, reasons), and (0, []) unless the property satisfies every
+    requirement the applicant has actually set. A requirement the applicant
+    has left blank is not checked; one they have set must be met, and a
+    property with nothing recorded for that criterion cannot meet it.
+
+    Both directions of matching use this, so an applicant's matched properties
+    and a property's matched applicants can never disagree.
     """
-    score = 0
-    reasons = []
     if c is None or prop is None:
-        return 0, reasons
-    # Category
-    if c.req_category and prop.website_category and c.req_category == prop.website_category:
+        return 0, []
+
+    # ── On the market at all? ──
+    available_as = property_on_the_market(prop)
+    if available_as is None:
+        return 0, []
+    reasons = [available_as]
+    score = 2
+
+    # ── To let or for sale, as the applicant's budget basis says ──
+    if c.req_budget_unit:
+        wanted = INSTRUCTION_FOR_SALE if c.req_budget_unit == 'sale' else INSTRUCTION_TO_LET
+        if available_as != wanted:
+            return 0, []
+
+    def unmet(applicant_value, property_value):
+        """A requirement is unmet if it is set and the property cannot meet it."""
+        return bool(applicant_value) and not property_value
+
+    # ── Category ──
+    if c.req_category:
+        if unmet(c.req_category, prop.website_category) or \
+                c.req_category.lower() != (prop.website_category or '').lower():
+            return 0, []
         score += 3; reasons.append('Category match')
-    # Use class
-    if c.req_use_class and prop.use_class and c.req_use_class.lower() == prop.use_class.lower():
+
+    # ── Use class ──
+    if c.req_use_class:
+        if unmet(c.req_use_class, prop.use_class) or \
+                c.req_use_class.lower() != (prop.use_class or '').lower():
+            return 0, []
         score += 2; reasons.append('Use class match')
-    # Property type
-    if c.req_property_type and prop.property_type:
-        if c.req_property_type.lower() in prop.property_type.lower() or prop.property_type.lower() in c.req_property_type.lower():
-            score += 2; reasons.append('Type match')
-    # Area
-    if c.req_area and (prop.area or prop.postcode):
-        for area in c.req_area.split(','):
-            area = area.strip().lower()
-            if area and (area in (prop.area or '').lower() or area in prop.postcode.lower()):
-                score += 2; reasons.append(f'Area match ({area.title()})'); break
-    # Size and budget are ranges, so falling outside one rules a property out
-    # rather than merely scoring it lower.
-    if prop.size:
+
+    # ── Property type ──
+    if c.req_property_type:
+        want, have = c.req_property_type.lower(), (prop.property_type or '').lower()
+        if not have or (want not in have and have not in want):
+            return 0, []
+        score += 2; reasons.append('Type match')
+
+    # ── Area ──
+    if c.req_area:
+        wanted = [a.strip().lower() for a in c.req_area.split(',') if a.strip()]
+        where = f"{prop.area or ''} {prop.postcode or ''}".lower()
+        hit = next((a for a in wanted if a in where), None)
+        if not hit:
+            return 0, []
+        score += 2; reasons.append(f'Area match ({hit.title()})')
+
+    # ── Size, as a range ──
+    if c.req_size_min or c.req_size_max:
+        if not prop.size:
+            return 0, []
         if c.req_size_min and prop.size < c.req_size_min:
             return 0, []
         if c.req_size_max and prop.size > c.req_size_max:
             return 0, []
-        if c.req_size_min or c.req_size_max:
-            score += 2; reasons.append('Size in range')
-    if prop.listing_price:
+        score += 2; reasons.append('Size in range')
+
+    # ── Budget, as a range ──
+    if c.req_budget_min or c.req_budget_max:
+        if not prop.listing_price:
+            return 0, []
         if c.req_budget_min and prop.listing_price < c.req_budget_min:
             return 0, []
         if c.req_budget_max and prop.listing_price > c.req_budget_max:
             return 0, []
-        if c.req_budget_min or c.req_budget_max:
-            score += 2; reasons.append('Within budget')
-    # For sale or to let: the applicant's budget basis says which they want, and
-    # a sale is no use at all to somebody looking to rent.
-    if c.req_budget_unit and prop.listing_price_unit:
-        wants_sale = c.req_budget_unit == 'sale'
-        is_sale = prop.listing_price_unit == 'sale'
-        if wants_sale != is_sale:
-            return 0, []
-        score += 2
-        reasons.append('For sale' if is_sale else 'To let')
+        score += 3; reasons.append('Within budget')
+
     return score, reasons
 
 
