@@ -1,0 +1,310 @@
+{#
+   The boxes an organisation is made of.
+
+   Add Organisation and the Organisation Overview both render from here, so the
+   two pages cannot drift apart. Every macro takes the same shape: the form
+   values, the id of the form the fields belong to, and any errors to show.
+#}
+
+{% macro _err(errors, field) %}{{ ' is-invalid' if errors.get(field) }}{% endmacro %}
+
+{% macro _msg(errors, field) %}
+  {% if errors.get(field) %}<span class="fcell-error">{{ errors[field] }}</span>{% endif %}
+{% endmacro %}
+
+
+{# ── Essential details ───────────────────────────────────────────────────── #}
+{% macro essentials(v, form_id, errors={}, contacts=[]) %}
+<div class="box box--grid">
+  <div class="box-head">Essential details</div>
+
+  <div class="frow frow--full">
+    <div class="fcell fcell--label">Organisation name <span class="req">*</span></div>
+    <div class="fcell fcell--edit{{ _err(errors, 'name') }}">
+      <input name="name" form="{{ form_id }}" value="{{ v.get('name') or '' }}"
+             required placeholder="The name it trades and contracts under">
+      {{ _msg(errors, 'name') }}
+    </div>
+  </div>
+
+  <div class="frow">
+    <div class="fcell fcell--label">Trading name</div>
+    <div class="fcell fcell--edit">
+      <input name="trading_name" form="{{ form_id }}" value="{{ v.get('trading_name') or '' }}">
+    </div>
+    <div class="fcell fcell--label">Legal entity name</div>
+    <div class="fcell fcell--edit">
+      <input name="legal_name" form="{{ form_id }}" value="{{ v.get('legal_name') or '' }}">
+    </div>
+  </div>
+
+  <div class="frow">
+    <div class="fcell fcell--label">Status <span class="req">*</span></div>
+    <div class="fcell fcell--edit{{ _err(errors, 'status') }}">
+      <select name="status" form="{{ form_id }}" required>
+        {% for name, meaning in ORG_STATUSES %}
+        <option value="{{ name }}" {{ 'selected' if v.get('status') == name }}
+                title="{{ meaning }}">{{ name }}</option>
+        {% endfor %}
+        {% if v.get('status') and v.get('status') not in ORG_STATUS_NAMES %}
+        <option value="{{ v.get('status') }}" selected>{{ v.get('status') }} — please review</option>
+        {% endif %}
+      </select>
+      {{ _msg(errors, 'status') }}
+    </div>
+    <div class="fcell fcell--label">Assigned fee earner <span class="req">*</span></div>
+    <div class="fcell fcell--edit{{ _err(errors, 'fee_earner') }}">
+      <input name="fee_earner" form="{{ form_id }}" value="{{ v.get('fee_earner') or '' }}"
+             required placeholder="Who looks after this account">
+      {{ _msg(errors, 'fee_earner') }}
+    </div>
+  </div>
+
+  {# Several types, because one company is usually several things to us. #}
+  <div class="frow frow--full">
+    <div class="fcell fcell--label fcell--top">Type <span class="req">*</span></div>
+    <div class="fcell fcell--edit{{ _err(errors, 'types') }}" style="padding:7px 9px">
+      <input type="hidden" name="types_submitted" value="1" form="{{ form_id }}">
+      <div class="type-picker">
+        {% for t in ORG_TYPES %}
+        <label class="type-opt">
+          <input type="checkbox" name="types" value="{{ t }}" form="{{ form_id }}"
+                 {{ 'checked' if t in v.get('types', []) }}>
+          <span>{{ t }}</span>
+        </label>
+        {% endfor %}
+      </div>
+      {{ _msg(errors, 'types') }}
+    </div>
+  </div>
+
+  <div class="frow">
+    <div class="fcell fcell--label">Main telephone</div>
+    <div class="fcell fcell--edit">
+      <input name="phone" form="{{ form_id }}" value="{{ v.get('phone') or '' }}">
+    </div>
+    <div class="fcell fcell--label">Main email</div>
+    <div class="fcell fcell--edit">
+      <input type="email" name="email" form="{{ form_id }}" value="{{ v.get('email') or '' }}">
+    </div>
+  </div>
+
+  <div class="frow">
+    <div class="fcell fcell--label">Website</div>
+    <div class="fcell fcell--edit">
+      <input name="website" form="{{ form_id }}" value="{{ v.get('website') or '' }}">
+    </div>
+    <div class="fcell fcell--label">Source</div>
+    <div class="fcell fcell--edit">
+      <input name="source" form="{{ form_id }}" value="{{ v.get('source') or '' }}"
+             placeholder="How they came to us">
+    </div>
+  </div>
+
+  {% if contacts %}
+  <div class="frow frow--full">
+    <div class="fcell fcell--label">Main contact</div>
+    <div class="fcell fcell--edit">
+      <select name="main_contact_id" form="{{ form_id }}">
+        <option value="">Not set</option>
+        {% for c in contacts %}
+        <option value="{{ c.id }}" {{ 'selected' if v.get('main_contact_id')|string == c.id|string }}>
+          {{ c.full_name }}{% if c.job_title %} — {{ c.job_title }}{% endif %}
+        </option>
+        {% endfor %}
+      </select>
+      <span class="fcell-hint">A relationship can name a different contact of its own.</span>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="frow">
+    <div class="fcell fcell--label fcell--top">Registered address</div>
+    <div class="fcell fcell--edit">
+      <textarea name="registered_address" form="{{ form_id }}" rows="2">{{ v.get('registered_address') or '' }}</textarea>
+    </div>
+    <div class="fcell fcell--label fcell--top">Trading address</div>
+    <div class="fcell fcell--edit">
+      <textarea name="trading_address" form="{{ form_id }}" rows="2">{{ v.get('trading_address') or '' }}</textarea>
+    </div>
+  </div>
+
+  <div class="frow">
+    <div class="fcell fcell--label">Company number</div>
+    <div class="fcell fcell--edit">
+      <input name="company_number" form="{{ form_id }}" value="{{ v.get('company_number') or '' }}">
+    </div>
+    <div class="fcell fcell--label">VAT number</div>
+    <div class="fcell fcell--edit">
+      <input name="vat_number" form="{{ form_id }}" value="{{ v.get('vat_number') or '' }}">
+    </div>
+  </div>
+
+  <div class="frow frow--full">
+    <div class="fcell fcell--label">Nature of business</div>
+    <div class="fcell fcell--edit">
+      <input name="nature_of_business" form="{{ form_id }}"
+             value="{{ v.get('nature_of_business') or '' }}">
+    </div>
+  </div>
+
+  <div class="frow frow--full">
+    <div class="fcell fcell--label fcell--top">Notes</div>
+    <div class="fcell fcell--edit">
+      <textarea name="notes" form="{{ form_id }}" rows="3">{{ v.get('notes') or '' }}</textarea>
+    </div>
+  </div>
+</div>
+{% endmacro %}
+
+
+{# ── Company information ─────────────────────────────────────────────────── #}
+{% macro company_box(v, form_id, open=false) %}
+<details class="box box--fold" {{ 'open' if open }}>
+  <summary class="box-head">Company information</summary>
+  <div class="box--grid">
+    <div class="frow">
+      <div class="fcell fcell--label">Companies House status</div>
+      <div class="fcell fcell--edit">
+        <input name="companies_house_status" form="{{ form_id }}"
+               value="{{ v.get('companies_house_status') or '' }}"
+               placeholder="Active, dissolved…">
+      </div>
+      <div class="fcell fcell--label">Incorporated</div>
+      <div class="fcell fcell--edit">
+        <input type="date" name="incorporated_on" form="{{ form_id }}"
+               value="{{ v.get('incorporated_on') or '' }}">
+      </div>
+    </div>
+    <div class="frow frow--full">
+      <div class="fcell fcell--label fcell--top">Correspondence address</div>
+      <div class="fcell fcell--edit">
+        <textarea name="address" form="{{ form_id }}" rows="2">{{ v.get('address') or '' }}</textarea>
+      </div>
+    </div>
+    <div class="frow frow--full">
+      <div class="fcell fcell--label">Postcode</div>
+      <div class="fcell fcell--edit">
+        <input name="postcode" form="{{ form_id }}" value="{{ v.get('postcode') or '' }}"
+               style="text-transform:uppercase">
+      </div>
+    </div>
+  </div>
+</details>
+{% endmacro %}
+
+
+{# ── AML and compliance ──────────────────────────────────────────────────────
+   Only rendered for someone allowed to see it. The server refuses to write
+   these fields for anyone else, so hiding the box is a courtesy, not the rule. #}
+{% macro compliance_box(v, form_id, allowed) %}
+<details class="box box--fold">
+  <summary class="box-head">AML and compliance</summary>
+  {% if allowed %}
+  <div class="box--grid">
+    <input type="hidden" name="compliance_submitted" value="1" form="{{ form_id }}">
+    <div class="frow">
+      <div class="fcell fcell--label">AML / KYC status</div>
+      <div class="fcell fcell--edit">
+        <input name="aml_status" form="{{ form_id }}" value="{{ v.get('aml_status') or '' }}"
+               placeholder="Not started, in progress, verified…">
+      </div>
+      <div class="fcell fcell--label">Last reviewed</div>
+      <div class="fcell fcell--edit">
+        <input type="date" name="aml_reviewed_on" form="{{ form_id }}"
+               value="{{ v.get('aml_reviewed_on') or '' }}">
+      </div>
+    </div>
+    <div class="frow frow--full">
+      <div class="fcell fcell--label fcell--top">Beneficial owners</div>
+      <div class="fcell fcell--edit">
+        <textarea name="beneficial_owners" form="{{ form_id }}" rows="2">{{ v.get('beneficial_owners') or '' }}</textarea>
+      </div>
+    </div>
+    <div class="frow frow--full">
+      <div class="fcell fcell--label fcell--top">Verification notes</div>
+      <div class="fcell fcell--edit">
+        <textarea name="verification_notes" form="{{ form_id }}" rows="2">{{ v.get('verification_notes') or '' }}</textarea>
+      </div>
+    </div>
+    <div class="frow frow--full">
+      <div class="fcell fcell--label">Marketing consent</div>
+      <div class="fcell fcell--edit fcell--pair">
+        <label style="display:inline-flex;align-items:center;gap:6px">
+          <input type="checkbox" name="marketing_consent" value="1" form="{{ form_id }}"
+                 {{ 'checked' if v.get('marketing_consent') }}>
+          Happy to receive marketing
+        </label>
+      </div>
+    </div>
+  </div>
+  {% else %}
+  <div class="empty" style="padding:12px 11px">
+    Compliance details are only visible to an administrator.
+  </div>
+  {% endif %}
+</details>
+{% endmacro %}
+
+
+{# ── Accounts ────────────────────────────────────────────────────────────── #}
+{% macro accounts_box(v, form_id, allowed) %}
+<details class="box box--fold">
+  <summary class="box-head">Accounts</summary>
+  {% if allowed %}
+  <div class="box--grid">
+    <div class="frow">
+      <div class="fcell fcell--label">Accounts contact</div>
+      <div class="fcell fcell--edit">
+        <input name="accounts_contact" form="{{ form_id }}" value="{{ v.get('accounts_contact') or '' }}">
+      </div>
+      <div class="fcell fcell--label">Accounts email</div>
+      <div class="fcell fcell--edit">
+        <input type="email" name="accounts_email" form="{{ form_id }}" value="{{ v.get('accounts_email') or '' }}">
+      </div>
+    </div>
+    <div class="frow">
+      <div class="fcell fcell--label">Payment terms</div>
+      <div class="fcell fcell--edit">
+        <input name="payment_terms" form="{{ form_id }}" value="{{ v.get('payment_terms') or '' }}"
+               placeholder="e.g. 30 days">
+      </div>
+      <div class="fcell fcell--label">VAT status</div>
+      <div class="fcell fcell--edit">
+        <input name="vat_status" form="{{ form_id }}" value="{{ v.get('vat_status') or '' }}">
+      </div>
+    </div>
+    <div class="frow frow--full">
+      <div class="fcell fcell--label fcell--top">Invoice address</div>
+      <div class="fcell fcell--edit">
+        <textarea name="invoice_address" form="{{ form_id }}" rows="2">{{ v.get('invoice_address') or '' }}</textarea>
+      </div>
+    </div>
+    <div class="frow frow--full">
+      <div class="fcell fcell--label fcell--top">Accounting notes</div>
+      <div class="fcell fcell--edit">
+        <textarea name="accounts_notes" form="{{ form_id }}" rows="2">{{ v.get('accounts_notes') or '' }}</textarea>
+      </div>
+    </div>
+  </div>
+  {% else %}
+  <div class="empty" style="padding:12px 11px">
+    Account details are only visible to an administrator.
+  </div>
+  {% endif %}
+</details>
+{% endmacro %}
+
+
+{# ── The types an organisation holds, as labels ──────────────────────────── #}
+{% macro type_tags(org) %}
+  {% for t in org.type_names %}<span class="org-type-tag">{{ t }}</span>{% endfor %}
+  {% if not org.type_names %}<span class="org-type-tag is-none">No type set</span>{% endif %}
+{% endmacro %}
+
+
+{# ── Status, always in words ─────────────────────────────────────────────── #}
+{% macro status_tag(status) %}
+  {% set key = (status or 'Prospect')|lower|replace(' ', '-') %}
+  <span class="org-status is-{{ key }}">{{ status or 'Prospect' }}</span>
+{% endmacro %}

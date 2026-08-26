@@ -1,125 +1,412 @@
-﻿{% extends "base.html" %}
+{% extends "base.html" %}
+{% import "crm/_org_boxes.html" as ob %}
 {% block title %}{{ org.name }}{% endblock %}
-{% block topbar_title %}Organisation{% endblock %}
+{% block topbar_title %}{{ org.display_name }}{% endblock %}
 {% block topbar_actions %}
-  <a href="{{ url_for('organisation_edit', id=org.id) }}" class="btn btn-outline btn-sm">Edit</a>
-  <a href="{{ url_for('contact_new') }}" class="btn btn-primary btn-sm">+ Add Contact</a>
+  {# The one Save on the page. Every field below belongs to this form. #}
+  <button type="submit" form="org-form" class="btn btn-primary btn-sm">Save</button>
 {% endblock %}
 
+{#
+   One record, however many roles it holds. Landlord, tenant, client, applicant,
+   vendor and purchaser are relationships listed below — the same company is
+   never entered twice to play two parts.
+
+   Every field is editable where it stands; there is no separate edit mode.
+#}
+
+{% macro d(value) %}{{ value.strftime('%d %b %Y') if value else '—' }}{% endmacro %}
+
 {% block content %}
-<div class="breadcrumb">
-  <a href="{{ url_for('dashboard') }}">Dashboard</a><span class="sep">/</span>
-  <a href="{{ url_for('organisations_list') }}">Organisations</a><span class="sep">/</span>
-  <span class="current">{{ org.name }}</span>
-</div>
+{# Relationships, requirements and status changes post on their own. #}
+<form id="org-form" method="post" action="{{ url_for('organisation_save', id=org.id) }}"></form>
+<form id="role-form" method="post" action="{{ url_for('organisation_role_add', id=org.id) }}"></form>
+<form id="req-form" method="post" action="{{ url_for('organisation_requirement_add', id=org.id) }}"></form>
 
-{% set status_colors = {
-  'New Enquiry': '#1c3160', 'Active Requirement': '#1a7f4b', 'Prospect': '#3a6ea5',
-  'Under Offer': '#c9820a', 'Current Tenant': '#0e5a34', 'Requirement Satisfied': '#5b6675',
-  'Inactive': '#8a939f', 'Archived': '#5f6368' } %}
-<div style="margin-bottom:20px">
-  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-    <h2 style="font-size:22px;font-weight:700;color:#0e1f44;margin:0">{{ org.name }}</h2>
-    <span style="display:inline-block;padding:3px 12px;border-radius:3px;font-size:12px;font-weight:700;color:#fff;background:{{ status_colors.get(org.status, '#5f6368') }}">{{ org.status or '—' }}</span>
-    <form method="post" action="{{ url_for('organisation_set_status', id=org.id) }}" style="margin-left:auto;display:flex;gap:6px;align-items:center">
-      <label for="status-quick" style="font-size:11px;color:#9aa0a6;text-transform:uppercase;letter-spacing:.5px">Set status</label>
-      <select id="status-quick" name="status" onchange="this.form.submit()" style="padding:6px 8px;border:1px solid #d5dbe4;border-radius:6px;font-size:13px">
-        {% for s in CONTACT_STATUSES %}
-        <option value="{{ s }}" {{ 'selected' if org.status == s else '' }}>{{ s }}</option>
+<div class="rec-page">
+
+  <div class="breadcrumb">
+    <a href="{{ url_for('organisations_list') }}">Companies</a><span class="sep">/</span>
+    <span class="current">{{ org.name }}</span>
+  </div>
+
+  <div class="rec-header">
+    <div>
+      <h2>{{ org.display_name }}</h2>
+      <div class="rec-facts">
+        {% if org.trading_name and org.trading_name != org.name %}<span>{{ org.name }}</span>{% endif %}
+        {% if org.company_number %}<span>Co. no. <strong>{{ org.company_number }}</strong></span>{% endif %}
+        {% if org.fee_earner %}<span>Fee earner: <strong>{{ org.fee_earner }}</strong></span>{% endif %}
+        {% if org.main_contact %}
+        <span>Main contact:
+          <strong><a href="{{ url_for('contact_detail', id=org.main_contact.id) }}">{{ org.main_contact.full_name }}</a></strong>
+        </span>
+        {% endif %}
+      </div>
+    </div>
+    <div class="rec-tags">
+      {{ ob.status_tag(org.status) }}
+      {{ ob.type_tags(org) }}
+    </div>
+  </div>
+
+  {% if org.do_not_contact %}
+  {# Enforced on the server as well; this is the warning, not the rule. #}
+  <div class="dnc-banner">
+    <strong>Do not contact.</strong>
+    This organisation is excluded from bulk emails, marketing lists and
+    automated messages. Only get in touch if they have asked you to.
+  </div>
+  {% endif %}
+
+  {% if org.is_archived %}
+  <div class="fin-nudge">
+    <strong>Archived.</strong> Kept for history and hidden from the active list.
+    Change the status above to bring it back.
+  </div>
+  {% endif %}
+
+  <div class="rec-cols-narrow">
+
+    <!-- ═══ Main column ═══ -->
+    <div>
+      {{ ob.essentials(v, 'org-form', errors, contacts) }}
+
+      <!-- ── Relationships ── -->
+      <div class="box" id="relationships">
+        <div class="box-head">
+          Relationships
+          <span class="box-actions">{{ org.current_roles|length }} current</span>
+        </div>
+
+        {% for role, meaning in ORG_ROLES %}
+        {% set held = org.roles_of(role) %}
+        {% if held %}
+        <div class="rel-group">
+          <div class="rel-head">{{ role }} <span>{{ meaning }}</span></div>
+          {% for r in held|sort(attribute='start_date', reverse=true) %}
+          <div class="rel-row{{ ' is-former' if not r.is_current }}">
+            <div class="rel-what">
+              {% if r.property_ref %}
+                <a href="{{ url_for('property_detail', id=r.property_ref.id) }}">{{ r.property_ref.address }}</a>
+              {% elif r.project %}
+                <a href="{{ url_for('project_detail', id=r.project.id) }}">{{ r.project.name }}</a>
+              {% elif r.transaction %}
+                <a href="{{ url_for('transaction_detail', id=r.transaction.id) }}">{{ r.transaction.reference or 'Transaction' }}</a>
+              {% else %}
+                <span class="rel-none">Not tied to one property</span>
+              {% endif %}
+              <div class="rel-meta">
+                {% if r.contact %}
+                  <a href="{{ url_for('contact_detail', id=r.contact.id) }}">{{ r.contact.full_name }}</a>
+                {% else %}
+                  <span class="rel-none">No contact for this relationship</span>
+                {% endif %}
+                &middot; from {{ d(r.start_date) }}
+                {%- if r.end_date %} to {{ d(r.end_date) }}{% endif %}
+              </div>
+              {% if r.notes %}<div class="rel-notes">{{ r.notes }}</div>{% endif %}
+            </div>
+            <div class="rel-state">
+              <span class="org-status is-{{ 'current' if r.is_current else 'former' }}">
+                {{ 'Current' if r.is_current else 'Former' }}
+              </span>
+            </div>
+            <div class="rel-act">
+              {% if r.is_current %}
+              <form method="post" action="{{ url_for('organisation_role_end', id=org.id, rid=r.id) }}">
+                <button class="btn btn-outline btn-xs" type="submit"
+                        onclick="return confirm('End this {{ role|lower }} relationship? Its history is kept.')">End</button>
+              </form>
+              {% else %}
+              <form method="post" action="{{ url_for('organisation_role_reopen', id=org.id, rid=r.id) }}">
+                <button class="btn btn-outline btn-xs" type="submit">Reopen</button>
+              </form>
+              {% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
         {% endfor %}
-      </select>
-      <noscript><button class="btn btn-sm btn-primary">Save</button></noscript>
-    </form>
-  </div>
-  <div style="color:#5f6368;font-size:13px;margin-top:6px">
-    {{ org.org_type or '' }}{% if org.postcode %} &nbsp;·&nbsp; {{ org.postcode }}{% endif %}
-  </div>
-</div>
 
-<div style="display:grid;grid-template-columns:1fr 2fr;gap:16px">
-  <div class="box">
-    <div class="box-head"><span>Organisation Details</span></div>
-    <table class="detail-table">
-      <tr><td>Name</td><td>{{ org.name }}</td></tr>
-      <tr><td>Type</td><td>{{ org.org_type or '—' }}</td></tr>
-      <tr><td>Address</td><td>{{ org.address or '—' }}</td></tr>
-      <tr><td>Postcode</td><td>{{ org.postcode or '—' }}</td></tr>
-      <tr><td>Phone</td><td>{{ org.phone or '—' }}</td></tr>
-      <tr><td>Email</td><td>{% if org.email %}<a href="mailto:{{ org.email }}">{{ org.email }}</a>{% else %}—{% endif %}</td></tr>
-      <tr><td>Website</td><td>{% if org.website %}<a href="{{ org.website }}" target="_blank">{{ org.website }}</a>{% else %}—{% endif %}</td></tr>
-      <tr><td>Notes</td><td>{{ org.notes or '—' }}</td></tr>
-    </table>
-  </div>
+        {% if not org.roles %}
+        <div class="empty" style="padding:14px 12px">
+          Not yet linked to anything. Add a relationship below — the same
+          organisation can hold as many as it needs.
+        </div>
+        {% endif %}
 
-  <div>
-    <div class="box" style="margin-bottom:16px">
-      <div class="box-head">
-        <span class="box-title">Contacts ({{ org.contacts | length }})</span>
-        <a href="{{ url_for('contact_new') }}" class="btn btn-sm btn-primary">+ Add</a>
+        <!-- Link as… -->
+        <div class="box-head" style="border-top:1px solid var(--grey-200)">Add a relationship</div>
+        <div class="box--grid" style="border:0">
+          <div class="frow">
+            <div class="fcell fcell--label">Link as</div>
+            <div class="fcell fcell--edit">
+              <select name="role" form="role-form" required>
+                {% for role, meaning in ORG_ROLES %}
+                <option value="{{ role }}" title="{{ meaning }}">{{ role }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="fcell fcell--label">Contact for it</div>
+            <div class="fcell fcell--edit">
+              <select name="contact_id" form="role-form">
+                <option value="">Use the main contact</option>
+                {% for c in contacts %}
+                <option value="{{ c.id }}">{{ c.full_name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+          <div class="frow">
+            <div class="fcell fcell--label">Property</div>
+            <div class="fcell fcell--edit">
+              <select name="property_id" form="role-form">
+                <option value="">—</option>
+                {% for p in properties %}<option value="{{ p.id }}">{{ p.address }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="fcell fcell--label">Project</div>
+            <div class="fcell fcell--edit">
+              <select name="project_id" form="role-form">
+                <option value="">—</option>
+                {% for p in projects %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
+              </select>
+            </div>
+          </div>
+          <div class="frow">
+            <div class="fcell fcell--label">Transaction</div>
+            <div class="fcell fcell--edit">
+              <select name="transaction_id" form="role-form">
+                <option value="">—</option>
+                {% for t in transactions %}
+                <option value="{{ t.id }}">{{ t.reference }}{% if t.property %} — {{ t.property.address }}{% endif %}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="fcell fcell--label">Started</div>
+            <div class="fcell fcell--edit">
+              <input type="date" name="start_date" form="role-form" value="{{ today.isoformat() }}">
+            </div>
+          </div>
+          <div class="frow frow--action">
+            <div class="fcell"><span style="font-size:11px;color:var(--grey-600)">
+              A different contact can look after each property or instruction.
+            </span></div>
+            <div class="fcell">
+              <button type="submit" form="role-form" class="btn btn-secondary btn-sm">Link</button>
+            </div>
+          </div>
+        </div>
       </div>
-      {% if org.contacts %}
-      <table>
-        <thead><tr><th>Name</th><th>Status</th><th>Type</th><th>Email</th><th></th></tr></thead>
-        <tbody>
-          {% for c in org.contacts %}
-          <tr>
-            <td><a href="{{ url_for('contact_detail', id=c.id) }}">{{ c.full_name }}</a>
-              {% if c.follow_up_overdue %}<span title="Follow-up overdue" style="color:#c0392b">⚠</span>{% endif %}</td>
-            <td><span style="display:inline-block;padding:2px 9px;border-radius:3px;font-size:11px;font-weight:700;color:#fff;background:{{ status_colors.get(c.status, '#5f6368') }}">{{ c.status or '—' }}</span></td>
-            <td>{{ c.contact_type or '—' }}</td>
-            <td>{% if c.email %}<a href="mailto:{{ c.email }}">{{ c.email }}</a>{% else %}—{% endif %}</td>
-            <td><a href="{{ url_for('contact_edit', id=c.id) }}" class="btn btn-sm btn-outline">Edit</a></td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      {% else %}
-      <div class="empty-state" style="padding:16px"><p>No contacts linked to this organisation.</p></div>
+
+      <!-- ── Names on records that are not yet linked ── -->
+      {% if suggestions %}
+      <div class="box">
+        <div class="box-head">This name appears on other records</div>
+        <div style="padding:9px 12px;font-size:11.5px;color:var(--grey-600);line-height:1.5">
+          These were typed as text before relationships existed. Nothing has been
+          changed — link one only if it really is this company.
+        </div>
+        {% for s in suggestions %}
+        <div class="rel-row">
+          <div class="rel-what">
+            <a href="{{ s.url }}">{{ s.label }}</a>
+            <div class="rel-meta">recorded as {{ s.role|lower }}: &ldquo;{{ s.text }}&rdquo;</div>
+          </div>
+          <div class="rel-act">
+            <form method="post" action="{{ url_for('organisation_role_add', id=org.id) }}">
+              <input type="hidden" name="role" value="{{ s.role }}">
+              {% if s.project_id %}<input type="hidden" name="project_id" value="{{ s.project_id }}">{% endif %}
+              {% if s.transaction_id %}<input type="hidden" name="transaction_id" value="{{ s.transaction_id }}">{% endif %}
+              <button class="btn btn-outline btn-xs" type="submit">Link it</button>
+            </form>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
       {% endif %}
+
+      <!-- ── Property requirements ── -->
+      <details class="box box--fold" id="requirements">
+        <summary class="box-head">
+          Property requirements
+          <span class="box-actions">
+            {{ org.requirements|selectattr('active')|list|length }} active
+          </span>
+        </summary>
+
+        {% for r in org.requirements %}
+        <div class="rel-row{{ ' is-former' if not r.active }}">
+          <div class="rel-what">
+            <strong>{{ r.title }}</strong>
+            <div class="rel-meta">
+              {% if r.locations %}{{ r.locations }}{% endif %}
+              {%- if r.property_type %} &middot; {{ r.property_type }}{% endif -%}
+              {%- if r.use_class %} &middot; {{ r.use_class }}{% endif -%}
+              {%- if r.size_min or r.size_max %} &middot;
+                {{ '{:,.0f}'.format(r.size_min) if r.size_min else '' }}–{{ '{:,.0f}'.format(r.size_max) if r.size_max else '' }} sq ft
+              {%- endif -%}
+              {%- if r.rent_min or r.rent_max %} &middot; rent
+                {{ money_gbp(r.rent_min) if r.rent_min else '' }}–{{ money_gbp(r.rent_max) if r.rent_max else '' }}
+              {%- endif -%}
+              {%- if r.price_min or r.price_max %} &middot; price
+                {{ money_gbp(r.price_min) if r.price_min else '' }}–{{ money_gbp(r.price_max) if r.price_max else '' }}
+              {%- endif -%}
+            </div>
+            {% if r.extra %}<div class="rel-notes">{{ r.extra }}</div>{% endif %}
+          </div>
+          <div class="rel-act">
+            <form method="post" action="{{ url_for('organisation_requirement_close', id=org.id, rid=r.id) }}">
+              <button class="btn btn-outline btn-xs" type="submit">{{ 'Close' if r.active else 'Reopen' }}</button>
+            </form>
+          </div>
+        </div>
+        {% else %}
+        <div class="empty" style="padding:12px 11px">No requirements recorded.</div>
+        {% endfor %}
+
+        <div class="box-head" style="border-top:1px solid var(--grey-200)">Add a requirement</div>
+        <div class="box--grid" style="border:0">
+          <div class="frow">
+            <div class="fcell fcell--label">Title</div>
+            <div class="fcell fcell--edit">
+              <input name="title" form="req-form" placeholder="e.g. Town-centre office">
+            </div>
+            <div class="fcell fcell--label">Locations</div>
+            <div class="fcell fcell--edit"><input name="locations" form="req-form"></div>
+          </div>
+          <div class="frow">
+            <div class="fcell fcell--label">Property type</div>
+            <div class="fcell fcell--edit"><input name="property_type" form="req-form"></div>
+            <div class="fcell fcell--label">Use class</div>
+            <div class="fcell fcell--edit"><input name="use_class" form="req-form"></div>
+          </div>
+          <div class="frow">
+            <div class="fcell fcell--label">Intended use</div>
+            <div class="fcell fcell--edit"><input name="intended_use" form="req-form"></div>
+            <div class="fcell fcell--label">Lease or purchase</div>
+            <div class="fcell fcell--edit">
+              <select name="tenure" form="req-form">
+                <option value="">Either</option>
+                <option value="Lease">Lease</option>
+                <option value="Purchase">Purchase</option>
+              </select>
+            </div>
+          </div>
+          <div class="frow">
+            <div class="fcell fcell--label">Size (sq ft)</div>
+            <div class="fcell fcell--edit fcell--pair">
+              <input type="number" step="1" name="size_min" form="req-form" placeholder="min">
+              <input type="number" step="1" name="size_max" form="req-form" placeholder="max">
+            </div>
+            <div class="fcell fcell--label">Rent p.a.</div>
+            <div class="fcell fcell--edit fcell--pair">
+              <input type="number" step="0.01" name="rent_min" form="req-form" placeholder="min">
+              <input type="number" step="0.01" name="rent_max" form="req-form" placeholder="max">
+            </div>
+          </div>
+          <div class="frow">
+            <div class="fcell fcell--label">Purchase price</div>
+            <div class="fcell fcell--edit fcell--pair">
+              <input type="number" step="0.01" name="price_min" form="req-form" placeholder="min">
+              <input type="number" step="0.01" name="price_max" form="req-form" placeholder="max">
+            </div>
+            <div class="fcell fcell--label">Occupation from</div>
+            <div class="fcell fcell--edit">
+              <input type="date" name="occupation_from" form="req-form">
+            </div>
+          </div>
+          <div class="frow">
+            <div class="fcell fcell--label">Lease length</div>
+            <div class="fcell fcell--edit"><input name="lease_length" form="req-form"></div>
+            <div class="fcell fcell--label">Anything else</div>
+            <div class="fcell fcell--edit"><input name="extra" form="req-form"></div>
+          </div>
+          <div class="frow frow--action">
+            <div class="fcell"></div>
+            <div class="fcell">
+              <button type="submit" form="req-form" class="btn btn-secondary btn-sm">Add requirement</button>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      {{ ob.company_box(v, 'org-form') }}
+      {{ ob.compliance_box(v, 'org-form', can_see_compliance) }}
+      {{ ob.accounts_box(v, 'org-form', can_see_compliance) }}
     </div>
 
-    <div class="box">
-      <div class="box-head">
-        <span class="box-title">Enquiries ({{ org.enquiries | length }})</span>
-        <a href="{{ url_for('enquiry_new') }}" class="btn btn-sm btn-primary">+ New</a>
+    <!-- ═══ Side column ═══ -->
+    <div>
+      <div class="box">
+        <div class="box-head">
+          Contacts
+          <span class="box-actions">
+            <a href="{{ url_for('contact_new') }}">Add</a>
+          </span>
+        </div>
+        {% for c in org.contacts %}
+        <div class="rel-row">
+          <div class="rel-what">
+            <a href="{{ url_for('contact_detail', id=c.id) }}">{{ c.full_name }}</a>
+            {% if c.id == org.main_contact_id %}<span class="org-type-tag">Main contact</span>{% endif %}
+            <div class="rel-meta">
+              {{ c.job_title or 'No job title' }}
+              {%- if c.email %} &middot; {{ c.email }}{% endif -%}
+            </div>
+          </div>
+        </div>
+        {% else %}
+        <div class="empty" style="padding:12px 11px">No contacts yet.</div>
+        {% endfor %}
       </div>
-      {% if org.enquiries %}
-      <table>
-        <thead><tr><th>Subject</th><th>Type</th><th>Status</th><th>Date</th></tr></thead>
-        <tbody>
-          {% for e in org.enquiries %}
-          <tr>
-            <td><a href="{{ url_for('enquiry_edit', id=e.id) }}">{{ e.subject }}</a></td>
-            <td>{{ e.enquiry_type or '—' }}</td>
-            <td><span class="badge {{ 'badge-active' if e.status == 'Open' else 'badge-complete' if e.status == 'Won' else 'badge-hold' }}">{{ e.status }}</span></td>
-            <td>{{ e.received_date.strftime('%d %b %Y') if e.received_date else '—' }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      {% else %}
-      <div class="empty-state" style="padding:16px"><p>No enquiries linked.</p></div>
-      {% endif %}
-    </div>
 
-    <div class="box" style="margin-top:16px">
-      <div class="box-head"><span>Activity History</span></div>
-      {% if org.activities %}
-      <table>
-        <thead><tr><th style="width:160px">When</th><th>Activity</th><th style="width:120px">By</th></tr></thead>
-        <tbody>
-          {% for a in org.activities %}
-          <tr>
-            <td style="white-space:nowrap;color:#5f6368;font-size:12px">{{ a.created_at.strftime('%d %b %Y %H:%M') }}</td>
-            <td>{% if a.kind == 'status_change' %}<span class="badge badge-hold">Status</span> {{ a.old_status or '—' }} → <strong>{{ a.new_status }}</strong>{% else %}{{ a.body }}{% endif %}</td>
-            <td style="color:#9aa0a6;font-size:12px">{{ a.author or '—' }}</td>
-          </tr>
+      <div class="box">
+        <div class="box-head">Enquiries</div>
+        {% for e in enquiries %}
+        <div class="rel-row">
+          <div class="rel-what">
+            <a href="{{ url_for('enquiry_detail', id=e.id) }}">{{ e.subject }}</a>
+            <div class="rel-meta">{{ e.status }} &middot; {{ d(e.created_at.date() if e.created_at else none) }}</div>
+          </div>
+        </div>
+        {% else %}
+        <div class="empty" style="padding:12px 11px">No enquiries yet.</div>
+        {% endfor %}
+      </div>
+
+      <div class="box">
+        <div class="box-head">Activity</div>
+        {% for a in activity %}
+        <div class="rel-row">
+          <div class="rel-what">
+            <div class="rel-meta">{{ a.created_at.strftime('%d %b %Y, %H:%M') if a.created_at else '' }}</div>
+            {{ a.body or a.kind }}
+          </div>
+        </div>
+        {% else %}
+        <div class="empty" style="padding:12px 11px">Nothing recorded yet.</div>
+        {% endfor %}
+      </div>
+
+      <div class="box">
+        <div class="box-head">Audit history</div>
+        {% if history %}
+        <ul class="trx-history">
+          {% for h in history %}
+          <li>
+            <span class="when">{{ h.at.strftime('%d %b %H:%M') if h.at else '' }}</span>
+            <span class="who">{{ h.username or 'someone' }}</span>
+            <span class="what">{{ h.action }}{% if h.detail %} — {{ h.detail }}{% endif %}</span>
+          </li>
           {% endfor %}
-        </tbody>
-      </table>
-      {% else %}
-      <div class="empty-state" style="padding:16px"><p>No activity yet.</p></div>
-      {% endif %}
+        </ul>
+        {% else %}
+        <div class="empty" style="padding:12px 11px">Nothing yet.</div>
+        {% endif %}
+      </div>
     </div>
   </div>
 </div>

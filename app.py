@@ -612,11 +612,61 @@ CONTACT_STATUSES = [
 ARCHIVED_STATUSES = ['Archived']
 
 
+# ── Organisations and the roles they play ────────────────────────────────────
+#
+# A company is one record. Landlord, tenant, client, applicant, vendor and
+# purchaser are things it *does*, not things it *is*, so each one is a row in
+# organisation_roles pointing back at the same organisation. That is what lets
+# Marsden Estates be the landlord of one building and the tenant of another
+# without existing twice.
+
+ORG_TYPES = [
+    'Landlord', 'Tenant', 'Applicant', 'Client', 'Vendor', 'Purchaser',
+    'Property company', 'Managing agent', 'Solicitor', 'Surveyor',
+    'Contractor', 'Supplier', 'Introducer', 'Other',
+]
+
+# One status at a time, and always shown in words. Colour only ever supports
+# the word; it never carries the meaning on its own.
+ORG_STATUSES = [
+    ('Prospect',         'Potential client or business relationship'),
+    ('Active',           'Involved in current agency activity'),
+    ('Searching',        'Has an active property requirement'),
+    ('Under Offer',      'Connected to an agreed offer or progressing transaction'),
+    ('Current Client',   'Has a current instruction or active professional relationship'),
+    ('Current Occupier', 'Occupies a linked property'),
+    ('Past Client',      'Previously completed business with the agency'),
+    ('Inactive',         'Valid record with no current activity'),
+    ('Do Not Contact',   'Excluded from marketing and routine communications'),
+    ('Archived',         'Retained for history but hidden from active lists'),
+]
+ORG_STATUS_NAMES = [name for name, _ in ORG_STATUSES]
+
+# Kept off the active lists, but never deleted.
+ORG_HIDDEN_STATUSES = {'Archived'}
+
+# Never emailed in bulk, whatever a marketing list says.
+ORG_NO_CONTACT = 'Do Not Contact'
+
+# The relationships an organisation can hold, and what each one attaches to.
+ORG_ROLES = [
+    ('Landlord',  'Landlord of a property'),
+    ('Tenant',    'Tenant or occupier of a property'),
+    ('Client',    'Client on a project or instruction'),
+    ('Applicant', 'Searching for property'),
+    ('Vendor',    'Selling in a sale instruction'),
+    ('Purchaser', 'Buying in a transaction'),
+]
+ORG_ROLE_NAMES = [name for name, _ in ORG_ROLES]
+
+
 class Organisation(db.Model):
     __tablename__ = 'organisations'
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(255), nullable=False)
-    org_type = db.Column(db.String(50))   # Client, Agent, Solicitor, Developer, Investor, Other
+    # Kept for the records that already carry it. The types a company holds now
+    # live in organisation_types, because a company usually holds several.
+    org_type = db.Column(db.String(50))
     status = db.Column(db.String(30), default='Prospect')
     address = db.Column(db.String(255))
     postcode = db.Column(db.String(20))
@@ -626,7 +676,158 @@ class Organisation(db.Model):
     notes = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    contacts = db.relationship('Contact', backref='organisation', lazy=True)
+    # ── Essential details ──
+    trading_name    = db.Column(db.String(255))
+    legal_name      = db.Column(db.String(255))
+    fee_earner      = db.Column(db.String(120), index=True)
+    source          = db.Column(db.String(120))     # how they came to us
+    main_contact_id = db.Column(db.Integer, db.ForeignKey('contacts.id'))
+
+    # ── Company information ──
+    company_number     = db.Column(db.String(40), index=True)
+    vat_number         = db.Column(db.String(40))
+    registered_address = db.Column(db.String(400))
+    trading_address    = db.Column(db.String(400))
+    companies_house_status = db.Column(db.String(60))
+    incorporated_on    = db.Column(db.Date)
+    nature_of_business = db.Column(db.String(255))
+
+    # ── AML and compliance ── (read and written under permission)
+    aml_status         = db.Column(db.String(40))
+    aml_reviewed_on    = db.Column(db.Date)
+    beneficial_owners  = db.Column(db.Text)
+    verification_notes = db.Column(db.Text)
+    marketing_consent  = db.Column(db.Boolean, default=False)
+
+    # ── Accounts ──
+    accounts_contact = db.Column(db.String(255))
+    accounts_email   = db.Column(db.String(255))
+    invoice_address  = db.Column(db.String(400))
+    payment_terms    = db.Column(db.String(120))
+    vat_status       = db.Column(db.String(60))
+    accounts_notes   = db.Column(db.Text)
+
+    contacts = db.relationship('Contact', backref='organisation', lazy=True,
+                               foreign_keys='Contact.organisation_id')
+    main_contact = db.relationship('Contact', foreign_keys=[main_contact_id])
+    types = db.relationship('OrganisationType', backref='organisation',
+                            lazy=True, cascade='all, delete-orphan')
+    roles = db.relationship('OrganisationRole', backref='organisation',
+                            lazy=True, cascade='all, delete-orphan')
+    requirements = db.relationship('OrganisationRequirement', backref='organisation',
+                                   lazy=True, cascade='all, delete-orphan')
+
+    @property
+    def type_names(self):
+        """Every type this organisation holds, in the order they are offered."""
+        held = {t.name for t in self.types}
+        if self.org_type:
+            held.add(self.org_type)          # whatever the record already carried
+        return [t for t in ORG_TYPES if t in held] + sorted(held - set(ORG_TYPES))
+
+    @property
+    def display_name(self):
+        return self.trading_name or self.name
+
+    @property
+    def do_not_contact(self):
+        """Never to be emailed in bulk. Checked on the server, not in a list."""
+        return self.status == ORG_NO_CONTACT
+
+    @property
+    def is_archived(self):
+        return self.status in ORG_HIDDEN_STATUSES
+
+    @property
+    def current_roles(self):
+        return [r for r in self.roles if r.is_current]
+
+    @property
+    def former_roles(self):
+        return [r for r in self.roles if not r.is_current]
+
+    def roles_of(self, role):
+        return [r for r in self.roles if r.role == role]
+
+
+class OrganisationType(db.Model):
+    """One of the things an organisation is. A company usually holds several."""
+    __tablename__ = 'organisation_types'
+    id = db.Column(db.Integer, primary_key=True)
+    organisation_id = db.Column(db.Integer, db.ForeignKey('organisations.id'),
+                                nullable=False, index=True)
+    name = db.Column(db.String(60), nullable=False)
+    __table_args__ = (db.UniqueConstraint('organisation_id', 'name',
+                                          name='uq_org_type'),)
+
+
+class OrganisationRole(db.Model):
+    """One relationship between an organisation and something in the CRM.
+
+    The role, what it attaches to, who to speak to about it and when it ran.
+    Ending a relationship sets its end date; the row stays, because what a
+    company used to be is part of its history.
+    """
+    __tablename__ = 'organisation_roles'
+    id = db.Column(db.Integer, primary_key=True)
+    organisation_id = db.Column(db.Integer, db.ForeignKey('organisations.id'),
+                                nullable=False, index=True)
+    role = db.Column(db.String(30), nullable=False, index=True)
+
+    property_id    = db.Column(db.Integer, db.ForeignKey('properties.id'))
+    project_id     = db.Column(db.Integer, db.ForeignKey('projects.id'))
+    transaction_id = db.Column(db.Integer, db.ForeignKey('transactions.id'))
+    # The contact for this relationship, which need not be the organisation's
+    # general main contact — a different person often handles each building.
+    contact_id     = db.Column(db.Integer, db.ForeignKey('contacts.id'))
+
+    start_date = db.Column(db.Date)
+    end_date   = db.Column(db.Date)
+    notes      = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_by = db.Column(db.String(80))
+    ended_by   = db.Column(db.String(80))
+
+    property_ref = db.relationship('Property', foreign_keys=[property_id])
+    project      = db.relationship('Project', foreign_keys=[project_id])
+    transaction  = db.relationship('Transaction', foreign_keys=[transaction_id])
+    contact      = db.relationship('Contact', foreign_keys=[contact_id])
+
+    @property
+    def is_current(self):
+        """Still running: no end date, or one that has not arrived."""
+        return self.end_date is None or self.end_date > date.today()
+
+    @property
+    def attached_to(self):
+        """What this relationship is about, whichever kind it is."""
+        return self.property_ref or self.project or self.transaction
+
+
+class OrganisationRequirement(db.Model):
+    """What an organisation is looking for. It may be looking for more than
+    one thing at once, so this is a table rather than a set of columns."""
+    __tablename__ = 'organisation_requirements'
+    id = db.Column(db.Integer, primary_key=True)
+    organisation_id = db.Column(db.Integer, db.ForeignKey('organisations.id'),
+                                nullable=False, index=True)
+    title          = db.Column(db.String(160))
+    locations      = db.Column(db.String(400))
+    property_type  = db.Column(db.String(120))
+    intended_use   = db.Column(db.String(160))
+    use_class      = db.Column(db.String(60))
+    size_min       = db.Column(db.Float)
+    size_max       = db.Column(db.Float)
+    rent_min       = db.Column(db.Float)
+    rent_max       = db.Column(db.Float)
+    price_min      = db.Column(db.Float)
+    price_max      = db.Column(db.Float)
+    tenure         = db.Column(db.String(30))      # Lease / Purchase / Either
+    occupation_from = db.Column(db.Date)
+    lease_length   = db.Column(db.String(120))
+    extra          = db.Column(db.Text)
+    active         = db.Column(db.Boolean, default=True)
+    created_at     = db.Column(db.DateTime, default=datetime.utcnow)
 
 
 class Contact(db.Model):
@@ -2667,6 +2868,11 @@ TRANSACTION_STATUS_CLASS = {
 }
 app.jinja_env.globals['status_class'] = \
     lambda st: TRANSACTION_STATUS_CLASS.get(st, 'st-draft')
+app.jinja_env.globals['ORG_TYPES'] = ORG_TYPES
+app.jinja_env.globals['ORG_STATUSES'] = ORG_STATUSES
+app.jinja_env.globals['ORG_STATUS_NAMES'] = ORG_STATUS_NAMES
+app.jinja_env.globals['ORG_ROLES'] = ORG_ROLES
+app.jinja_env.globals['ORG_ROLE_NAMES'] = ORG_ROLE_NAMES
 app.jinja_env.globals['money_gbp'] = money_gbp
 app.jinja_env.globals['money_short'] = money_short
 app.jinja_env.globals['TRANSACTION_STATUSES'] = TRANSACTION_STATUSES
@@ -3606,74 +3812,500 @@ def document_download(id):
 
 # ── Organisations ────────────────────────────────────────────────────────────
 
+def organisation_form_values(org):
+    """An organisation's fields as plain form values, shared by both pages.
+
+    Add Organisation and the Organisation Overview render from the same
+    components, so they cannot drift apart.
+    """
+    if org is None:
+        return {'status': 'Prospect', 'types': []}
+
+    def d(val):
+        return val.isoformat() if val else ''
+
+    values = {name: (getattr(org, name) or '') for name, _key, _c in ORGANISATION_FIELDS}
+    values.update({
+        'incorporated_on': d(org.incorporated_on),
+        'aml_reviewed_on': d(org.aml_reviewed_on),
+        'status': org.status or 'Prospect',
+        'types': org.type_names,
+        'main_contact_id': org.main_contact_id or '',
+    })
+    for name, _key, _c in ORGANISATION_COMPLIANCE_FIELDS:
+        values.setdefault(name, getattr(org, name) or '')
+    values['marketing_consent'] = bool(org.marketing_consent)
+    return values
+
+
+def _normalise(value):
+    """Loose form of a name or number, for comparing two records."""
+    return re.sub(r'[^a-z0-9]', '', (value or '').lower())
+
+
+def _email_domain(email):
+    return (email or '').strip().lower().rsplit('@', 1)[-1] if '@' in (email or '') else ''
+
+
+def possible_duplicates(name, trading_name=None, company_number=None, email=None,
+                        phone=None, address=None, ignore_id=None):
+    """Organisations that might already be this one.
+
+    Nothing is merged and nothing is refused — this only gathers what looks
+    similar so a person can decide. Two companies really can share a trading
+    name, and a serviced office really can house dozens of them on one address.
+    """
+    hits = {}
+
+    def note(org, why):
+        if org.id == ignore_id:
+            return
+        hits.setdefault(org.id, {'org': org, 'why': []})
+        if why not in hits[org.id]['why']:
+            hits[org.id]['why'].append(why)
+
+    number = _normalise(company_number)
+    if number:
+        for org in Organisation.query.filter(Organisation.company_number.isnot(None)).all():
+            if _normalise(org.company_number) == number:
+                note(org, 'the same company registration number')
+
+    for field, label in ((name, 'the same name'), (trading_name, 'the same trading name')):
+        key = _normalise(field)
+        if not key:
+            continue
+        for org in Organisation.query.all():
+            if key in (_normalise(org.name), _normalise(org.trading_name),
+                       _normalise(org.legal_name)):
+                note(org, label)
+
+    domain = _email_domain(email)
+    # A shared webmail domain says nothing about who anybody is.
+    if domain and domain not in {'gmail.com', 'hotmail.com', 'outlook.com',
+                                 'yahoo.com', 'icloud.com', 'me.com', 'aol.com'}:
+        for org in Organisation.query.filter(Organisation.email.isnot(None)).all():
+            if _email_domain(org.email) == domain:
+                note(org, 'the same email domain')
+
+    digits = re.sub(r'\D', '', phone or '')
+    if len(digits) >= 9:
+        for org in Organisation.query.filter(Organisation.phone.isnot(None)).all():
+            if re.sub(r'\D', '', org.phone or '')[-9:] == digits[-9:]:
+                note(org, 'the same telephone number')
+
+    where = _normalise(address)
+    if where and len(where) > 8:
+        for org in Organisation.query.all():
+            if where in (_normalise(org.address), _normalise(org.registered_address)):
+                note(org, 'the same address')
+
+    return sorted(hits.values(), key=lambda h: -len(h['why']))
+
+
+def _apply_org_types(org, form):
+    """Set which types an organisation holds, from the boxes that were ticked."""
+    if 'types_submitted' not in form:
+        return
+    wanted = {t for t in form.getlist('types') if t in ORG_TYPES}
+    held = {t.name: t for t in org.types}
+    for name in wanted - set(held):
+        db.session.add(OrganisationType(organisation_id=org.id, name=name))
+    for name, row in held.items():
+        if name not in wanted:
+            db.session.delete(row)
+    # The single old type column is kept in step so nothing that still reads it
+    # goes blank, but it is no longer where the answer lives.
+    org.org_type = sorted(wanted)[0] if wanted else None
+
+
+def _organisation_required(form, org=None):
+    """What an organisation cannot be saved without. Checked on the server."""
+    errors = {}
+    if not (form.get('name') or '').strip():
+        errors['name'] = 'An organisation needs a name.'
+    status = (form.get('status') or '').strip()
+    if status and status not in ORG_STATUS_NAMES:
+        errors['status'] = f'"{status}" is not an organisation status.'
+    elif not status and org is None:
+        errors['status'] = 'Choose a status.'
+    types = [t for t in form.getlist('types') if t in ORG_TYPES]
+    if not types and 'types_submitted' in form:
+        errors['types'] = 'Choose at least one type.'
+    if not (form.get('fee_earner') or '').strip():
+        errors['fee_earner'] = 'Every organisation needs an assigned fee earner.'
+    return errors
+
+
 @app.route('/organisations')
 def organisations_list():
-    q = request.args.get('q', '')
+    q = (request.args.get('q') or '').strip()
     query = Organisation.query
-    statuses = [s for s in request.args.getlist('status') if s in CONTACT_STATUSES]
+    statuses = [s for s in request.args.getlist('status') if s in ORG_STATUS_NAMES]
     if statuses:
         query = query.filter(Organisation.status.in_(statuses))
-    else:
+    elif request.args.get('archived') != '1':
+        # Archived organisations stay on the books; they just keep out of the way.
         query = query.filter(db.or_(Organisation.status.is_(None),
-                                    Organisation.status.notin_(ARCHIVED_STATUSES)))
+                                    Organisation.status.notin_(ORG_HIDDEN_STATUSES)))
     if q:
-        query = query.filter(
-            db.or_(Organisation.name.ilike(f'%{q}%'), Organisation.org_type.ilike(f'%{q}%'))
-        )
+        like = f'%{q}%'
+        query = query.filter(db.or_(
+            Organisation.name.ilike(like), Organisation.trading_name.ilike(like),
+            Organisation.legal_name.ilike(like), Organisation.company_number.ilike(like),
+            Organisation.email.ilike(like), Organisation.org_type.ilike(like)))
     orgs = query.order_by(Organisation.name).all()
-    status_counts = {s: Organisation.query.filter(Organisation.status == s).count()
-                     for s in CONTACT_STATUSES}
-    return render_template('crm/organisations_list.html', orgs=orgs, q=q,
-                           statuses=statuses, status_counts=status_counts)
+    return render_template(
+        'crm/organisations_list.html', orgs=orgs, q=q, statuses=statuses,
+        archived=request.args.get('archived') == '1',
+        status_counts={s: Organisation.query.filter(Organisation.status == s).count()
+                       for s in ORG_STATUS_NAMES})
 
 
 @app.route('/organisations/new', methods=['GET', 'POST'])
+@requires('create')
 def organisation_new():
     if request.method == 'POST':
-        org = Organisation(
-            name=request.form['name'],
-            org_type=request.form.get('org_type'),
-            address=request.form.get('address'),
-            postcode=request.form.get('postcode', '').upper(),
-            phone=request.form.get('phone'),
-            email=request.form.get('email'),
-            website=request.form.get('website'),
-            notes=request.form.get('notes'),
-            status=(request.form.get('status') if request.form.get('status') in CONTACT_STATUSES else 'Prospect'),
-        )
+        form = request.form
+        errors = _organisation_required(form)
+        near = possible_duplicates(
+            form.get('name'), form.get('trading_name'), form.get('company_number'),
+            form.get('email'), form.get('phone'), form.get('address'))
+        # Warn once. Saying "yes, it really is a different company" gets through.
+        if near and form.get('confirm_new') != '1':
+            return render_template('crm/organisation_form.html', org=None,
+                                   v=dict(form, types=form.getlist('types')),
+                                   errors=errors, duplicates=near,
+                                   contacts=[], next_url=form.get('next'))
+        if errors:
+            return render_template('crm/organisation_form.html', org=None,
+                                   v=dict(form, types=form.getlist('types')),
+                                   errors=errors, duplicates=[], contacts=[],
+                                   next_url=form.get('next'))
+        org = Organisation(status=(form.get('status') or 'Prospect'))
+        apply_form_fields(org, form, ORGANISATION_FIELDS)
+        org.postcode = (org.postcode or '').upper() or None
         db.session.add(org)
+        db.session.commit()
+        _apply_org_types(org, form)
         db.session.commit()
         _log_activity('status_change', organisation=org, new_status=org.status,
                       body=f'Organisation created (status: {org.status})')
         db.session.commit()
+        audit('create', entity='Organisation', entity_id=org.id, detail=org.name)
         flash('Organisation added.', 'success')
+        if form.get('next'):
+            return redirect(form['next'])
         return redirect(url_for('organisation_detail', id=org.id))
-    return render_template('crm/organisation_form.html', org=None)
+    return render_template('crm/organisation_form.html', org=None,
+                           v=organisation_form_values(None), errors={},
+                           duplicates=[], contacts=[],
+                           next_url=request.args.get('next'))
 
 
 @app.route('/organisations/<int:id>')
 def organisation_detail(id):
     org = Organisation.query.get_or_404(id)
-    return render_template('crm/organisation_detail.html', org=org)
+    return render_template(
+        'crm/organisation_detail.html', org=org, v=organisation_form_values(org),
+        errors={}, today=date.today(),
+        contacts=Contact.query.order_by(Contact.last_name, Contact.first_name).all(),
+        properties=Property.query.order_by(Property.address).all(),
+        projects=Project.query.order_by(Project.name).all(),
+        transactions=Transaction.query.order_by(Transaction.reference).all(),
+        enquiries=Enquiry.query.filter_by(organisation_id=id)
+                               .order_by(Enquiry.created_at.desc()).all(),
+        activity=ContactActivity.query.filter_by(organisation_id=id)
+                                      .order_by(ContactActivity.created_at.desc()).limit(30).all(),
+        history=AuditLog.query.filter_by(entity='Organisation', entity_id=str(id))
+                              .order_by(AuditLog.at.desc()).limit(20).all(),
+        suggestions=organisation_link_suggestions(org),
+        can_see_compliance=current_user.can('admin'))
+
+
+@app.route('/organisations/<int:id>/save', methods=['POST'])
+@requires('edit')
+def organisation_save(id):
+    """Save the overview. Only the fields the page sent are written."""
+    org = Organisation.query.get_or_404(id)
+    form = request.form
+    errors = _organisation_required(form, org)
+    if errors:
+        for message in errors.values():
+            flash(message, 'error')
+        return redirect(url_for('organisation_detail', id=id))
+
+    apply_form_fields(org, form, ORGANISATION_FIELDS)
+    if 'postcode' in form:
+        org.postcode = (org.postcode or '').upper() or None
+    if 'main_contact_id' in form:
+        chosen = (form.get('main_contact_id') or '').strip()
+        org.main_contact_id = int(chosen) if chosen.isdigit() else None
+
+    # Compliance and accounts are only writable by someone allowed to see them.
+    if current_user.can('admin'):
+        apply_form_fields(org, form, ORGANISATION_COMPLIANCE_FIELDS)
+        if 'compliance_submitted' in form:
+            org.marketing_consent = form.get('marketing_consent') == '1'
+    elif any(k in form for k, _f, _c in ORGANISATION_COMPLIANCE_FIELDS):
+        audit('denied', entity='Organisation', entity_id=id,
+              detail='tried to write compliance or accounts fields')
+        flash('Compliance and accounts details were not saved — '
+              'your account cannot change them.', 'error')
+
+    _apply_org_types(org, form)
+    _apply_org_status(form.get('status'), org)
+    db.session.commit()
+    audit('edit', entity='Organisation', entity_id=org.id, detail=org.name)
+    flash('Organisation saved.', 'success')
+    return redirect(url_for('organisation_detail', id=org.id))
+
+
+def _apply_org_status(new_status, org):
+    """Set an organisation's status and record the change.
+
+    Organisations have their own vocabulary — a company can be a current
+    occupier or marked do not contact, neither of which means anything for a
+    person — so this checks against that list rather than the contact one.
+    A status is only ever changed by somebody choosing it.
+    """
+    if new_status not in ORG_STATUS_NAMES:
+        return False
+    old = org.status
+    if old == new_status:
+        return False
+    org.status = new_status
+    _log_activity('status_change', organisation=org, old_status=old,
+                  new_status=new_status,
+                  body=f'Status changed from {old or "—"} to {new_status}')
+    audit('edit', entity='Organisation', entity_id=org.id,
+          detail=f'status {old} to {new_status}')
+    return True
+
+
+def may_contact(org):
+    """Whether an organisation may be included in a bulk or marketing send.
+
+    The one place that decides. There is no bulk-email feature in the CRM yet;
+    this exists so that when one is built it has to come through here rather
+    than reading a list of addresses straight out of the table.
+    """
+    if org is None:
+        return False
+    return not org.do_not_contact and not org.is_archived
+
+
+def contactable_organisations():
+    """Every organisation a bulk send is allowed to reach.
+
+    Do Not Contact and archived records are dropped in the query, so they
+    cannot be reached by forgetting to filter further down.
+    """
+    return (Organisation.query
+            .filter(db.or_(Organisation.status.is_(None),
+                           Organisation.status.notin_(
+                               ORG_HIDDEN_STATUSES | {ORG_NO_CONTACT})))
+            .order_by(Organisation.name).all())
+
+
+def organisation_link_suggestions(org, limit=12):
+    """Places this organisation's name appears as text, unlinked.
+
+    Landlord, client, tenant, vendor and purchaser were free text long before
+    they were relationships, and that text is left exactly as it is. This only
+    points out where the same name appears, so somebody can confirm the link.
+    Nothing here changes a record.
+    """
+    keys = {_normalise(n) for n in (org.name, org.trading_name, org.legal_name) if n}
+    keys.discard('')
+    if not keys:
+        return []
+    linked = {(r.role, r.project_id, r.transaction_id, r.property_id) for r in org.roles}
+    found = []
+    for project in Project.query.all():
+        for text_value, role in ((project.client, 'Client'),
+                                 (project.landlord_name, 'Landlord')):
+            if _normalise(text_value) in keys and \
+                    (role, project.id, None, None) not in linked:
+                found.append({'role': role, 'kind': 'project', 'record': project,
+                              'label': project.name, 'text': text_value,
+                              'url': url_for('project_detail', id=project.id),
+                              'project_id': project.id})
+    for t in Transaction.query.all():
+        for text_value, role in ((t.client, 'Client'), (t.landlord, 'Landlord'),
+                                 (t.tenant, 'Tenant'), (t.vendor, 'Vendor'),
+                                 (t.purchaser, 'Purchaser')):
+            if _normalise(text_value) in keys and \
+                    (role, None, t.id, None) not in linked:
+                found.append({'role': role, 'kind': 'transaction', 'record': t,
+                              'label': t.reference or 'Transaction', 'text': text_value,
+                              'url': url_for('transaction_detail', id=t.id),
+                              'transaction_id': t.id})
+    return found[:limit]
+
+
+def _role_target(form):
+    """Which record a relationship is being attached to."""
+    out = {}
+    for key, field in (('property_id', 'property_id'), ('project_id', 'project_id'),
+                       ('transaction_id', 'transaction_id')):
+        value = (form.get(field) or '').strip()
+        out[key] = int(value) if value.isdigit() else None
+    return out
+
+
+@app.route('/organisations/<int:id>/roles', methods=['POST'])
+@requires('edit')
+def organisation_role_add(id):
+    """Link an organisation to a property, project or transaction in a role."""
+    org = Organisation.query.get_or_404(id)
+    role = (request.form.get('role') or '').strip()
+    if role not in ORG_ROLE_NAMES:
+        flash(f'"{role}" is not a relationship this CRM records.', 'error')
+        return redirect(url_for('organisation_detail', id=id))
+
+    target = _role_target(request.form)
+    if not any(target.values()) and role != 'Applicant':
+        flash('Choose the property, project or transaction this relationship is about.',
+              'error')
+        return redirect(url_for('organisation_detail', id=id))
+
+    contact_id = (request.form.get('contact_id') or '').strip()
+    link = OrganisationRole(
+        organisation_id=org.id, role=role, **target,
+        contact_id=int(contact_id) if contact_id.isdigit() else None,
+        start_date=_parse_date(request.form.get('start_date')) or date.today(),
+        end_date=_parse_date(request.form.get('end_date')),
+        notes=_ftext(request.form.get('notes')),
+        created_by=getattr(current_user, 'username', None))
+    db.session.add(link)
+    db.session.commit()
+    audit('create', entity='Organisation', entity_id=org.id,
+          detail=f'linked as {role}')
+    _log_activity('note', organisation=org, body=f'Linked as {role}.')
+    db.session.commit()
+    flash(f'{org.name} linked as {role.lower()}.', 'success')
+    return redirect(url_for('organisation_detail', id=id) + '#relationships')
+
+
+@app.route('/organisations/<int:id>/roles/<int:rid>/end', methods=['POST'])
+@requires('edit')
+def organisation_role_end(id, rid):
+    """Close a relationship. The row stays: what a company used to be is history."""
+    link = OrganisationRole.query.filter_by(id=rid, organisation_id=id).first_or_404()
+    link.end_date = _parse_date(request.form.get('end_date')) or date.today()
+    link.ended_by = getattr(current_user, 'username', None)
+    db.session.commit()
+    audit('edit', entity='Organisation', entity_id=id,
+          detail=f'ended {link.role} relationship')
+    _log_activity('note', organisation=link.organisation,
+                  body=f'{link.role} relationship ended.')
+    db.session.commit()
+    flash('Relationship ended. Its history has been kept.', 'success')
+    return redirect(url_for('organisation_detail', id=id) + '#relationships')
+
+
+@app.route('/organisations/<int:id>/roles/<int:rid>/reopen', methods=['POST'])
+@requires('edit')
+def organisation_role_reopen(id, rid):
+    link = OrganisationRole.query.filter_by(id=rid, organisation_id=id).first_or_404()
+    link.end_date = None
+    link.ended_by = None
+    db.session.commit()
+    audit('edit', entity='Organisation', entity_id=id, detail=f'reopened {link.role}')
+    flash('Relationship reopened.', 'success')
+    return redirect(url_for('organisation_detail', id=id) + '#relationships')
+
+
+@app.route('/organisations/<int:id>/requirements', methods=['POST'])
+@requires('edit')
+def organisation_requirement_add(id):
+    """What this organisation is looking for. It may be looking for several."""
+    org = Organisation.query.get_or_404(id)
+    req = OrganisationRequirement(
+        organisation_id=org.id,
+        title=_ftext(request.form.get('title')) or 'Requirement',
+        locations=_ftext(request.form.get('locations')),
+        property_type=_ftext(request.form.get('property_type')),
+        intended_use=_ftext(request.form.get('intended_use')),
+        use_class=_ftext(request.form.get('use_class')),
+        size_min=_fnum(request.form.get('size_min')),
+        size_max=_fnum(request.form.get('size_max')),
+        rent_min=_fnum(request.form.get('rent_min')),
+        rent_max=_fnum(request.form.get('rent_max')),
+        price_min=_fnum(request.form.get('price_min')),
+        price_max=_fnum(request.form.get('price_max')),
+        tenure=_ftext(request.form.get('tenure')),
+        occupation_from=_parse_date(request.form.get('occupation_from')),
+        lease_length=_ftext(request.form.get('lease_length')),
+        extra=_ftext(request.form.get('extra')))
+    db.session.add(req)
+    db.session.commit()
+    audit('create', entity='Organisation', entity_id=org.id, detail='requirement added')
+    flash('Requirement added.', 'success')
+    return redirect(url_for('organisation_detail', id=id) + '#requirements')
+
+
+@app.route('/organisations/<int:id>/requirements/<int:rid>/close', methods=['POST'])
+@requires('edit')
+def organisation_requirement_close(id, rid):
+    req = OrganisationRequirement.query.filter_by(id=rid, organisation_id=id).first_or_404()
+    req.active = not req.active
+    db.session.commit()
+    audit('edit', entity='Organisation', entity_id=id,
+          detail=('reopened' if req.active else 'closed') + ' a requirement')
+    return redirect(url_for('organisation_detail', id=id) + '#requirements')
+
+
+@app.route('/api/organisations')
+def api_organisations():
+    """The searchable picker behind every Landlord / Tenant / Client field.
+
+    Searches the things somebody would actually type: the company's names, its
+    registration number, a contact's name or email, a property address and a
+    project reference. Returns the organisation's id so the record is linked
+    rather than its details being copied.
+    """
+    q = (request.args.get('q') or '').strip()
+    if len(q) < 2:
+        return jsonify([])
+    like = f'%{q}%'
+    found = {o.id: o for o in Organisation.query.filter(db.or_(
+        Organisation.name.ilike(like), Organisation.trading_name.ilike(like),
+        Organisation.legal_name.ilike(like), Organisation.company_number.ilike(like),
+        Organisation.email.ilike(like))).limit(25).all()}
+
+    for c in Contact.query.filter(db.and_(
+            Contact.organisation_id.isnot(None),
+            db.or_(Contact.first_name.ilike(like), Contact.last_name.ilike(like),
+                   Contact.email.ilike(like)))).limit(25).all():
+        if c.organisation and c.organisation_id not in found:
+            found[c.organisation_id] = c.organisation
+
+    for link in OrganisationRole.query.limit(500).all():
+        if link.organisation_id in found:
+            continue
+        target = link.attached_to
+        text_value = ''
+        if link.property_ref:
+            text_value = link.property_ref.address or ''
+        elif link.project:
+            text_value = f'{link.project.name} {link.project.project_ref or ""}'
+        if target and q.lower() in text_value.lower():
+            found[link.organisation_id] = link.organisation
+
+    return jsonify([{
+        'id': o.id, 'name': o.name, 'trading_name': o.trading_name,
+        'types': o.type_names, 'status': o.status,
+        'do_not_contact': o.do_not_contact,
+        'main_contact': o.main_contact.full_name if o.main_contact else None,
+        'url': url_for('organisation_detail', id=o.id),
+    } for o in list(found.values())[:25]])
 
 
 @app.route('/organisations/<int:id>/edit', methods=['GET', 'POST'])
 def organisation_edit(id):
-    org = Organisation.query.get_or_404(id)
-    if request.method == 'POST':
-        org.name = request.form['name']
-        org.org_type = request.form.get('org_type')
-        org.address = request.form.get('address')
-        org.postcode = request.form.get('postcode', '').upper()
-        org.phone = request.form.get('phone')
-        org.email = request.form.get('email')
-        org.website = request.form.get('website')
-        org.notes = request.form.get('notes')
-        _apply_status(request.form.get('status'), organisation=org)
-        db.session.commit()
-        flash('Organisation updated.', 'success')
-        return redirect(url_for('organisation_detail', id=org.id))
-    return render_template('crm/organisation_form.html', org=org)
+    """Kept so older links still work. Editing happens on the record itself."""
+    return redirect(url_for('organisation_detail', id=id))
 
 
 # ── Deleting records ─────────────────────────────────────────────────────────
@@ -3845,6 +4477,43 @@ def apply_form_fields(obj, form, fields):
     for attr, key, conv in fields:
         if key in form:
             setattr(obj, attr, conv(form.get(key)) if conv else form.get(key))
+
+
+ORGANISATION_FIELDS = [
+    ('name',               'name',               None),
+    ('trading_name',       'trading_name',       _ftext),
+    ('legal_name',         'legal_name',         _ftext),
+    ('fee_earner',         'fee_earner',         _ftext),
+    ('source',             'source',             _ftext),
+    ('phone',              'phone',              _ftext),
+    ('email',              'email',              _ftext),
+    ('website',            'website',            _ftext),
+    ('address',            'address',            _ftext),
+    ('postcode',           'postcode',           _ftext),
+    ('registered_address', 'registered_address', _ftext),
+    ('trading_address',    'trading_address',    _ftext),
+    ('company_number',     'company_number',     _ftext),
+    ('vat_number',         'vat_number',         _ftext),
+    ('companies_house_status', 'companies_house_status', _ftext),
+    ('incorporated_on',    'incorporated_on',    _parse_date),
+    ('nature_of_business', 'nature_of_business', _ftext),
+    ('notes',              'notes',              _ftext),
+]
+
+# Held back behind a permission: what a company had to prove about itself, and
+# what it is billed.
+ORGANISATION_COMPLIANCE_FIELDS = [
+    ('aml_status',         'aml_status',         _ftext),
+    ('aml_reviewed_on',    'aml_reviewed_on',    _parse_date),
+    ('beneficial_owners',  'beneficial_owners',  _ftext),
+    ('verification_notes', 'verification_notes', _ftext),
+    ('accounts_contact',   'accounts_contact',   _ftext),
+    ('accounts_email',     'accounts_email',     _ftext),
+    ('invoice_address',    'invoice_address',    _ftext),
+    ('payment_terms',      'payment_terms',      _ftext),
+    ('vat_status',         'vat_status',         _ftext),
+    ('accounts_notes',     'accounts_notes',     _ftext),
+]
 
 
 CONTACT_FIELDS = [
@@ -6284,6 +6953,45 @@ def _migrate_project_columns():
         except Exception:
             db.session.rollback()
             app.logger.exception('Could not give transactions their references')
+
+        # Organisations gain their commercial-agency fields. Every one is new
+        # and nullable: nothing already recorded is read, moved or overwritten,
+        # and the free-text landlord/client/tenant names on projects and
+        # transactions are deliberately left exactly as they are.
+        org_existing = {col['name'] for col in insp.get_columns('organisations')}
+        org_cols = [
+            ('trading_name',    'TEXT'), ('legal_name',      'TEXT'),
+            ('fee_earner',      'TEXT'), ('source',          'TEXT'),
+            ('main_contact_id', 'INTEGER'),
+            ('company_number',  'TEXT'), ('vat_number',      'TEXT'),
+            ('registered_address', 'TEXT'), ('trading_address', 'TEXT'),
+            ('companies_house_status', 'TEXT'),
+            ('incorporated_on', 'DATE'), ('nature_of_business', 'TEXT'),
+            ('aml_status',      'TEXT'), ('aml_reviewed_on', 'DATE'),
+            ('beneficial_owners', 'TEXT'), ('verification_notes', 'TEXT'),
+            ('marketing_consent', 'BOOLEAN DEFAULT 0'),
+            ('accounts_contact', 'TEXT'), ('accounts_email',  'TEXT'),
+            ('invoice_address', 'TEXT'), ('payment_terms',    'TEXT'),
+            ('vat_status',      'TEXT'), ('accounts_notes',   'TEXT'),
+        ]
+        with db.engine.connect() as conn:
+            for col_name, col_def in org_cols:
+                if col_name not in org_existing:
+                    conn.execute(text(f'ALTER TABLE organisations ADD COLUMN {col_name} {col_def}'))
+            conn.commit()
+
+        # An organisation that already carried a single type keeps it, now as
+        # one of the several it is allowed to hold. Nothing is invented: only
+        # the type already on the record is carried across, and only once.
+        try:
+            for org in Organisation.query.filter(Organisation.org_type.isnot(None)).all():
+                if org.org_type and org.org_type not in {t.name for t in org.types}:
+                    db.session.add(OrganisationType(organisation_id=org.id,
+                                                    name=org.org_type))
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            app.logger.exception('Could not carry organisation types across')
 
         cont_cols = [
             ('req_category', 'TEXT'),      ('req_property_type', 'TEXT'),

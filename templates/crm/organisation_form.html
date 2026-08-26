@@ -1,82 +1,84 @@
 {% extends "base.html" %}
-{% block title %}{{ 'Edit Organisation' if org else 'Add Organisation' }}{% endblock %}
-{% block topbar_title %}{{ 'Edit Organisation' if org else 'Add Organisation' }}{% endblock %}
+{% import "crm/_org_boxes.html" as ob %}
+{% block title %}Add Organisation{% endblock %}
+{% block topbar_title %}Add Organisation{% endblock %}
 {% block topbar_actions %}
-  <a href="{{ url_for('organisations_list') }}" class="btn btn-outline btn-sm">← Organisations</a>
+  <button type="submit" form="org-form" class="btn btn-primary btn-sm">Save</button>
+  <a href="{{ url_for('organisations_list') }}" class="btn btn-outline btn-sm">Cancel</a>
 {% endblock %}
 
-{% block content %}
-<div class="breadcrumb">
-  <a href="{{ url_for('dashboard') }}">Dashboard</a><span class="sep">/</span>
-  <a href="{{ url_for('organisations_list') }}">Organisations</a><span class="sep">/</span>
-  <span class="current">{{ 'Edit' if org else 'New' }}</span>
-</div>
+{#
+   The same boxes the Organisation Overview uses, from one definition. An
+   organisation is one record however many roles it goes on to hold — landlord,
+   tenant and client are relationships added afterwards, not separate records.
+#}
 
-<div class="card" style="max-width:680px">
-  <div class="card-header">
-    <div class="card-title">{{ 'Edit Organisation' if org else 'New Organisation' }}</div>
+{% block content %}
+<form id="org-form" method="post" action="{{ url_for('organisation_new') }}">
+  {% if next_url %}<input type="hidden" name="next" value="{{ next_url }}">{% endif %}
+  {% if duplicates %}<input type="hidden" name="confirm_new" value="1">{% endif %}
+</form>
+
+<div class="rec-page">
+  <div class="breadcrumb">
+    <a href="{{ url_for('organisations_list') }}">Companies</a><span class="sep">/</span>
+    <span class="current">New</span>
   </div>
-  <form method="post">
-    <div class="form-grid" style="margin-bottom:16px">
-      <div class="form-group span-2">
-        <label for="name">Organisation Name *</label>
-        <input type="text" id="name" name="name" required
-               value="{{ org.name if org else '' }}" placeholder="e.g. Savills plc">
+
+  {% if duplicates %}
+  {# Warn once, never merge. Two companies really can share a trading name. #}
+  <div class="dup-warning">
+    <div class="dup-head">This may already be on the system</div>
+    <p>Check before adding it again — the same company should be one record with
+       several relationships, not several records.</p>
+    <div class="dup-list">
+      {% for hit in duplicates %}
+      <div class="dup-row">
+        <div class="dup-main">
+          <a href="{{ url_for('organisation_detail', id=hit.org.id) }}">{{ hit.org.name }}</a>
+          <div class="dup-why">Matches on {{ hit.why|join(', ') }}</div>
+          <div class="dup-meta">
+            {{ ob.status_tag(hit.org.status) }} {{ ob.type_tags(hit.org) }}
+          </div>
+        </div>
+        <div class="dup-act">
+          <a href="{{ url_for('organisation_detail', id=hit.org.id) }}"
+             class="btn btn-secondary btn-sm">Open it</a>
+        </div>
       </div>
-      <div class="form-group">
-        <label for="org_type">Type</label>
-        <select id="org_type" name="org_type">
-          <option value="">— Select —</option>
-          {% for t in ['Client','Agent','Solicitor','Developer','Investor','Contractor','Surveyor','Other'] %}
-          <option value="{{ t }}" {{ 'selected' if org and org.org_type == t else '' }}>{{ t }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="form-group">
-        <label for="status">Status *</label>
-        <select id="status" name="status" required>
-          {% for s in CONTACT_STATUSES %}
-          <option value="{{ s }}" {{ 'selected' if (org and org.status == s) or (not org and s == 'Prospect') else '' }}>{{ s }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="form-group">
-        <label for="postcode">Postcode</label>
-        <input type="text" id="postcode" name="postcode" value="{{ org.postcode if org else '' }}" style="text-transform:uppercase">
-      </div>
-      <div class="form-group span-2">
-        <label for="address">Address</label>
-        <input type="text" id="address" name="address" value="{{ org.address if org else '' }}" placeholder="Street address">
-      </div>
-      <div class="form-group">
-        <label for="email">Email</label>
-        <input type="text" id="email" name="email" value="{{ org.email if org else '' }}">
-      </div>
-      <div class="form-group">
-        <label for="phone">Phone</label>
-        <input type="text" id="phone" name="phone" value="{{ org.phone if org else '' }}">
-      </div>
-      <div class="form-group span-2">
-        <label for="website">Website</label>
-        <input type="text" id="website" name="website" value="{{ org.website if org else '' }}" placeholder="https://…">
-      </div>
-      <div class="form-group span-2">
-        <label for="notes">Notes</label>
-        <textarea id="notes" name="notes" rows="3">{{ org.notes if org else '' }}</textarea>
-      </div>
+      {% endfor %}
     </div>
-    <div class="form-actions">
-      <button type="submit" class="btn btn-primary">{{ 'Save Changes' if org else 'Add Organisation' }}</button>
-      {% if org %}
-        <a href="{{ url_for('organisation_detail', id=org.id) }}" class="btn btn-secondary">Cancel</a>
-        <button type="submit" form="org-delete-form" class="btn btn-danger btn-sm" style="margin-left:auto">Delete</button>
-      {% else %}
-        <a href="{{ url_for('organisations_list') }}" class="btn btn-secondary">Cancel</a>
-      {% endif %}
+    <div class="dup-foot">
+      If it really is a different company, press Save again and it will be added.
     </div>
-  </form>
-  {% if org %}
-  <form id="org-delete-form" method="post" action="{{ url_for('organisation_delete', id=org.id) }}" class="confirm-delete"></form>
+  </div>
   {% endif %}
+
+  <div class="rec-cols-narrow">
+    <div>
+      {{ ob.essentials(v, 'org-form', errors) }}
+      {{ ob.company_box(v, 'org-form') }}
+    </div>
+    <div>
+      <div class="box">
+        <div class="box-head">What happens next</div>
+        <div style="padding:11px 12px;font-size:12.5px;line-height:1.6;color:var(--text)">
+          <p style="margin:0 0 8px">
+            Save this, then link it to the properties, projects and transactions
+            it is involved in from its own page.
+          </p>
+          <p style="margin:0">
+            One organisation can be a landlord on one building and a tenant on
+            another at the same time. It never needs a second record.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="rec-foot">
+    <button type="submit" form="org-form" class="btn btn-primary">Save organisation</button>
+    <a href="{{ url_for('organisations_list') }}" class="btn btn-outline">Cancel</a>
+  </div>
 </div>
 {% endblock %}
