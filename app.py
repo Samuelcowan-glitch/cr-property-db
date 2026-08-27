@@ -7139,13 +7139,13 @@ def _migrate_project_columns():
             ('tenant_covenant',   'TEXT'), ('written_analysis', 'TEXT'),
             ('done_by',           'TEXT'), ('third_party_name', 'TEXT'),
             ('part_or_floor',     'TEXT'), ('source',           'TEXT'),
-            ('source_contact',    'TEXT'), ('nda',              'BOOLEAN DEFAULT 0'),
+            ('source_contact',    'TEXT'), ('nda',              'BOOLEAN DEFAULT FALSE'),
             ('size_units',        'TEXT'), ('size_basis',       'TEXT'),
             ('demise_description','TEXT'), ('incentive_years',  'REAL'),
             ('headline_rate',     'REAL'), ('headline_rate_unit','TEXT'),
             ('net_rate',          'REAL'), ('next_break_date',  'TEXT'),
-            ('no_break',          'BOOLEAN DEFAULT 0'),
-            ('next_review_date',  'TEXT'), ('no_review',        'BOOLEAN DEFAULT 0'),
+            ('no_break',          'BOOLEAN DEFAULT FALSE'),
+            ('next_review_date',  'TEXT'), ('no_review',        'BOOLEAN DEFAULT FALSE'),
             ('review_type',       'TEXT'), ('repair',           'TEXT'),
             ('alienation',        'TEXT'), ('primary_use_class','TEXT'),
             ('lt_act',            'TEXT'), ('epc_rating',       'TEXT'),
@@ -7208,7 +7208,6 @@ def _migrate_project_columns():
         # and nullable: nothing already recorded is read, moved or overwritten,
         # and the free-text landlord/client/tenant names on projects and
         # transactions are deliberately left exactly as they are.
-        org_existing = {col['name'] for col in insp.get_columns('organisations')}
         org_cols = [
             ('trading_name',    'TEXT'), ('legal_name',      'TEXT'),
             ('fee_earner',      'TEXT'), ('source',          'TEXT'),
@@ -7219,16 +7218,12 @@ def _migrate_project_columns():
             ('incorporated_on', 'DATE'), ('nature_of_business', 'TEXT'),
             ('aml_status',      'TEXT'), ('aml_reviewed_on', 'DATE'),
             ('beneficial_owners', 'TEXT'), ('verification_notes', 'TEXT'),
-            ('marketing_consent', 'BOOLEAN DEFAULT 0'),
+            ('marketing_consent', 'BOOLEAN DEFAULT FALSE'),
             ('accounts_contact', 'TEXT'), ('accounts_email',  'TEXT'),
             ('invoice_address', 'TEXT'), ('payment_terms',    'TEXT'),
             ('vat_status',      'TEXT'), ('accounts_notes',   'TEXT'),
         ]
-        with db.engine.connect() as conn:
-            for col_name, col_def in org_cols:
-                if col_name not in org_existing:
-                    conn.execute(text(f'ALTER TABLE organisations ADD COLUMN {col_name} {col_def}'))
-            conn.commit()
+        _add_columns('organisations', org_cols)
 
         # An organisation that already carried a single type keeps it, now as
         # one of the several it is allowed to hold. Nothing is invented: only
@@ -7247,24 +7242,12 @@ def _migrate_project_columns():
         # Records now point at a user rather than holding a typed name. The
         # typed name stays in its own column: it is the evidence for the link,
         # and the only record of anything that could not be identified.
-        user_existing = {col['name'] for col in insp.get_columns('users')}
-        fee_tables = [('transactions', 'fee_earner_id'), ('organisations', 'fee_earner_id'),
-                      ('enquiries', 'fee_earner_id'), ('projects', 'fee_earner_id'),
-                      ('project_services', 'fee_earner_id'), ('contacts', 'fee_earner_id')]
-        with db.engine.connect() as conn:
-            for col_name, col_def in (('full_name', 'TEXT'),
-                                      ('active', 'BOOLEAN DEFAULT 1'),
-                                      ('can_earn_fees', 'BOOLEAN DEFAULT 1')):
-                if col_name not in user_existing:
-                    conn.execute(text(f'ALTER TABLE users ADD COLUMN {col_name} {col_def}'))
-            for table, col_name in fee_tables:
-                try:
-                    have = {c['name'] for c in insp.get_columns(table)}
-                except Exception:
-                    continue
-                if col_name not in have:
-                    conn.execute(text(f'ALTER TABLE {table} ADD COLUMN {col_name} INTEGER'))
-            conn.commit()
+        _add_columns('users', [('full_name', 'TEXT'),
+                               ('active', 'BOOLEAN DEFAULT TRUE'),
+                               ('can_earn_fees', 'BOOLEAN DEFAULT TRUE')])
+        for table in ('transactions', 'organisations', 'enquiries', 'projects',
+                      'project_services', 'contacts'):
+            _add_columns(table, [('fee_earner_id', 'INTEGER')])
 
         try:
             _name_the_users()
@@ -7280,11 +7263,7 @@ def _migrate_project_columns():
             ('req_budget_min', 'REAL'),    ('req_budget_max', 'REAL'),
             ('req_budget_unit', 'TEXT'),   ('req_notes', 'TEXT'),
         ]
-        with db.engine.connect() as conn:
-            for col_name, col_def in cont_cols:
-                if col_name not in cont_existing:
-                    conn.execute(text(f'ALTER TABLE contacts ADD COLUMN {col_name} {col_def}'))
-            conn.commit()
+        _add_columns('contacts', cont_cols)
 
 
 def _migrate_listing_columns():
@@ -7294,10 +7273,10 @@ def _migrate_listing_columns():
         insp = inspect(db.engine)
         existing = {col['name'] for col in insp.get_columns('properties')}
         new_cols = [
-            ('website_listed',     'BOOLEAN DEFAULT 0'),
+            ('website_listed',     'BOOLEAN DEFAULT FALSE'),
             ('website_category',   'TEXT'),
             ('listing_status',     'TEXT'),
-            ('featured',           'BOOLEAN DEFAULT 0'),
+            ('featured',           'BOOLEAN DEFAULT FALSE'),
             ('area',               'TEXT'),
             ('use_class',          'TEXT'),
             ('listing_price',      'REAL'),
@@ -7506,6 +7485,39 @@ def _seed_project_listings():
     db.session.commit()
 
 
+def _add_columns(table, columns):
+    """Add missing columns to a table that already exists.
+
+    Each one runs on its own. Postgres aborts an entire transaction when a
+    single statement fails, so a batch would lose every later column to one
+    bad definition — and, because this runs at boot, would take the whole CRM
+    down with it. A column that cannot be added is logged loudly and the rest
+    still go in.
+    """
+    from sqlalchemy import inspect as _inspect, text as _text
+    try:
+        existing = {c['name'] for c in _inspect(db.engine).get_columns(table)}
+    except Exception:
+        app.logger.exception('Could not read the columns of %s', table)
+        return []
+    added, failed = [], []
+    for name, ddl in columns:
+        if name in existing:
+            continue
+        try:
+            with db.engine.begin() as conn:
+                conn.execute(_text(f'ALTER TABLE {table} ADD COLUMN {name} {ddl}'))
+            added.append(name)
+        except Exception as e:
+            failed.append(name)
+            app.logger.error('Could not add %s.%s (%s): %s', table, name, ddl, e)
+    if added:
+        app.logger.info('Added to %s: %s', table, ', '.join(added))
+    if failed:
+        app.logger.error('MIGRATION INCOMPLETE on %s: %s', table, ', '.join(failed))
+    return failed
+
+
 def _name_the_users():
     """Give the office account the name a client would recognise.
 
@@ -7609,15 +7621,8 @@ def _migrate_crm_columns():
             ('last_contact_date', 'DATE'),
             ('next_follow_up',    'DATE'),
         ]
-        org_cols = [('status', "TEXT DEFAULT 'Prospect'")]
-        with db.engine.connect() as conn:
-            for col_name, col_def in cont_cols:
-                if col_name not in cont_existing:
-                    conn.execute(text(f'ALTER TABLE contacts ADD COLUMN {col_name} {col_def}'))
-            for col_name, col_def in org_cols:
-                if col_name not in org_existing:
-                    conn.execute(text(f'ALTER TABLE organisations ADD COLUMN {col_name} {col_def}'))
-            conn.commit()
+        _add_columns('contacts', cont_cols)
+        _add_columns('organisations', [('status', "TEXT DEFAULT 'Prospect'")])
 
 
 if __name__ == '__main__':
