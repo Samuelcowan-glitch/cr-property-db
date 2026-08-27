@@ -1,4 +1,5 @@
 ﻿{% extends "base.html" %}
+{% import "crm/_client_picker.html" as cp %}
 {% block title %}{{ prop.address }}{% endblock %}
 {% block topbar_title %}Property Overview{% endblock %}
 {% block topbar_actions %}
@@ -35,7 +36,7 @@
 
 {# The record is editable here, laid out exactly like the Project Overview:
    a narrow column of short boxes beside the property's own details. #}
-<form method="post" action="{{ url_for('property_edit', id=prop.id) }}" data-inline-edit>
+<form id="property-form" method="post" action="{{ url_for('property_edit', id=prop.id) }}" data-inline-edit>
 <input type="hidden" name="next" value="{{ url_for('property_detail', id=prop.id) }}">
 
 <div class="rec-toolbar">
@@ -84,9 +85,22 @@
         <div class="fcell fcell--label">Postcode</div>
         <div class="fcell fcell--edit"><input type="text" name="postcode" value="{{ prop.postcode }}" required></div>
       </div>
+      <div class="frow frow--full">
+        <div class="fcell fcell--label">Client</div>
+        <div class="fcell fcell--edit fcell--flush">
+          {{ cp.client_picker(prop.client_contact, 'property-form') }}
+        </div>
+      </div>
       <div class="frow">
         <div class="fcell fcell--label">Property type</div>
-        <div class="fcell fcell--edit"><input type="text" name="property_type" value="{{ prop.property_type or '' }}" placeholder="Not set"></div>
+        <div class="fcell fcell--edit">
+          <select name="property_type">
+            <option value="">Not set</option>
+            {% for t in property_type_options(prop.property_type) %}
+            <option value="{{ t }}" {{ 'selected' if prop.property_type == t }}>{{ t }}</option>
+            {% endfor %}
+          </select>
+        </div>
         <div class="fcell fcell--label">Area</div>
         <div class="fcell fcell--edit"><input type="text" name="area" value="{{ prop.area or '' }}" placeholder="e.g. Chelsea"></div>
       </div>
@@ -110,7 +124,15 @@
     </div>
   </div>
 </div>
+
+{# Read live from the linked client record. Nothing is copied onto the
+   property, so a change made on their own page shows here. #}
 </form>
+
+<div class="rec-cols-narrow" style="margin-top:8px">
+  <div>{{ cp.client_details(prop.client_contact) }}</div>
+  <div></div>
+</div>
 
 <!-- ── Tabs: Tenures / Projects ── -->
 <div class="tabs" data-group="prop">

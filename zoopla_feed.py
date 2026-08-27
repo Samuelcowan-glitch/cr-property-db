@@ -205,11 +205,49 @@ BASE_COLUMNS = [
 ]
 
 
+# How a CRM property type is sent to Zoopla.
+#
+# Zoopla's commercial code table has no Creative / Art Studio and no Light
+# Industrial. Each is sent as the nearest category it does support, and the
+# CRM keeps its own type unchanged — the portal's fallback is never shown as
+# the property's type anywhere in the CRM or on the company website.
+#
+#   CRM type                Sent to Zoopla as        Why
+#   ---------------------   ----------------------   ----------------------------
+#   Office                  Office                   exact
+#   Retail                  Retail                   exact
+#   Industrial              Industrial               exact
+#   Light Industrial        Industrial               nearest supported
+#   Creative / Art Studio   Office                   studios are let as workspace
+#   anything else           0 (unset)                rather than assert a wrong one
+#
+# SPEC: the numbers below are placeholders until Zoopla send their code table.
+# Nothing here refuses a listing: an unmapped type sends 0, which leaves the
+# field present without claiming a type, so publishing is never blocked.
+ZOOPLA_TYPE_MAP = {
+    'office': 'Office',
+    'retail': 'Retail',
+    'industrial': 'Industrial',
+    'light industrial': 'Industrial',
+    'creative / art studio': 'Office',
+}
+
+ZOOPLA_TYPE_CODES = {'Office': 0, 'Retail': 0, 'Industrial': 0}
+
+
+def zoopla_category_for(property_type):
+    """The Zoopla category a CRM type is published under, or None."""
+    return ZOOPLA_TYPE_MAP.get((property_type or '').strip().lower())
+
+
 def _prop_sub_id(listing, prop):
-    """SPEC: property-type code. Zoopla ships a code table; until it's wired in
-    we send a sensible generic and rely on TRANS_TYPE + category. 0 keeps the
-    field present without asserting a wrong specific type."""
-    return 0
+    """SPEC: property-type code, from the mapping above.
+
+    An unmapped type sends 0 rather than a guess, so a listing is never held
+    back for want of a category.
+    """
+    category = zoopla_category_for(getattr(prop, 'property_type', None) if prop else None)
+    return ZOOPLA_TYPE_CODES.get(category, 0)
 
 
 def _base_row(listing, branch_id):

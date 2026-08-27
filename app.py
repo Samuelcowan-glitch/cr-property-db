@@ -244,6 +244,10 @@ class Property(db.Model):
     floor_plan_filename = db.Column(db.String(255))
     floor_plan_size   = db.Column(db.Integer)
 
+    # Who the property is held for. Their details are read from their own
+    # record and never copied here.
+    client_contact_id = db.Column(db.Integer, db.ForeignKey('contacts.id'), index=True)
+
     transactions = db.relationship('Transaction', backref='property', lazy=True, cascade='all, delete-orphan')
     projects = db.relationship('Project', backref='property', lazy=True, cascade='all, delete-orphan')
 
@@ -252,10 +256,64 @@ class Property(db.Model):
         return [t for t in self.transactions if t.transaction_type == 'Leasehold']
 
     @property
+    def client_contact(self):
+        return Contact.query.get(self.client_contact_id) if self.client_contact_id else None
+
+    @property
     def display_size(self):
         if self.size and self.measurement_type:
             return f"{self.size:,.0f} sq ft ({self.measurement_type})"
         return '—'
+
+
+# ── Property types ───────────────────────────────────────────────────────────
+#
+# One list, used wherever a property type is offered, so the same words mean
+# the same thing on a property, an instruction, an applicant's requirements and
+# a website listing. The value stored is the label: it reads properly in older
+# records and in exports, and there is only one of it.
+#
+# Light Industrial is its own category, never rolled in with Industrial. A
+# workshop is not a warehouse, and an applicant who asked for one has not asked
+# for the other.
+
+PROPERTY_TYPES = [
+    'Office',
+    'Retail',
+    'Industrial',
+    'Creative / Art Studio',
+    'Light Industrial',
+]
+
+# Kept so records entered before this list are still offered their own value
+# and are never silently rewritten.
+PROPERTY_TYPES_LEGACY = [
+    'Warehouse', 'Residential', 'Mixed Use', 'Land', 'Hotel', 'Leisure', 'Other',
+]
+
+ALL_PROPERTY_TYPES = PROPERTY_TYPES + PROPERTY_TYPES_LEGACY
+
+
+def property_type_options(current=None):
+    """The types to offer, with anything already on the record kept.
+
+    A property recorded years ago as something no longer offered keeps its own
+    value rather than being quietly changed to the nearest thing.
+    """
+    options = list(ALL_PROPERTY_TYPES)
+    if current and current not in options:
+        options.append(current)
+    return options
+
+
+def same_property_type(wanted, found):
+    """Whether a property's type is the one asked for.
+
+    Compared whole, not by substring. "Industrial" and "Light Industrial"
+    share a word and are different things; matching on the word alone would
+    offer every warehouse to somebody who asked for a workshop.
+    """
+    return (wanted or '').strip().lower() == (found or '').strip().lower()
 
 
 # ── Transactions: the shared vocabulary and the money rules ──────────────────
@@ -2156,13 +2214,22 @@ def dashboard():
 @app.route('/properties')
 def properties_list():
     q = request.args.get('q', '')
+    ptype = (request.args.get('property_type') or '').strip()
     query = Property.query
     if q:
         query = query.filter(
             db.or_(Property.address.ilike(f'%{q}%'), Property.postcode.ilike(f'%{q}%'))
         )
     properties = query.order_by(Property.address).all()
-    return render_template('properties/list.html', properties=properties, q=q)
+    if ptype:
+        # Whole-value, so filtering for Industrial does not sweep up every
+        # Light Industrial unit as well.
+        properties = [p for p in properties if same_property_type(ptype, p.property_type)]
+    return render_template('properties/list.html', properties=properties, q=q,
+                           ptype=ptype,
+                           type_counts={t: sum(1 for p in Property.query.all()
+                                               if same_property_type(t, p.property_type))
+                                        for t in PROPERTY_TYPES})
 
 
 @app.route('/properties/new', methods=['GET', 'POST'])
@@ -2943,6 +3010,21 @@ TRANSACTION_STATUS_CLASS = {
 }
 app.jinja_env.globals['status_class'] = \
     lambda st: TRANSACTION_STATUS_CLASS.get(st, 'st-draft')
+app.jinja_env.globals['PROPERTY_TYPES'] = PROPERTY_TYPES
+app.jinja_env.globals['property_type_options'] = property_type_options
+def can_edit():
+    """Whether the person looking may change records.
+
+    A global rather than a template variable, because an imported macro does
+    not inherit the page's context and would otherwise have no way to ask.
+    """
+    try:
+        return bool(current_user.is_authenticated and current_user.can('edit'))
+    except Exception:
+        return False
+
+
+app.jinja_env.globals['can_edit'] = can_edit
 app.jinja_env.globals['contact_label'] = contact_label
 app.jinja_env.globals['fee_earners'] = fee_earners
 app.jinja_env.globals['fee_earner_name'] = fee_earner_name
@@ -4963,6 +5045,7 @@ PROJECT_FIELDS = [
 
 
 PROPERTY_FIELDS = [
+    ('client_contact_id',  'client_contact_id',  _fcontact),
     ('address',          'address',          None),
     ('property_type',    'property_type',    _ftext),
     ('area',             'area',             _ftext),
@@ -5764,8 +5847,9 @@ def score_requirement(c, prop):
 
     # ── Property type ──
     if c.req_property_type:
-        want, have = c.req_property_type.lower(), (prop.property_type or '').lower()
-        if not have or (want not in have and have not in want):
+        # Whole-value, so Industrial never answers a request for Light
+        # Industrial, and neither answers a request for a Creative studio.
+        if not same_property_type(c.req_property_type, prop.property_type):
             return 0, []
         score += 2; reasons.append('Type match')
 
@@ -7352,7 +7436,8 @@ def _migrate_project_columns():
         for table in ('transactions', 'organisations', 'enquiries', 'projects',
                       'project_services', 'contacts'):
             _add_columns(table, [('fee_earner_id', 'INTEGER')])
-        _add_columns('projects', [('client_contact_id', 'INTEGER')])
+        for table in ('projects', 'properties'):
+            _add_columns(table, [('client_contact_id', 'INTEGER')])
 
         try:
             _name_the_users()

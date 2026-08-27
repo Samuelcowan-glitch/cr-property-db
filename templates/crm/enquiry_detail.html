@@ -219,7 +219,12 @@
         <div class="fcell fcell--label">Preferred location</div>
         <div class="fcell fcell--edit"><input type="text" name="req_area" value="{{ e.req_area or '' }}" placeholder="e.g. Fulham, Parsons Green"></div>
         <div class="fcell fcell--label">Property type</div>
-        <div class="fcell fcell--edit"><input type="text" name="req_property_type" value="{{ e.req_property_type or '' }}" placeholder="e.g. Shop, Office"></div>
+        <div class="fcell fcell--edit"><select name="req_property_type">
+          <option value="">Any type</option>
+          {% for t in property_type_options(e.req_property_type) %}
+          <option value="{{ t }}" {{ 'selected' if e.req_property_type == t }}>{{ t }}</option>
+          {% endfor %}
+        </select></div>
       </div>
       <div class="frow">
         <div class="fcell fcell--label">Intended use</div>

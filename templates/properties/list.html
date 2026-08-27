@@ -16,8 +16,18 @@
   <div class="list-bar">
     <form method="get" class="list-filter">
       <input type="search" name="q" value="{{ q }}" placeholder="Search address or postcode…">
+      {# Each type stands on its own; Light Industrial is never folded into
+         Industrial. #}
+      <select name="property_type">
+        <option value="">All types</option>
+        {% for t in property_type_options(ptype) %}
+        <option value="{{ t }}" {{ 'selected' if ptype == t }}>
+          {{ t }}{% if type_counts.get(t) %} ({{ type_counts[t] }}){% endif %}
+        </option>
+        {% endfor %}
+      </select>
       <button type="submit" class="btn btn-primary btn-sm">Search</button>
-      {% if q %}<a href="{{ url_for('properties_list') }}" class="btn btn-outline btn-sm">Clear</a>{% endif %}
+      {% if q or ptype %}<a href="{{ url_for('properties_list') }}" class="btn btn-outline btn-sm">Clear</a>{% endif %}
     </form>
     <span class="list-count">{{ properties|length }} propert{{ 'y' if properties|length == 1 else 'ies' }}</span>
   </div>
@@ -34,7 +44,7 @@
            ~ ('' if p.projects|length == 1 else 's')) }}
     {% else %}
     <div class="org-empty">
-      {% if q %}No properties match &ldquo;{{ q }}&rdquo;.{% else %}No properties yet.{% endif %}
+      {% if q or ptype %}No properties match that search.{% else %}No properties yet.{% endif %}
       <div style="margin-top:12px">
         <a href="{{ url_for('property_new') }}" class="btn btn-primary btn-sm">+ Add Property</a>
       </div>

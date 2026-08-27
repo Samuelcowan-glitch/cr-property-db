@@ -110,9 +110,13 @@
       </div>
       <div class="form-group">
         <label for="req_property_type">Property Type</label>
-        <input type="text" id="req_property_type" name="req_property_type"
-               value="{{ contact.req_property_type if contact and contact.req_property_type else '' }}"
-               placeholder="e.g. Office Suite, Apartment">
+        {% set _cur = contact.req_property_type if contact else none %}
+        <select id="req_property_type" name="req_property_type">
+          <option value="">Any type</option>
+          {% for t in property_type_options(_cur) %}
+          <option value="{{ t }}" {{ 'selected' if _cur == t }}>{{ t }}</option>
+          {% endfor %}
+        </select>
       </div>
       <div class="form-group">
         <label for="req_budget_unit">Budget Basis</label>

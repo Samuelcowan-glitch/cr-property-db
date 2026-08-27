@@ -7,7 +7,10 @@
    never a second copy of the company's name.
 #}
 
-{% macro client_picker(contact, form_id, label='Client', can_change=true, legacy=None) %}
+{% macro client_picker(contact, form_id, label='Client', can_change=None,
+                       legacy=None, sensitive=None) %}
+{% set can_change = can_edit() if can_change is none else can_change %}
+{% set sensitive = can_edit() if sensitive is none else sensitive %}
 <div class="clientpick" data-client-picker>
   {# The value the record saves. The search box beside it is only for finding. #}
   <input type="hidden" name="client_contact_id" form="{{ form_id }}"
@@ -17,9 +20,10 @@
     {% if contact %}
     <a class="clientpick-name" href="{{ url_for('contact_detail', id=contact.id) }}"
        title="{{ contact_label(contact) }}">{{ contact_label(contact) }}</a>
-    {% if contact.job_title or contact.email %}
+    {% if contact.job_title or (sensitive and contact.email) %}
     <span class="clientpick-meta">
-      {{ contact.job_title or '' }}{% if contact.job_title and contact.email %} &middot; {% endif %}{{ contact.email or '' }}
+      {{ contact.job_title or '' }}
+      {%- if sensitive and contact.email %}{% if contact.job_title %} &middot; {% endif %}{{ contact.email }}{% endif -%}
     </span>
     {% endif %}
     {% endif %}
@@ -48,6 +52,104 @@
   <div class="clientpick-legacy" title="{{ legacy }}">
     Recorded as &ldquo;{{ legacy }}&rdquo;. Search above to link the person.
   </div>
+  {% endif %}
+</div>
+{% endmacro %}
+
+
+{# ── Client Details ────────────────────────────────────────────────────────
+   Everything shown here is read from the linked contact record as the page
+   is drawn. Nothing is copied onto the property or instruction, so a change
+   made on the person's own record shows here the next time this is opened.
+
+   `sensitive` decides whether contact details are shown at all; a viewer sees
+   who the client is without their direct line.
+#}
+{% macro client_details(contact, sensitive=None) %}
+{% set sensitive = can_edit() if sensitive is none else sensitive %}
+<div class="box box--grid clientcard">
+  <div class="box-head">
+    Client details
+    {% if contact %}
+    <span class="box-actions">
+      <a href="{{ url_for('contact_detail', id=contact.id) }}">Open the client record</a>
+    </span>
+    {% endif %}
+  </div>
+
+  {% if not contact %}
+  <div class="empty" style="padding:14px 12px">
+    No client selected. Search above to link one.
+  </div>
+  {% else %}
+  <div class="frow frow--full">
+    <div class="fcell fcell--label">Name</div>
+    <div class="fcell">
+      <a href="{{ url_for('contact_detail', id=contact.id) }}"
+         title="{{ contact_label(contact) }}">{{ contact_label(contact) }}</a>
+    </div>
+  </div>
+  <div class="frow">
+    <div class="fcell fcell--label">Company</div>
+    <div class="fcell {{ 'is-empty' if not contact.organisation }}">
+      {% if contact.organisation %}
+      <a href="{{ url_for('organisation_detail', id=contact.organisation.id) }}"
+         title="{{ contact.organisation.name }}">{{ contact.organisation.name }}</a>
+      {% else %}Not linked to a company{% endif %}
+    </div>
+    <div class="fcell fcell--label">Client type</div>
+    <div class="fcell {{ 'is-empty' if not contact.contact_type }}">
+      {{ contact.contact_type or 'Not set' }}
+    </div>
+  </div>
+
+  {% if sensitive %}
+  <div class="frow">
+    <div class="fcell fcell--label">Email</div>
+    <div class="fcell {{ 'is-empty' if not contact.email }}">
+      {% if contact.email %}<a href="mailto:{{ contact.email }}">{{ contact.email }}</a>
+      {% else %}Not set{% endif %}
+    </div>
+    <div class="fcell fcell--label">Mobile</div>
+    <div class="fcell {{ 'is-empty' if not contact.mobile }}">
+      {% if contact.mobile %}<a href="tel:{{ contact.mobile|replace(' ', '') }}">{{ contact.mobile }}</a>
+      {% else %}Not set{% endif %}
+    </div>
+  </div>
+  <div class="frow">
+    <div class="fcell fcell--label">Office</div>
+    <div class="fcell {{ 'is-empty' if not contact.phone }}">
+      {% if contact.phone %}<a href="tel:{{ contact.phone|replace(' ', '') }}">{{ contact.phone }}</a>
+      {% else %}Not set{% endif %}
+    </div>
+    <div class="fcell fcell--label">Job title</div>
+    <div class="fcell {{ 'is-empty' if not contact.job_title }}">{{ contact.job_title or 'Not set' }}</div>
+  </div>
+  <div class="frow frow--full">
+    <div class="fcell fcell--label fcell--top">Correspondence</div>
+    <div class="fcell {{ 'is-empty' if not (contact.organisation and contact.organisation.address) }}">
+      {{ contact.organisation.address if contact.organisation and contact.organisation.address
+         else 'No address on the client record' }}
+    </div>
+  </div>
+  {% if contact.status or contact.assigned_agent %}
+  <div class="frow">
+    <div class="fcell fcell--label">Status</div>
+    <div class="fcell {{ 'is-empty' if not contact.status }}">{{ contact.status or 'Not set' }}</div>
+    <div class="fcell fcell--label">Looked after by</div>
+    <div class="fcell {{ 'is-empty' if not contact.fee_earner_id }}">
+      {{ fee_earner_name(contact.fee_earner_id, contact.assigned_agent) or 'Not set' }}
+    </div>
+  </div>
+  {% endif %}
+  {% else %}
+  <div class="frow frow--full">
+    <div class="fcell fcell--label fcell--top">Contact details</div>
+    <div class="fcell" style="line-height:1.5">
+      Only shown to an account that may edit records.
+    </div>
+  </div>
+  {% endif %}
   {% endif %}
 </div>
 {% endmacro %}

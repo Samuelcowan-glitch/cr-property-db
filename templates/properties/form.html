@@ -93,7 +93,7 @@
           <div class="fcell fcell--edit">
             <select name="property_type" form="property-form">
               <option value="">— Select —</option>
-              {% for t in ['Office','Retail','Industrial','Warehouse','Residential','Mixed Use','Land','Hotel','Leisure','Other'] %}
+              {% for t in property_type_options(property.property_type if property else none) %}
               <option value="{{ t }}" {{ 'selected' if editing and prop.property_type == t else '' }}>{{ t }}</option>
               {% endfor %}
             </select>

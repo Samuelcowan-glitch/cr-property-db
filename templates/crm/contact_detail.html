@@ -138,7 +138,12 @@
       </div>
       <div class="frow">
         <div class="fcell fcell--label">Property type</div>
-        <div class="fcell fcell--edit"><input type="text" name="req_property_type" value="{{ contact.req_property_type or '' }}" placeholder="Not set"></div>
+        <div class="fcell fcell--edit"><select name="req_property_type">
+          <option value="">Any type</option>
+          {% for t in property_type_options(contact.req_property_type) %}
+          <option value="{{ t }}" {{ 'selected' if contact.req_property_type == t }}>{{ t }}</option>
+          {% endfor %}
+        </select></div>
       </div>
       <div class="frow">
         <div class="fcell fcell--label">Preferred area</div>

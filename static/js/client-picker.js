@@ -33,6 +33,8 @@
       name.href = person.url;
       name.title = person.label;          /* the whole name on hover */
       current.appendChild(name);
+      /* Only somebody who may edit sees the search box at all, so anything
+         drawn here follows a choice they were allowed to make. */
       var bits = [person.job_title, person.email].filter(Boolean).join(' · ');
       if (bits) { current.appendChild(el('span', 'clientpick-meta', bits)); }
     }
