@@ -1,4 +1,5 @@
 ﻿{% extends "base.html" %}
+{% import "_photo_gallery.html" as pg %}
 {% import "crm/_client_picker.html" as cp %}
 {% block title %}{{ prop.address }}{% endblock %}
 {% block topbar_title %}Property Overview{% endblock %}
@@ -73,6 +74,31 @@
         {% endif %}
       </div>
     </div>
+  </div>
+
+  {% set shots = property_photographs(prop) %}
+  <div class="box photo-box is-open"
+       {% if shots %}{{ pg.opens_gallery(shots, prop.address) }}{% endif %}>
+    <div class="box-head">
+      Photos <span style="font-weight:400;color:#5f6368">({{ shots|length }})</span>
+    </div>
+    {% if shots %}
+    <div class="photo-grid">
+      {% for ph in shots %}
+      <div class="photo-tile" data-gallery-index="{{ loop.index0 }}"
+           title="Click to view">
+        <img src="{{ url_for('listing_photo_image', id=ph.id, w=300) }}"
+             alt="Photograph {{ loop.index }}">
+        <span data-pos>{{ 'Main Photo' if loop.first else loop.index }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="photo-hint">
+      Photographs are added and reordered on the instruction that markets this property.
+    </div>
+    {% else %}
+    <div class="empty" style="padding:14px 12px">No property photographs available</div>
+    {% endif %}
   </div>
 
   <!-- ════ RIGHT ════ -->
@@ -272,4 +298,8 @@
   </div>
   {% endif %}
 </div>
+
+{# One viewer for the page, opened by the Photos box. #}
+{{ pg.gallery_dialog() }}
+
 {% endblock %}

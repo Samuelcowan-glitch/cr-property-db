@@ -1,0 +1,55 @@
+{#
+   The photograph viewer, shared by the Project and Property Overviews.
+
+   One dialog per page. Anything that should open it carries the photographs
+   as data; the script reads them when it is clicked, so nothing is fetched
+   until somebody actually wants to look.
+
+   A native <dialog> is used, as the diary does, so Escape and the backdrop
+   come from the browser rather than being reimplemented.
+#}
+
+{% macro gallery_dialog() %}
+<dialog id="photo-gallery" class="pg" aria-label="Property photographs">
+  <div class="pg-head">
+    <div class="pg-titles">
+      <span class="pg-title" data-pg-title></span>
+      <span class="pg-count" data-pg-count></span>
+    </div>
+    <button type="button" class="btn btn-outline btn-sm" data-pg-close
+            aria-label="Close the gallery">Close</button>
+  </div>
+
+  <div class="pg-stage">
+    <button type="button" class="pg-nav pg-prev" data-pg-prev
+            aria-label="Previous photograph">&#10094;</button>
+
+    <div class="pg-frame" data-pg-frame>
+      <div class="pg-loading" data-pg-loading>Loading…</div>
+      <img class="pg-image" data-pg-image alt="">
+      {# Shown when a photograph will not load, so the gallery keeps working. #}
+      <div class="pg-missing" data-pg-missing hidden>
+        <strong>This photograph could not be loaded.</strong>
+        <span>Use the arrows to carry on to the next one.</span>
+      </div>
+    </div>
+
+    <button type="button" class="pg-nav pg-next" data-pg-next
+            aria-label="Next photograph">&#10095;</button>
+  </div>
+
+  <div class="pg-caption" data-pg-caption></div>
+  <div class="pg-thumbs" data-pg-thumbs></div>
+</dialog>
+{% endmacro %}
+
+
+{# Attributes that make an element open the gallery.
+
+   The box holds the photographs; each thumbnail inside it carries its own
+   data-gallery-index, so clicking the third opens the third. Clicking the box
+   anywhere else opens the first. #}
+{% macro opens_gallery(photos, title) %}
+data-gallery="{{ gallery_photos(photos)|tojson|forceescape }}"
+data-gallery-title="{{ title }}"
+{% endmacro %}

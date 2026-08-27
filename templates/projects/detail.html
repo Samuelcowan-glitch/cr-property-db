@@ -1,10 +1,12 @@
 {% extends "base.html" %}
+{% import "_photo_gallery.html" as pg %}
 {% import "crm/_client_picker.html" as cp %}
 {% import "projects/_record_boxes.html" as rb %}
 {% import "projects/_doc_box.html" as db %}
 {% set pv = project_form_values(project) %}
 {% set back = url_for('project_detail', id=project.id) %}
-{% block title %}{{ project.name }}{% endblock %}
+{% block title %}{{ project.name }}
+{% endblock %}
 {% block topbar_title %}{{ project.name }}{% endblock %}
 {% block topbar_actions %}
   <a href="{{ url_for('project_enquiry_schedule', id=project.id) }}" class="btn btn-orange btn-sm" target="_blank">Enquiry Schedule</a>
@@ -143,7 +145,8 @@
   
     <!-- ══ Photos — bottom-left, collapsed until clicked ══ -->
     {% if lst %}
-    <div class="box photo-box" data-photo-manager data-listing="{{ lst.id }}">
+    <div class="box photo-box" data-photo-manager data-listing="{{ lst.id }}"
+         {% if lst.photos %}{{ pg.opens_gallery(lst.photos, project.name) }}{% endif %}>
       <div class="box-head">
         <button type="button" data-photo-toggle aria-expanded="false">
           Photos
@@ -169,7 +172,7 @@
         <div class="photo-grid" data-photo-grid>
           {% for ph in lst.photos %}
           <div class="photo-tile" draggable="true" data-photo-id="{{ ph.id }}"
-               data-full="{{ url_for('listing_photo_image', id=ph.id, w=1400) }}"
+               data-gallery-index="{{ loop.index0 }}"
                title="Drag to reorder &middot; click to view">
             <img src="{{ url_for('listing_photo_image', id=ph.id, w=300) }}" alt="Photograph {{ loop.index }}">
             <span data-pos>{{ 'Main Photo' if loop.first else loop.index }}</span>
@@ -955,5 +958,9 @@ document.querySelectorAll('.listing-edit-form').forEach(function(form) {
   });
 });
 </script>
+
+
+{# One viewer for the page, opened by the Photos box and its thumbnails. #}
+{{ pg.gallery_dialog() }}
 
 {% endblock %}

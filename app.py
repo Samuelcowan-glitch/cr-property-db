@@ -1602,6 +1602,36 @@ def requires(action):
     return wrapper
 
 
+def property_photographs(prop):
+    """Every photograph of a property, in the order they are marketed in.
+
+    A property's photographs live on its listings, so this gathers them across
+    all of them and keeps the order each listing was arranged in — the first is
+    the one that leads the property everywhere.
+    """
+    if prop is None:
+        return []
+    photos = []
+    for listing in getattr(prop, 'unit_listings', []) or []:
+        photos.extend(sorted(listing.photos or [],
+                             key=lambda p: (p.sort_order or 0, p.id)))
+    return photos
+
+
+def gallery_photos(photos):
+    """Photographs as the gallery needs them: a full view, a thumbnail, a caption.
+
+    The images are asked for at the size they are shown at, so opening the
+    gallery does not pull a full-resolution photograph for a thumbnail.
+    """
+    return [{
+        'id': p.id,
+        'src': url_for('listing_photo_image', id=p.id, w=1400),
+        'thumb': url_for('listing_photo_image', id=p.id, w=200),
+        'caption': p.caption or '',
+    } for p in photos]
+
+
 def contact_label(contact):
     """A person's name, with their company after it where they have one.
 
@@ -3025,6 +3055,8 @@ def can_edit():
 
 
 app.jinja_env.globals['can_edit'] = can_edit
+app.jinja_env.globals['property_photographs'] = property_photographs
+app.jinja_env.globals['gallery_photos'] = gallery_photos
 app.jinja_env.globals['contact_label'] = contact_label
 app.jinja_env.globals['fee_earners'] = fee_earners
 app.jinja_env.globals['fee_earner_name'] = fee_earner_name
