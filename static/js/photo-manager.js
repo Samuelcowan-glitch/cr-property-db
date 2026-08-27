@@ -15,7 +15,13 @@
     var grid = root.querySelector('[data-photo-grid]');
     var drop = root.querySelector('[data-drop]');
     var input = root.querySelector('input[type=file]');
-    var form = root.querySelector('[data-upload-form]');
+    /* The upload form sits outside this box — a form cannot be nested inside
+       the record form, so the file input joins it by its form attribute
+       instead. Ask the input which form owns it rather than looking inside
+       the box, where it has never been. */
+    var form = (input && input.form) ||
+               root.querySelector('[data-upload-form]') ||
+               document.querySelector('[data-upload-form]');
     var status = root.querySelector('[data-photo-status]');
 
     /* ── expand / collapse ────────────────────────────────────────────────*/
