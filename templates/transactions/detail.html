@@ -105,7 +105,19 @@
         <div class="frow">
           <div class="fcell fcell--label">Fee earner</div>
           <div class="fcell fcell--edit">
-            <input name="fee_earner" form="trx-form" value="{{ t.fee_earner or '' }}">
+            {% set _people = fee_earners() %}
+      <select name="fee_earner_id" form="trx-form">
+        {% if not (_people|length == 1 and not t.fee_earner_id) %}
+        <option value="">Not assigned</option>
+        {% endif %}
+        {% for _p in _people %}
+        <option value="{{ _p.id }}"
+                {{ 'selected' if (t.fee_earner_id and t.fee_earner_id|string == _p.id|string)
+                               or (not t.fee_earner_id and _people|length == 1) }}>
+          {{ _p.display_name }}
+        </option>
+        {% endfor %}
+      </select>
           </div>
           <div class="fcell fcell--label">Transaction date</div>
           <div class="fcell fcell--edit">

@@ -83,7 +83,19 @@
           </select>
         </div>
         <div class="fcell fcell--label">Agent</div>
-        <div class="fcell fcell--edit"><input type="text" name="assigned_agent" value="{{ contact.assigned_agent or '' }}" placeholder="Not set"></div>
+        <div class="fcell fcell--edit">{% set _people = fee_earners() %}
+      <select name="fee_earner_id">
+        {% if not (_people|length == 1 and not contact.fee_earner_id) %}
+        <option value="">Not assigned</option>
+        {% endif %}
+        {% for _p in _people %}
+        <option value="{{ _p.id }}"
+                {{ 'selected' if (contact.fee_earner_id and contact.fee_earner_id|string == _p.id|string)
+                               or (not contact.fee_earner_id and _people|length == 1) }}>
+          {{ _p.display_name }}
+        </option>
+        {% endfor %}
+      </select></div>
       </div>
     </div>
 
@@ -221,7 +233,7 @@
       </div>
       {% for a in contact.activities %}
       <div class="frow">
-        <div class="fcell fcell--label w-narrow fcell--top">{{ a.created_at.strftime('%d %b %Y') }}</div>
+        <div class="fcell fcell--label fcell--top">{{ a.created_at.strftime('%d %b %Y') }}</div>
         <div class="fcell fcell--top grow-2">
           {% if a.kind == 'status_change' %}
             <span class="badge badge-hold">Status</span>&nbsp;{{ a.old_status or '—' }} &rarr; <strong>{{ a.new_status }}</strong>

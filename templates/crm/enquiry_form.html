@@ -55,9 +55,20 @@
       </div>
 
       <div class="form-group">
-        <label for="fee_earner">Fee Earner</label>
-        <input type="text" id="fee_earner" name="fee_earner"
-               value="{{ enquiry.fee_earner if enquiry else '' }}" placeholder="e.g. B. Rutter">
+        <label for="fee_earner_id">Fee Earner</label>
+        <select id="fee_earner_id" name="fee_earner_id">
+          {% set _people = fee_earners() %}
+          {% if not (_people|length == 1 and not (enquiry.fee_earner_id if enquiry else none)) %}
+          <option value="">Not assigned</option>
+          {% endif %}
+          {% for _p in _people %}
+          <option value="{{ _p.id }}"
+                  {{ 'selected' if ((enquiry.fee_earner_id if enquiry else none) and (enquiry.fee_earner_id if enquiry else none)|string == _p.id|string)
+                                 or (not (enquiry.fee_earner_id if enquiry else none) and _people|length == 1) }}>
+            {{ _p.display_name }}
+          </option>
+          {% endfor %}
+        </select>
       </div>
 
       <div class="form-group">

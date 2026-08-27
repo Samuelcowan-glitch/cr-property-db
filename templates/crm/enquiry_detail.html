@@ -78,7 +78,7 @@
             {% endfor %}
           </select>
         </div>
-        <div class="fcell fcell--label w-narrow">Record</div>
+        <div class="fcell fcell--label">Record</div>
         <div class="fcell">
           {% if e.contact %}<a href="{{ url_for('contact_detail', id=e.contact.id) }}">{{ e.contact.full_name }}</a>
           {% else %}<span style="color:var(--grey-400)">Not linked</span>{% endif %}
@@ -94,7 +94,7 @@
             {% endfor %}
           </select>
         </div>
-        <div class="fcell fcell--label w-narrow">Prefers</div>
+        <div class="fcell fcell--label">Prefers</div>
         <div class="fcell fcell--edit">
           <select name="preferred_contact">
             {% for opt in ['', 'Mobile', 'Email', 'Landline', 'Post'] %}
@@ -107,7 +107,7 @@
       <div class="frow">
         <div class="fcell fcell--label">Mobile</div>
         <div class="fcell fcell--edit"><input type="tel" name="contact_mobile" value="{{ e.contact.mobile or '' }}" placeholder="Not added"></div>
-        <div class="fcell fcell--label w-narrow">Call</div>
+        <div class="fcell fcell--label">Call</div>
         <div class="fcell">
           {% if e.contact.mobile %}<a href="tel:{{ e.contact.mobile|replace(' ','') }}">{{ e.contact.mobile }}</a>
           {% else %}<span style="color:var(--grey-400)">—</span>{% endif %}
@@ -116,7 +116,7 @@
       <div class="frow">
         <div class="fcell fcell--label">Email</div>
         <div class="fcell fcell--edit"><input type="email" name="contact_email" value="{{ e.contact.email or '' }}" placeholder="Not added"></div>
-        <div class="fcell fcell--label w-narrow">Write</div>
+        <div class="fcell fcell--label">Write</div>
         <div class="fcell">
           {% if e.contact.email %}<a href="mailto:{{ e.contact.email }}">{{ e.contact.email }}</a>
           {% else %}<span style="color:var(--grey-400)">—</span>{% endif %}
@@ -139,7 +139,7 @@
         <div class="fcell fcell--edit">
           <input type="text" id="enq-type" name="enquiry_type" value="{{ e.enquiry_type or '' }}" placeholder="e.g. Agency — Letting">
         </div>
-        <div class="fcell fcell--label w-narrow">Source</div>
+        <div class="fcell fcell--label">Source</div>
         <div class="fcell fcell--edit"><input type="text" name="source" value="{{ e.source or '' }}" placeholder="Website, Zoopla…"></div>
       </div>
       <div class="frow">
@@ -152,7 +152,7 @@
             {% endfor %}
           </select>
         </div>
-        <div class="fcell fcell--label w-narrow">Record</div>
+        <div class="fcell fcell--label">Record</div>
         <div class="fcell">
           {% if e.linked_property %}<a href="{{ url_for('property_detail', id=e.linked_property.id) }}">{{ e.linked_property.address }}</a>
           {% else %}<span style="color:var(--grey-400)">Not linked</span>{% endif %}
@@ -168,13 +168,25 @@
             {% endfor %}
           </select>
         </div>
-        <div class="fcell fcell--label w-narrow">Negotiator</div>
-        <div class="fcell fcell--edit"><input type="text" name="fee_earner" value="{{ e.fee_earner or '' }}" placeholder="Not assigned"></div>
+        <div class="fcell fcell--label">Negotiator</div>
+        <div class="fcell fcell--edit">{% set _people = fee_earners() %}
+      <select name="fee_earner_id">
+        {% if not (_people|length == 1 and not e.fee_earner_id) %}
+        <option value="">Not assigned</option>
+        {% endif %}
+        {% for _p in _people %}
+        <option value="{{ _p.id }}"
+                {{ 'selected' if (e.fee_earner_id and e.fee_earner_id|string == _p.id|string)
+                               or (not e.fee_earner_id and _people|length == 1) }}>
+          {{ _p.display_name }}
+        </option>
+        {% endfor %}
+      </select></div>
       </div>
       <div class="frow">
         <div class="fcell fcell--label">Received</div>
         <div class="fcell fcell--edit"><input type="date" name="received_date" value="{{ e.received_date.isoformat() if e.received_date else '' }}"></div>
-        <div class="fcell fcell--label w-narrow">Logged</div>
+        <div class="fcell fcell--label">Logged</div>
         <div class="fcell">{{ e.created_at.strftime('%d %b %Y, %H:%M') if e.created_at else '—' }}</div>
       </div>
       <div class="frow">
@@ -186,7 +198,7 @@
             {% endfor %}
           </select>
         </div>
-        <div class="fcell fcell--label w-narrow">Priority</div>
+        <div class="fcell fcell--label">Priority</div>
         <div class="fcell fcell--edit">
           <select name="priority">
             {% for p in ['', 'High', 'Medium', 'Low'] %}
@@ -206,13 +218,13 @@
       <div class="frow">
         <div class="fcell fcell--label">Preferred location</div>
         <div class="fcell fcell--edit"><input type="text" name="req_area" value="{{ e.req_area or '' }}" placeholder="e.g. Fulham, Parsons Green"></div>
-        <div class="fcell fcell--label w-narrow">Property type</div>
+        <div class="fcell fcell--label">Property type</div>
         <div class="fcell fcell--edit"><input type="text" name="req_property_type" value="{{ e.req_property_type or '' }}" placeholder="e.g. Shop, Office"></div>
       </div>
       <div class="frow">
         <div class="fcell fcell--label">Intended use</div>
         <div class="fcell fcell--edit"><input type="text" name="req_use_class" value="{{ e.req_use_class or '' }}" placeholder="e.g. Class E"></div>
-        <div class="fcell fcell--label w-narrow">Category</div>
+        <div class="fcell fcell--label">Category</div>
         <div class="fcell fcell--edit">
           <select name="req_category">
             {% for c in ['', 'commercial', 'residential'] %}
@@ -224,13 +236,13 @@
       <div class="frow">
         <div class="fcell fcell--label">Size (sq ft)</div>
         <div class="fcell fcell--edit"><input type="text" name="req_size_min" value="{{ '{:,.0f}'.format(e.req_size_min) if e.req_size_min else '' }}" placeholder="Minimum"></div>
-        <div class="fcell fcell--label w-narrow">to</div>
+        <div class="fcell fcell--label">to</div>
         <div class="fcell fcell--edit"><input type="text" name="req_size_max" value="{{ '{:,.0f}'.format(e.req_size_max) if e.req_size_max else '' }}" placeholder="Maximum"></div>
       </div>
       <div class="frow">
         <div class="fcell fcell--label">Budget (&pound;)</div>
         <div class="fcell fcell--edit"><input type="text" name="req_budget_min" value="{{ '{:,.0f}'.format(e.req_budget_min) if e.req_budget_min else '' }}" placeholder="Minimum"></div>
-        <div class="fcell fcell--label w-narrow">to</div>
+        <div class="fcell fcell--label">to</div>
         <div class="fcell fcell--edit"><input type="text" name="req_budget_max" value="{{ '{:,.0f}'.format(e.req_budget_max) if e.req_budget_max else '' }}" placeholder="Maximum"></div>
       </div>
       <div class="frow">
@@ -242,7 +254,7 @@
             {% endfor %}
           </select>
         </div>
-        <div class="fcell fcell--label w-narrow">Lease or buy</div>
+        <div class="fcell fcell--label">Lease or buy</div>
         <div class="fcell fcell--edit">
           <select name="req_tenure">
             {% for t in ['', 'Lease', 'Purchase', 'Either'] %}
@@ -254,7 +266,7 @@
       <div class="frow">
         <div class="fcell fcell--label">Wants to occupy</div>
         <div class="fcell fcell--edit"><input type="date" name="req_occupation_date" value="{{ e.req_occupation_date.isoformat() if e.req_occupation_date else '' }}"></div>
-        <div class="fcell fcell--label w-narrow">&nbsp;</div>
+        <div class="fcell fcell--label">&nbsp;</div>
         <div class="fcell">&nbsp;</div>
       </div>
       <div class="frow">
@@ -277,13 +289,13 @@
       <div class="frow">
         <div class="fcell fcell--label">Next call</div>
         <div class="fcell fcell--edit"><input type="date" name="next_call_date" value="{{ e.next_call_date.isoformat() if e.next_call_date else '' }}"></div>
-        <div class="fcell fcell--label w-narrow">Follow up by</div>
+        <div class="fcell fcell--label">Follow up by</div>
         <div class="fcell fcell--edit"><input type="date" name="next_follow_up" value="{{ e.next_follow_up.isoformat() if e.next_follow_up else '' }}"></div>
       </div>
       <div class="frow">
         <div class="fcell fcell--label">Last contact</div>
         <div class="fcell fcell--edit"><input type="date" name="last_contact_date" value="{{ e.last_contact_date.isoformat() if e.last_contact_date else '' }}"></div>
-        <div class="fcell fcell--label w-narrow">Standing</div>
+        <div class="fcell fcell--label">Standing</div>
         <div class="fcell">
           {% if e.next_follow_up and e.next_follow_up < today %}
           <span class="enq-due">Overdue since {{ e.next_follow_up.strftime('%d %b %Y') }}</span>

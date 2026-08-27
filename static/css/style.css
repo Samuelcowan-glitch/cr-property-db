@@ -206,7 +206,7 @@ a:hover { text-decoration: underline; color: var(--blue-l); }
 
 /* ── Alerts ────────────────────────────────────────────────────────────────── */
 .alerts { margin-bottom: 12px; }
-.alert { padding: 9px 14px; border-radius: 5px; font-size: 12.5px; margin-bottom: 6px; }
+.alert { padding: 9px 14px; border-radius: 3px; font-size: 12.5px; margin-bottom: 6px; }
 .alert-success { background: var(--success-bg); color: var(--success); }
 .alert-danger   { background: var(--danger-bg);  color: var(--danger); }
 .alert-info     { background: var(--info-bg);    color: var(--info); }
@@ -309,7 +309,7 @@ a:hover { text-decoration: underline; color: var(--blue-l); }
 .card {
   background: var(--white);
   border: 1px solid var(--grey-200);
-  border-radius: 7px;
+  border-radius: 3px;
   padding: 16px;
 }
 .card + .card { margin-top: 14px; }
@@ -326,7 +326,7 @@ a:hover { text-decoration: underline; color: var(--blue-l); }
 /* Stat row */
 .stat-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 14px; }
 .stat-tile {
-  background: var(--white); border: 1px solid var(--grey-200); border-radius: 7px;
+  background: var(--white); border: 1px solid var(--grey-200); border-radius: 3px;
   padding: 12px 14px; display: flex; flex-direction: column; gap: 2px;
   text-decoration: none; transition: border-color .12s, box-shadow .12s;
 }
@@ -347,7 +347,7 @@ a:hover { text-decoration: underline; color: var(--blue-l); }
 .panel {
   background: var(--white);
   border: 1px solid var(--grey-200);
-  border-radius: 7px;
+  border-radius: 3px;
   overflow: hidden;
   display: flex; flex-direction: column;
   min-height: 420px; max-height: 500px;
@@ -379,7 +379,7 @@ a:hover { text-decoration: underline; color: var(--blue-l); }
 }
 .panel-search input {
   width: 100%; padding: 5px 9px; font-size: 12px;
-  border: 1px solid var(--grey-200); border-radius: 4px;
+  border: 1px solid var(--grey-200); border-radius: 3px;
   font-family: inherit;
 }
 .panel-search input:focus { outline: none; border-color: var(--orange); }
@@ -397,7 +397,7 @@ a:hover { text-decoration: underline; color: var(--blue-l); }
 
 .listing-thumb {
   width: 52px; height: 40px;
-  border-radius: 4px;
+  border-radius: 3px;
   background: var(--grey-100);
   display: flex; align-items: center; justify-content: center;
   font-size: 18px; flex-shrink: 0;
@@ -461,7 +461,7 @@ a:hover { text-decoration: underline; color: var(--blue-l); }
 .bottom-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
 .panel-alt {
-  background: var(--white); border: 1px solid var(--grey-200); border-radius: 7px;
+  background: var(--white); border: 1px solid var(--grey-200); border-radius: 3px;
   overflow: hidden; display: flex; flex-direction: column;
   max-height: 280px;
 }
@@ -504,7 +504,7 @@ a:hover { text-decoration: underline; color: var(--blue-l); }
 ════════════════════════════════════════════════════════════════════════════ */
 
 /* Tables */
-.table-wrap { overflow-x: auto; border-radius: 7px; border: 1px solid var(--grey-200); background: var(--white); }
+.table-wrap { overflow-x: auto; border-radius: 3px; border: 1px solid var(--grey-200); background: var(--white); }
 table { width: 100%; border-collapse: collapse; }
 thead th {
   background: var(--grey-50); font-size: 10.5px; font-weight: 700;
@@ -518,21 +518,30 @@ tbody tr:hover td { background: var(--grey-50); }
 .td-actions { white-space: nowrap; display: flex; gap: 5px; }
 
 /* Forms */
-.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; align-items: start; }
 .form-grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
 .form-group { display: flex; flex-direction: column; gap: 4px; }
 .form-group.span-2 { grid-column: span 2; }
 .form-group.span-3 { grid-column: span 3; }
 label { font-size: 11.5px; font-weight: 600; color: var(--grey-700); }
-input[type=text], input[type=number], input[type=date], select, textarea {
-  border: 1px solid var(--grey-200); border-radius: 5px; padding: 7px 10px;
+input[type=text], input[type=number], input[type=date], input[type=email],
+input[type=tel], input[type=search], input[type=password], select, textarea {
+  border: 1px solid var(--grey-200); border-radius: 3px; padding: 6px 9px;
   font-size: 12.5px; font-family: inherit; color: var(--text);
   background: var(--white); transition: border-color .12s; width: 100%;
 }
 input:focus, select:focus, textarea:focus {
-  outline: none; border-color: var(--orange);
-  box-shadow: 0 0 0 2px rgba(200,96,26,.12);
+  outline: none; border-color: var(--navy);
+  box-shadow: 0 0 0 2px rgba(14, 31, 68, .12);
 }
+/* Every single-line control is the same height, on every page. */
+.form-group > input:not([type="checkbox"]):not([type="radio"]),
+.form-group > select { height: var(--cell-h, 32px); box-sizing: border-box; }
+.form-group > textarea { box-sizing: border-box; }
+/* Something that failed validation says so, and not by colour alone. */
+.form-group.is-invalid > input,
+.form-group.is-invalid > select { border-color: var(--danger); background: #fdf3f3; }
+.form-group .field-error { font-size: 10.5px; color: var(--danger); }
 textarea { resize: vertical; min-height: 76px; }
 .form-actions { display: flex; gap: 8px; margin-top: 8px; align-items: center; }
 
@@ -578,17 +587,17 @@ textarea { resize: vertical; min-height: 76px; }
 
 /* Folders */
 .folders-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(255px, 1fr)); gap: 10px; }
-.folder-card { border: 1px solid var(--grey-200); border-radius: 7px; overflow: hidden; background: var(--white); }
+.folder-card { border: 1px solid var(--grey-200); border-radius: 3px; overflow: hidden; background: var(--white); }
 .folder-card-header { background: var(--navy); color: var(--white); padding: 9px 12px; font-size: 11.5px; font-weight: 600; display: flex; align-items: center; gap: 7px; }
 .folder-card-header .folder-icon { font-size: 13px; }
 .folder-card-body { padding: 6px; }
-.folder-doc-item { display: flex; align-items: flex-start; justify-content: space-between; padding: 6px 7px; border-radius: 4px; font-size: 12px; gap: 7px; }
+.folder-doc-item { display: flex; align-items: flex-start; justify-content: space-between; padding: 6px 7px; border-radius: 3px; font-size: 12px; gap: 7px; }
 .folder-doc-item:hover { background: var(--grey-50); }
 .folder-doc-name { flex: 1; }
 .folder-doc-date { font-size: 10.5px; color: var(--grey-400); white-space: nowrap; }
 .folder-empty { padding: 8px; font-size: 11.5px; color: var(--grey-400); font-style: italic; }
 .folder-add-form { padding: 7px; border-top: 1px dashed var(--grey-200); display: none; }
-.folder-add-toggle { width: 100%; padding: 5px; font-size: 11px; color: var(--grey-600); background: none; border: 1px dashed var(--grey-200); border-radius: 4px; cursor: pointer; text-align: center; }
+.folder-add-toggle { width: 100%; padding: 5px; font-size: 11px; color: var(--grey-600); background: none; border: 1px dashed var(--grey-200); border-radius: 3px; cursor: pointer; text-align: center; }
 .folder-add-toggle:hover { background: var(--grey-50); border-color: var(--orange); color: var(--orange); }
 
 /* Type toggle */
@@ -606,7 +615,7 @@ select.ss-native {
 }
 .ss-button {
   width: 100%; text-align: left; cursor: pointer;
-  border: 1px solid var(--grey-200); border-radius: 5px; padding: 7px 26px 7px 10px;
+  border: 1px solid var(--grey-200); border-radius: 3px; padding: 7px 26px 7px 10px;
   font-size: 12.5px; font-family: inherit; color: var(--text);
   background: var(--white); transition: border-color .12s;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -625,13 +634,13 @@ select.ss-native {
 
 .ss-panel {
   position: absolute; z-index: 60; left: 0; right: 0; top: calc(100% + 4px);
-  background: var(--white); border: 1px solid var(--grey-200); border-radius: 6px;
+  background: var(--white); border: 1px solid var(--grey-200); border-radius: 3px;
   box-shadow: 0 8px 24px rgba(14,31,68,.14); overflow: hidden;
 }
 .ss-panel.ss-up { top: auto; bottom: calc(100% + 4px); }
 .ss-search { padding: 8px; border-bottom: 1px solid var(--grey-100); background: var(--grey-50); }
 .ss-input {
-  width: 100%; border: 1px solid var(--grey-200); border-radius: 5px; padding: 6px 9px;
+  width: 100%; border: 1px solid var(--grey-200); border-radius: 3px; padding: 6px 9px;
   font-size: 12.5px; font-family: inherit; color: var(--text); background: var(--white);
 }
 .ss-input:focus { outline: none; border-color: var(--orange); box-shadow: 0 0 0 2px rgba(224,48,63,.12); }
@@ -880,7 +889,7 @@ body, td, p, .fcell, .fval { font-weight: 400; }
 .cal-form .cal-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .cal-form label { font-size: 11.5px; font-weight: 600; color: var(--grey-600); letter-spacing: .02em; }
 .cal-form input, .cal-form select { width: 100%; padding: 7px 9px; font: inherit; font-size: 13px;
-  border: 1px solid var(--grey-200); border-radius: 4px; background: #fff; }
+  border: 1px solid var(--grey-200); border-radius: 3px; background: #fff; }
 .cal-form input:focus, .cal-form select:focus { outline: none; border-color: var(--navy); }
 .cal-form .ss-wrap { width: 100%; }
 .cal-req { color: var(--danger); }

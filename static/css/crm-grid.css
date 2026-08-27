@@ -25,6 +25,7 @@
   --cell-head:  #eef0f3;   /* heading strip inside a box */
   --cell-label: #f7f8fa;   /* label cell background */
   --cell-h:     32px;      /* one row — matches a compact button */
+  --label-w:    118px;     /* every field label, everywhere */
 }
 
 /* ── Segmented toolbar ─────────────────────────────────────────────────────
@@ -117,6 +118,9 @@
    right edge, each row its bottom edge, and the last of each is dropped so the
    panel border is never doubled. */
 .frow { display: flex; align-items: stretch; border-bottom: 1px solid var(--cell-line); }
+/* Anything holding rows lays them out on the same four columns, so a box that
+   is not a .box--grid still lines its dividers up with one that is. */
+.box > .frow, .box--fold > .box--grid > .frow { min-width: 0; }
 .frow:last-child { border-bottom: 0; }
 .fcell {
   flex: 1 1 0; min-width: 0;
@@ -128,15 +132,13 @@
 }
 .fcell:last-child { border-right: 0; }
 .fcell--label {
-  /* 0 1 rather than 0 0: in a narrow column a label that cannot give up any
-     width pushes its own value out of the row. */
-  flex: 0 1 120px; min-width: 76px;
+  /* One width, shared with the grid columns below, so a flex row and a grid
+     row put their divider in the same place. */
+  flex: 0 0 var(--label-w); min-width: 0;
   background: var(--cell-label);
   color: var(--grey-600);
   font-size: 11.5px;
 }
-.fcell--label.w-narrow { flex-basis: 92px; }
-.fcell--label.w-wide   { flex-basis: 160px; }
 .fcell--top { align-items: flex-start; }
 .fcell--num { justify-content: flex-end; font-variant-numeric: tabular-nums; }
 .fcell.is-empty { color: var(--grey-400); }
@@ -307,7 +309,7 @@ table.rec-table td.actions { white-space: nowrap; text-align: right; }
 .box .detail-table td:last-child { border-right: 0; }
 .box .detail-table tr:last-child td { border-bottom: 0; }
 .box .detail-table td:first-child {
-  width: 150px; background: var(--cell-label);
+  width: var(--label-w); background: var(--cell-label);
   font-size: 11.5px; font-weight: 500; color: var(--grey-600);
   text-transform: none; letter-spacing: 0;
 }
@@ -441,9 +443,9 @@ table.rec-table td.actions { white-space: nowrap; text-align: right; }
      value instead, so nothing is ever mislabelled. */
   .frow { flex-wrap: wrap; }
   .fcell { flex: 1 1 100%; border-right: 0; }
-  .fcell--label, .fcell--label.w-narrow {
+  .fcell--label {
     flex: 1 1 100%; min-height: 0; padding: 6px 9px 0; background: none;
-    font-weight: 600;
+    font-weight: var(--w-label);
   }
 }
 
@@ -456,6 +458,17 @@ table.rec-table td.actions { white-space: nowrap; text-align: right; }
 .box p { margin: 0 0 8px; }
 .box p:last-child { margin-bottom: 0; }
 .box input, .box select, .box button, .box .btn { line-height: 1.3; }
+/* One height for every single-line control, so neighbouring rows agree. */
+.box--grid .fcell--edit > input:not([type="checkbox"]):not([type="radio"]),
+.box--grid .fcell--edit > select,
+.fcell--edit > input:not([type="checkbox"]):not([type="radio"]),
+.fcell--edit > select {
+  height: var(--cell-h); min-height: var(--cell-h); box-sizing: border-box;
+}
+.fcell--edit > textarea { box-sizing: border-box; width: 100%; }
+/* Long names, addresses and notes wrap rather than running under a border. */
+.fcell { overflow-wrap: anywhere; }
+.fcell--label { overflow-wrap: normal; hyphens: none; }
 
 /* A long address, note or client name wraps instead of widening its box. */
 .box, .fcell, .org-main { overflow-wrap: anywhere; }
@@ -479,7 +492,7 @@ table.rec-table td.actions { white-space: nowrap; text-align: right; }
 
 .doc-box {
   display: flex; flex-direction: column; min-width: 0;
-  border: 1px solid var(--cell-line); border-radius: 5px;
+  border: 1px solid var(--cell-line); border-radius: 3px;
   background: var(--white); padding: 12px;
 }
 
@@ -492,7 +505,7 @@ table.rec-table td.actions { white-space: nowrap; text-align: right; }
    buttons out of the box; the full name is in the tooltip. */
 .doc-file {
   font-size: 12.5px; line-height: 1.3; color: var(--text);
-  background: #f0fdf4; border: 1px solid #86efac; border-radius: 4px;
+  background: var(--success-bg); border: 1px solid #bcdfc7; border-radius: 3px;
   padding: 7px 9px; margin-bottom: 8px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
@@ -515,7 +528,7 @@ table.rec-table td.actions { white-space: nowrap; text-align: right; }
 }
 .doc-upload input[type=file] {
   font-size: 11.5px; max-width: 100%; min-width: 0;
-  border: 1px solid var(--grey-200); border-radius: 4px; padding: 5px 6px;
+  border: 1px solid var(--grey-200); border-radius: 3px; padding: 5px 6px;
   background: var(--white);
 }
 .doc-upload .btn { width: 100%; justify-content: center; white-space: nowrap; }
@@ -536,7 +549,7 @@ table.rec-table td.actions { white-space: nowrap; text-align: right; }
    the same height and the box edges stay flush. */
 .box--grid {
   display: grid;
-  grid-template-columns: 118px minmax(0, 1fr) 118px minmax(0, 1fr);
+  grid-template-columns: var(--label-w) minmax(0, 1fr) var(--label-w) minmax(0, 1fr);
   align-items: stretch;
 }
 .box--grid > .box-head { grid-column: 1 / -1; }
@@ -577,7 +590,7 @@ table.rec-table td.actions { white-space: nowrap; text-align: right; }
 .list-filter { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; flex: 1 1 auto; }
 .list-filter input, .list-filter select {
   font: inherit; font-size: 12.5px; padding: 6px 9px; min-width: 0;
-  border: 1px solid var(--cell-edge); border-radius: 4px; background: var(--white);
+  border: 1px solid var(--cell-edge); border-radius: 3px; background: var(--white);
 }
 .list-filter input { flex: 0 1 300px; min-width: 180px; }
 .list-filter select { flex: 0 0 150px; }
@@ -585,7 +598,7 @@ table.rec-table td.actions { white-space: nowrap; text-align: right; }
 
 /* The list itself: the shared property rows in one bordered panel. */
 .rec-list {
-  border: 1px solid var(--cell-edge); border-radius: 4px;
+  border: 1px solid var(--cell-edge); border-radius: 3px;
   background: var(--white); overflow: hidden;
 }
 .rec-list .org-row { padding: 10px 12px; }
@@ -603,7 +616,7 @@ table.rec-table td.actions { white-space: nowrap; text-align: right; }
 .rec-header {
   display: flex; align-items: flex-start; justify-content: space-between;
   gap: 12px; flex-wrap: wrap; margin-bottom: 12px; padding: 13px 16px;
-  background: var(--white); border: 1px solid var(--grey-200); border-radius: 8px;
+  background: var(--white); border: 1px solid var(--grey-200); border-radius: 3px;
 }
 .rec-header h2 { font-size: 18px; font-weight: 700; color: var(--navy);
   margin: 0 0 4px; line-height: 1.3; }
@@ -1036,7 +1049,7 @@ table.rec-table td.actions { white-space: nowrap; text-align: right; }
 .fin-tip {
   position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%);
   min-width: 190px; max-width: 260px; padding: 8px 10px;
-  background: var(--navy); color: #fff; border-radius: 4px;
+  background: var(--navy); color: #fff; border-radius: 3px;
   font-size: 11px; line-height: 1.5; text-align: left;
   box-shadow: 0 6px 18px rgba(14, 31, 68, .28);
   opacity: 0; visibility: hidden; transition: opacity .12s ease;
@@ -1164,7 +1177,7 @@ table.rec-table td.actions { white-space: nowrap; text-align: right; }
 
 /* ── Choosing an organisation for a landlord, tenant or client field ─────── */
 .orgpick-row {
-  display: grid; grid-template-columns: 110px minmax(0, 1fr);
+  display: grid; grid-template-columns: var(--label-w) minmax(0, 1fr);
   border-bottom: 1px solid var(--cell-line); align-items: start;
 }
 .orgpick-row:last-child { border-bottom: 0; }

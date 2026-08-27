@@ -483,10 +483,13 @@
       {% endfor %}
     </select>
 
-    <select name="fee_earner">
+    <select name="fee_earner_id">
       <option value="">All fee earners</option>
-      {% for fe in fee_earners %}
-      <option value="{{ fe }}" {{ 'selected' if args.get('fee_earner') == fe }}>{{ fe }}</option>
+      {% for person in fee_earners() %}
+      <option value="{{ person.id }}"
+              {{ 'selected' if args.get('fee_earner_id')|string == person.id|string }}>
+        {{ person.display_name }}
+      </option>
       {% endfor %}
     </select>
 

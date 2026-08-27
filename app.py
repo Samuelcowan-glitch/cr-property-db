@@ -365,7 +365,8 @@ class Transaction(db.Model):
     # out from these on the way out, so a figure can never go stale.
     reference         = db.Column(db.String(30), index=True)  # TR-0001
     status            = db.Column(db.String(30), default='Draft', index=True)
-    fee_earner        = db.Column(db.String(120), index=True)
+    fee_earner        = db.Column(db.String(120), index=True)   # kept: what was typed before
+    fee_earner_id     = db.Column(db.Integer, db.ForeignKey('users.id'), index=True)
     client            = db.Column(db.String(255))   # who we act for and invoice
     project_id        = db.Column(db.Integer, db.ForeignKey('projects.id'))
     agreed_value      = db.Column(db.Float)         # agreed rent or sale price
@@ -679,7 +680,8 @@ class Organisation(db.Model):
     # ── Essential details ──
     trading_name    = db.Column(db.String(255))
     legal_name      = db.Column(db.String(255))
-    fee_earner      = db.Column(db.String(120), index=True)
+    fee_earner      = db.Column(db.String(120), index=True)   # kept: what was typed before
+    fee_earner_id   = db.Column(db.Integer, db.ForeignKey('users.id'), index=True)
     source          = db.Column(db.String(120))     # how they came to us
     main_contact_id = db.Column(db.Integer, db.ForeignKey('contacts.id'))
 
@@ -861,7 +863,8 @@ class Contact(db.Model):
     status            = db.Column(db.String(30), default='Prospect')
     preferred_move_in = db.Column(db.Date)
     lease_length      = db.Column(db.String(50))
-    assigned_agent    = db.Column(db.String(100))
+    assigned_agent    = db.Column(db.String(100))   # kept: what was typed before
+    fee_earner_id     = db.Column(db.Integer, db.ForeignKey('users.id'), index=True)
     last_contact_date = db.Column(db.Date)
     next_follow_up    = db.Column(db.Date)
 
@@ -912,7 +915,8 @@ class Enquiry(db.Model):
     contact_id = db.Column(db.Integer, db.ForeignKey('contacts.id'), nullable=True)
     organisation_id = db.Column(db.Integer, db.ForeignKey('organisations.id'), nullable=True)
     project_id = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=True)
-    fee_earner = db.Column(db.String(100))
+    fee_earner = db.Column(db.String(100))   # kept: what was typed before
+    fee_earner_id = db.Column(db.Integer, db.ForeignKey('users.id'), index=True)
     received_date = db.Column(db.Date)
     notes = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -1047,7 +1051,8 @@ class Project(db.Model):
     name = db.Column(db.String(255), nullable=False)
     project_ref = db.Column(db.String(50))
     status = db.Column(db.String(20), default='Active')   # Active, Complete, On Hold
-    fee_earner = db.Column(db.String(100))
+    fee_earner = db.Column(db.String(100))   # kept: what was typed before
+    fee_earner_id = db.Column(db.Integer, db.ForeignKey('users.id'), index=True)
     client = db.Column(db.String(255))
     instruction_date = db.Column(db.Date)
     notes = db.Column(db.Text)
@@ -1273,7 +1278,8 @@ class ProjectService(db.Model):
     project_id   = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=False)
     service_type = db.Column(db.String(50), nullable=False)  # Sale, Letting, Rent Review, etc.
     status       = db.Column(db.String(20), default='Active')
-    fee_earner   = db.Column(db.String(100))
+    fee_earner   = db.Column(db.String(100))   # kept: what was typed before
+    fee_earner_id = db.Column(db.Integer, db.ForeignKey('users.id'), index=True)
     fee_percent  = db.Column(db.Float)   # % fee
     fee_fixed    = db.Column(db.Float)   # £ fixed fee
     notes        = db.Column(db.Text)
@@ -1326,6 +1332,20 @@ class User(UserMixin, db.Model):
     totp_secret   = db.Column(db.String(64))       # set once MFA is enrolled
     mfa_enabled   = db.Column(db.Boolean, default=False)
     last_login_at = db.Column(db.DateTime)
+
+    # How this person is named on a record. The username is for signing in;
+    # this is what a client-facing figure should read.
+    full_name     = db.Column(db.String(120))
+    # Deliberately not called is_active: Flask-Login reads that name to decide
+    # whether somebody may sign in, and a column defaulting to nothing would
+    # lock the office out. This only decides who appears in a list.
+    active        = db.Column(db.Boolean, default=True, nullable=False)
+    can_earn_fees = db.Column(db.Boolean, default=True, nullable=False)
+
+    @property
+    def display_name(self):
+        """What to show on a record. Never initials."""
+        return self.full_name or self.username
 
     def can(self, action):
         return action in ROLES.get(self.role or DEFAULT_ROLE, set())
@@ -1509,6 +1529,33 @@ def requires(action):
             return fn(*a, **kw)
         return guarded
     return wrapper
+
+
+def fee_earners():
+    """Everyone who may be assigned work, in the order they should be offered.
+
+    Only active accounts allowed to carry a fee. A viewer cannot be a fee
+    earner because they cannot act on anything.
+    """
+    return (User.query
+            .filter(User.active.is_(True), User.can_earn_fees.is_(True))
+            .filter(User.role != 'viewer')
+            .order_by(User.full_name, User.username).all())
+
+
+def default_fee_earner():
+    """The one to preselect on a new record, when there is only one to choose."""
+    people = fee_earners()
+    return people[0] if len(people) == 1 else None
+
+
+def fee_earner_name(user_id, fallback=None):
+    """A fee earner's name for display, falling back to whatever was recorded."""
+    if user_id:
+        user = User.query.get(user_id)
+        if user:
+            return user.display_name
+    return fallback or None
 
 
 @login_manager.user_loader
@@ -2453,10 +2500,11 @@ def transaction_extras(rows, everyone):
     # ── Who did it ──
     board = {}
     for t in rows:
-        if not t.fee_earner:
+        who = fee_earner_name(t.fee_earner_id, t.fee_earner)
+        if not who:
             continue
-        row = board.setdefault(t.fee_earner, {
-            'name': t.fee_earner, 'completed': 0, 'billed': 0.0,
+        row = board.setdefault(who, {
+            'name': who, 'completed': 0, 'billed': 0.0,
             'received': 0.0, 'live': 0})
         if t.has_completed:
             row['completed'] += 1
@@ -2868,6 +2916,8 @@ TRANSACTION_STATUS_CLASS = {
 }
 app.jinja_env.globals['status_class'] = \
     lambda st: TRANSACTION_STATUS_CLASS.get(st, 'st-draft')
+app.jinja_env.globals['fee_earners'] = fee_earners
+app.jinja_env.globals['fee_earner_name'] = fee_earner_name
 app.jinja_env.globals['ORG_TYPES'] = ORG_TYPES
 app.jinja_env.globals['ORG_STATUSES'] = ORG_STATUSES
 app.jinja_env.globals['ORG_STATUS_NAMES'] = ORG_STATUS_NAMES
@@ -2890,7 +2940,7 @@ TRANSACTION_SORTS = {
     'client':      lambda t: (t.client or '').lower(),
     'counterparty': lambda t: (t.counterparty or '').lower(),
     'type':        lambda t: (t.transaction_type or '').lower(),
-    'fee_earner':  lambda t: (t.fee_earner or '').lower(),
+    'fee_earner':  lambda t: (fee_earner_name(t.fee_earner_id, t.fee_earner) or '').lower(),
     'status':      lambda t: (t.status or '').lower(),
     'value':       lambda t: t.commission_basis,
     'fee':         lambda t: (t.fee_percent or 0.0) if t.fee_type != 'Fixed' else (t.fixed_fee or 0.0),
@@ -2918,11 +2968,13 @@ def _transaction_filters(rows, args):
         rows = [t for t in rows if hit(t)]
     for key, get in (('type', lambda t: t.transaction_type),
                      ('status', lambda t: t.status),
-                     ('fee_earner', lambda t: t.fee_earner),
+                     ('fee_earner_id', lambda t: t.fee_earner_id),
                      ('client', lambda t: t.client)):
         want = (args.get(key) or '').strip()
         if want:
-            rows = [t for t in rows if (get(t) or '') == want]
+            # Compared as text, because a fee earner is an id and a status is
+            # a word, and both arrive from the query string as strings.
+            rows = [t for t in rows if str(get(t) or '') == want]
     prop_id = (args.get('property') or '').strip()
     if prop_id.isdigit():
         rows = [t for t in rows if t.property_id == int(prop_id)]
@@ -2981,7 +3033,7 @@ def transactions_list():
                               request.args.get('view', 'expected'),
                               everyone=chart_everyone)
     filtered = any(chart_args.get(k) for k in
-                   ('q', 'type', 'status', 'fee_earner', 'client', 'property', 'from', 'to'))
+                   ('q', 'type', 'status', 'fee_earner_id', 'client', 'property', 'from', 'to'))
 
     # Archived and fallen-through transactions are outside the figures, but
     # somebody still has to be able to find them.
@@ -3001,7 +3053,7 @@ def transactions_list():
         view=chart['view'], views=TRANSACTION_VIEWS, filtered=filtered,
         segment=(request.args.get('stage'), request.args.get('bucket')),
         sort=sort, dir=direction, args=request.args, today=date.today(),
-        fee_earners=sorted({t.fee_earner for t in everyone if t.fee_earner}),
+
         clients=sorted({t.client for t in everyone if t.client}),
         properties=Property.query.order_by(Property.address).all(),
         listed_totals={
@@ -3510,7 +3562,7 @@ def project_new():
             name=name,
             project_ref=_ftext(form.get('project_ref')),
             status=form.get('status') or 'Active',
-            fee_earner=_ftext(form.get('fee_earner')),
+            fee_earner_id=_fid(form.get('fee_earner_id')),
             client=_ftext(form.get('client')),
             landlord_name=_ftext(form.get('landlord_name')),
             instruction_date=_parse_date(form.get('instruction_date')),
@@ -3831,6 +3883,7 @@ def organisation_form_values(org):
         'status': org.status or 'Prospect',
         'types': org.type_names,
         'main_contact_id': org.main_contact_id or '',
+        'fee_earner_id': org.fee_earner_id or '',
     })
     for name, _key, _c in ORGANISATION_COMPLIANCE_FIELDS:
         values.setdefault(name, getattr(org, name) or '')
@@ -3931,7 +3984,7 @@ def _organisation_required(form, org=None):
     types = [t for t in form.getlist('types') if t in ORG_TYPES]
     if not types and 'types_submitted' in form:
         errors['types'] = 'Choose at least one type.'
-    if not (form.get('fee_earner') or '').strip():
+    if not _fid(form.get('fee_earner_id')):
         errors['fee_earner'] = 'Every organisation needs an assigned fee earner.'
     return errors
 
@@ -4437,8 +4490,8 @@ def api_organisation_quick():
     name = (data.get('name') or '').strip()
     if not name:
         return jsonify({'ok': False, 'error': 'An organisation needs a name.'}), 400
-    fee_earner = (data.get('fee_earner') or '').strip()
-    if not fee_earner:
+    earner_id = _fid(data.get('fee_earner_id') or data.get('fee_earner'))
+    if not earner_id:
         return jsonify({'ok': False, 'error': 'Choose an assigned fee earner.'}), 400
     status = (data.get('status') or 'Prospect').strip()
     if status not in ORG_STATUS_NAMES:
@@ -4459,7 +4512,7 @@ def api_organisation_quick():
                 'url': url_for('organisation_detail', id=h['org'].id),
             } for h in near]}), 409
 
-    org = Organisation(name=name, status=status, fee_earner=fee_earner,
+    org = Organisation(name=name, status=status, fee_earner_id=earner_id,
                        trading_name=_ftext(data.get('trading_name')),
                        company_number=_ftext(data.get('company_number')),
                        email=_ftext(data.get('email')),
@@ -4642,6 +4695,19 @@ def _fint(v):
         return None
 
 
+def _fid(v):
+    """A fee earner's id, or nothing.
+
+    Anything that is not an active account allowed to carry a fee is refused
+    rather than stored, so a name cannot be invented by editing the request.
+    """
+    raw = str(v or '').strip()
+    if not raw.isdigit():
+        return None
+    chosen = int(raw)
+    return chosen if any(p.id == chosen for p in fee_earners()) else None
+
+
 def _ftext(v):
     v = (v or '').strip()
     return v or None
@@ -4660,6 +4726,7 @@ def apply_form_fields(obj, form, fields):
 
 
 ORGANISATION_FIELDS = [
+    ('fee_earner_id',      'fee_earner_id',      _fid),
     ('name',               'name',               None),
     ('trading_name',       'trading_name',       _ftext),
     ('legal_name',         'legal_name',         _ftext),
@@ -4697,6 +4764,7 @@ ORGANISATION_COMPLIANCE_FIELDS = [
 
 
 CONTACT_FIELDS = [
+    ('fee_earner_id',      'fee_earner_id',      _fid),
     ('first_name',        'first_name',        None),
     ('last_name',         'last_name',         None),
     ('job_title',         'job_title',         _ftext),
@@ -4724,6 +4792,7 @@ CONTACT_FIELDS = [
 
 
 TRANSACTION_FIELDS = [
+    ('fee_earner_id',      'fee_earner_id',      _fid),
     ('reference',          'reference',          _ftext),
     ('status',             'status',             _ftext),
     ('fee_earner',         'fee_earner',         _ftext),
@@ -4766,6 +4835,7 @@ TRANSACTION_FIELDS = [
 
 
 PROJECT_FIELDS = [
+    ('fee_earner_id',      'fee_earner_id',      _fid),
     ('name',                 'name',                 None),
     ('project_ref',          'project_ref',          _ftext),
     ('status',               'status',               _ftext),
@@ -5187,7 +5257,7 @@ def _parse_enquiry_form(form, e=None):
         contact_id=pi(form.get('contact_id')),
         organisation_id=pi(form.get('organisation_id')),
         project_id=pi(form.get('project_id')),
-        fee_earner=form.get('fee_earner'),
+        fee_earner_id=_fid(form.get('fee_earner_id')),
         received_date=pd(form.get('received_date')),
         last_contact_date=pd(form.get('last_contact_date')),
         next_follow_up=pd(form.get('next_follow_up')),
@@ -5711,7 +5781,7 @@ def service_add(id):
             project_id=id,
             service_type=stype,
             status=request.form.get('status', 'Active'),
-            fee_earner=request.form.get('fee_earner') or project.fee_earner,
+            fee_earner_id=_fid(request.form.get('fee_earner_id')) or project.fee_earner_id,
             fee_percent=pf(request.form.get('fee_percent','')),
             fee_fixed=pf(request.form.get('fee_fixed','')),
             notes=request.form.get('notes') or None,
@@ -5729,7 +5799,7 @@ def service_edit(id):
         def pf(v): return float(v.replace(',','')) if v and v.strip() else None
         s.service_type = request.form.get('service_type', s.service_type)
         s.status       = request.form.get('status', 'Active')
-        s.fee_earner   = request.form.get('fee_earner') or None
+        s.fee_earner_id = _fid(request.form.get('fee_earner_id'))
         s.fee_percent  = pf(request.form.get('fee_percent',''))
         s.fee_fixed    = pf(request.form.get('fee_fixed',''))
         s.notes        = request.form.get('notes') or None
@@ -7173,6 +7243,36 @@ def _migrate_project_columns():
             db.session.rollback()
             app.logger.exception('Could not carry organisation types across')
 
+        # ── Staff assignment ────────────────────────────────────────────
+        # Records now point at a user rather than holding a typed name. The
+        # typed name stays in its own column: it is the evidence for the link,
+        # and the only record of anything that could not be identified.
+        user_existing = {col['name'] for col in insp.get_columns('users')}
+        fee_tables = [('transactions', 'fee_earner_id'), ('organisations', 'fee_earner_id'),
+                      ('enquiries', 'fee_earner_id'), ('projects', 'fee_earner_id'),
+                      ('project_services', 'fee_earner_id'), ('contacts', 'fee_earner_id')]
+        with db.engine.connect() as conn:
+            for col_name, col_def in (('full_name', 'TEXT'),
+                                      ('active', 'BOOLEAN DEFAULT 1'),
+                                      ('can_earn_fees', 'BOOLEAN DEFAULT 1')):
+                if col_name not in user_existing:
+                    conn.execute(text(f'ALTER TABLE users ADD COLUMN {col_name} {col_def}'))
+            for table, col_name in fee_tables:
+                try:
+                    have = {c['name'] for c in insp.get_columns(table)}
+                except Exception:
+                    continue
+                if col_name not in have:
+                    conn.execute(text(f'ALTER TABLE {table} ADD COLUMN {col_name} INTEGER'))
+            conn.commit()
+
+        try:
+            _name_the_users()
+            _link_fee_earners()
+        except Exception:
+            db.session.rollback()
+            app.logger.exception('Could not map the fee earners')
+
         cont_cols = [
             ('req_category', 'TEXT'),      ('req_property_type', 'TEXT'),
             ('req_use_class', 'TEXT'),     ('req_area', 'TEXT'),
@@ -7404,6 +7504,91 @@ def _seed_project_listings():
             created_at=p.created_at,
         ))
     db.session.commit()
+
+
+def _name_the_users():
+    """Give the office account the name a client would recognise.
+
+    Only filled in where it is blank, so a name entered by hand is never
+    replaced. With a single account, that account is Benjamin Cowan.
+    """
+    people = User.query.order_by(User.id).all()
+    unnamed = [u for u in people if not (u.full_name or '').strip()]
+    if len(people) == 1 and unnamed:
+        unnamed[0].full_name = 'Benjamin Cowan'
+    for user in people:
+        if user.active is None:
+            user.active = True
+        if user.can_earn_fees is None:
+            user.can_earn_fees = True
+    db.session.commit()
+
+
+def _fee_earner_aliases(user):
+    """The written forms of a name that certainly mean this person.
+
+    "Benjamin Cowan", "B Cowan", "B. Cowan", "BC" and the username. Anything
+    else is somebody the CRM cannot identify, and is left alone.
+    """
+    forms = {user.username}
+    full = (user.full_name or '').strip()
+    if full:
+        forms.add(full)
+        parts = full.split()
+        if len(parts) >= 2:
+            first, last = parts[0], parts[-1]
+            forms.update({f'{first[0]} {last}', f'{first[0]}. {last}',
+                          f'{first[0]}{last}', f'{last}, {first}',
+                          ''.join(p[0] for p in parts)})
+    return {re.sub(r'[^a-z0-9]', '', f.lower()) for f in forms if f}
+
+
+def _link_fee_earners():
+    """Point existing records at a user where the name certainly matches.
+
+    A name matching exactly one person is linked. A name matching nobody, or
+    more than one person, is left as it is and reported in the log — guessing
+    would put somebody else's name on a client's instruction.
+    """
+    people = User.query.all()
+    lookup = {}
+    for user in people:
+        for alias in _fee_earner_aliases(user):
+            lookup.setdefault(alias, set()).add(user.id)
+
+    pairs = [(Transaction, 'fee_earner'), (Organisation, 'fee_earner'),
+             (Enquiry, 'fee_earner'), (Project, 'fee_earner'),
+             (ProjectService, 'fee_earner'), (Contact, 'assigned_agent')]
+    linked, unknown, ambiguous = 0, set(), set()
+    for model, field in pairs:
+        for row in model.query.filter(getattr(model, field).isnot(None)).all():
+            if row.fee_earner_id:
+                continue
+            typed = getattr(row, field) or ''
+            key = re.sub(r'[^a-z0-9]', '', typed.lower())
+            if not key:
+                continue
+            found = lookup.get(key, set())
+            if len(found) == 1:
+                row.fee_earner_id = next(iter(found))
+                linked += 1
+            elif len(found) > 1:
+                ambiguous.add(typed)
+            else:
+                unknown.add(typed)
+    db.session.commit()
+    if linked:
+        app.logger.info('Fee earners: linked %s record(s) to a user.', linked)
+    if unknown:
+        app.logger.warning(
+            'Fee earners: %s name(s) match no user account and were left as '
+            'typed — %s', len(unknown), ', '.join(sorted(unknown)[:20]))
+    if ambiguous:
+        app.logger.warning(
+            'Fee earners: %s name(s) match more than one user and were left as '
+            'typed — %s', len(ambiguous), ', '.join(sorted(ambiguous)[:20]))
+    return {'linked': linked, 'unknown': sorted(unknown),
+            'ambiguous': sorted(ambiguous)}
 
 
 def _migrate_crm_columns():

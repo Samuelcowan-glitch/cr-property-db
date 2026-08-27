@@ -1,0 +1,57 @@
+{#
+   Shared form fields.
+
+   One definition each, used everywhere, so a field cannot look or behave one
+   way on an Add page and another on the record it creates.
+#}
+
+{# ── Fee earner ───────────────────────────────────────────────────────────
+   The only place work is assigned to a member of staff. A list of active
+   accounts rather than a text box, so a name cannot be invented and the
+   record keeps the person's id rather than a spelling of their name.
+
+   Pass the record, or nothing for a new one — with a single fee earner in the
+   office, a new record is assigned to them and an existing one is left alone.
+#}
+{% macro fee_earner_field(current_id, form_id, label='Fee earner', errors={},
+                          required=false, legacy=None, full_row=false) %}
+{% set people = fee_earners() %}
+{% set only_one = people|length == 1 %}
+<div class="frow{{ ' frow--full' if full_row }}">
+  <div class="fcell fcell--label">{{ label }}{% if required %} <span class="req">*</span>{% endif %}</div>
+  <div class="fcell fcell--edit{{ ' is-invalid' if errors.get('fee_earner_id') }}">
+    <select name="fee_earner_id" form="{{ form_id }}" {{ 'required' if required }}>
+      {% if not (only_one and not current_id) %}
+      <option value="">Not assigned</option>
+      {% endif %}
+      {% for person in people %}
+      <option value="{{ person.id }}"
+              {{ 'selected' if (current_id and current_id == person.id)
+                             or (not current_id and only_one) }}>
+        {{ person.display_name }}
+      </option>
+      {% endfor %}
+    </select>
+    {% if errors.get('fee_earner_id') %}
+    <span class="fcell-error">{{ errors['fee_earner_id'] }}</span>
+    {% elif legacy and not current_id %}
+    <span class="fcell-hint">
+      Recorded as &ldquo;{{ legacy }}&rdquo;, which matches no account. Choose who it is.
+    </span>
+    {% endif %}
+  </div>
+</div>
+{% endmacro %}
+
+
+{# The same thing as a filter, where a blank means "everybody". #}
+{% macro fee_earner_filter(selected, name='fee_earner_id') %}
+<select name="{{ name }}">
+  <option value="">All fee earners</option>
+  {% for person in fee_earners() %}
+  <option value="{{ person.id }}" {{ 'selected' if selected|string == person.id|string }}>
+    {{ person.display_name }}
+  </option>
+  {% endfor %}
+</select>
+{% endmacro %}

@@ -42,7 +42,7 @@
         <div class="frow">
           <div class="fcell fcell--label">Starts</div>
           <div class="fcell fcell--edit"><input type="datetime-local" name="start" value="{{ start_local.strftime('%Y-%m-%dT%H:%M') }}"></div>
-          <div class="fcell fcell--label w-narrow">Ends</div>
+          <div class="fcell fcell--label">Ends</div>
           <div class="fcell fcell--edit"><input type="datetime-local" name="end" value="{{ end_local.strftime('%Y-%m-%dT%H:%M') }}"></div>
         </div>
         <div class="frow">
@@ -54,7 +54,7 @@
               {% endfor %}
             </select>
           </div>
-          <div class="fcell fcell--label w-narrow">Who</div>
+          <div class="fcell fcell--label">Who</div>
           <div class="fcell fcell--edit"><input type="text" name="owner" value="{{ ev.owner or '' }}"></div>
         </div>
         <div class="frow">

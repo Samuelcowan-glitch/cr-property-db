@@ -18,7 +18,7 @@
 }
 
 .enq-card {
-  background: var(--white); border: 1px solid var(--grey-200); border-radius: 6px;
+  background: var(--white); border: 1px solid var(--grey-200); border-radius: 3px;
   padding: 18px 20px;
 }
 
@@ -105,7 +105,7 @@
 .enq-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .enq-controls input, .enq-controls select {
   font: inherit; font-size: 12.5px; padding: 7px 10px; border: 1px solid var(--grey-200);
-  border-radius: 4px; background: var(--white); color: var(--text); min-width: 0;
+  border-radius: 3px; background: var(--white); color: var(--text); min-width: 0;
 }
 .enq-controls input:focus, .enq-controls select:focus { outline: none; border-color: var(--navy); }
 /* Sized so a full set of filters sits on one or two tidy rows rather than

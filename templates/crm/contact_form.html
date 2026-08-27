@@ -171,10 +171,20 @@
     </div>
     <div class="form-grid" style="margin-bottom:16px">
       <div class="form-group">
-        <label for="assigned_agent">Assigned Agent</label>
-        <input type="text" id="assigned_agent" name="assigned_agent"
-               value="{{ contact.assigned_agent if contact and contact.assigned_agent else '' }}"
-               placeholder="Fee earner">
+        <label for="fee_earner_id">Fee Earner</label>
+        <select id="fee_earner_id" name="fee_earner_id">
+          {% set _people = fee_earners() %}
+          {% if not (_people|length == 1 and not (contact.fee_earner_id if contact else none)) %}
+          <option value="">Not assigned</option>
+          {% endif %}
+          {% for _p in _people %}
+          <option value="{{ _p.id }}"
+                  {{ 'selected' if ((contact.fee_earner_id if contact else none) and (contact.fee_earner_id if contact else none)|string == _p.id|string)
+                                 or (not (contact.fee_earner_id if contact else none) and _people|length == 1) }}>
+            {{ _p.display_name }}
+          </option>
+          {% endfor %}
+        </select>
       </div>
       <div class="form-group">
         <label for="last_contact_date">Last Contacted</label>

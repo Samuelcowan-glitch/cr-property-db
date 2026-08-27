@@ -54,8 +54,19 @@
     </div>
     <div class="fcell fcell--label">Assigned fee earner <span class="req">*</span></div>
     <div class="fcell fcell--edit{{ _err(errors, 'fee_earner') }}">
-      <input name="fee_earner" form="{{ form_id }}" value="{{ v.get('fee_earner') or '' }}"
-             required placeholder="Who looks after this account">
+      {% set _people = fee_earners() %}
+      <select name="fee_earner_id" form="{{ form_id }}" required>
+        {% if not (_people|length == 1 and not v.get('fee_earner_id')) %}
+        <option value="">Not assigned</option>
+        {% endif %}
+        {% for _p in _people %}
+        <option value="{{ _p.id }}"
+                {{ 'selected' if (v.get('fee_earner_id') and v.get('fee_earner_id')|string == _p.id|string)
+                               or (not v.get('fee_earner_id') and _people|length == 1) }}>
+          {{ _p.display_name }}
+        </option>
+        {% endfor %}
+      </select>
       {{ _msg(errors, 'fee_earner') }}
     </div>
   </div>

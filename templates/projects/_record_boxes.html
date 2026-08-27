@@ -101,8 +101,19 @@
     {% endif %}
     <div class="fcell fcell--label">Fee earner</div>
     <div class="fcell fcell--edit">
-      <input type="text" name="fee_earner" value="{{ v.get('fee_earner') or '' }}"
-             placeholder="Not set" form="{{ form_id }}">
+      {% set people = fee_earners() %}
+      <select name="fee_earner_id" form="{{ form_id }}">
+        {% if not (people|length == 1 and not v.get('fee_earner_id')) %}
+        <option value="">Not assigned</option>
+        {% endif %}
+        {% for person in people %}
+        <option value="{{ person.id }}"
+                {{ 'selected' if (v.get('fee_earner_id') and v.get('fee_earner_id')|string == person.id|string)
+                               or (not v.get('fee_earner_id') and people|length == 1) }}>
+          {{ person.display_name }}
+        </option>
+        {% endfor %}
+      </select>
     </div>
   </div>
 
@@ -144,27 +155,22 @@
 
 
 {# ── Client contact details ───────────────────────────────────────────────#}
-{% macro client_box(v, form_id, errors={}, heading='Key Contacts') %}
+{% macro client_box(v, form_id, errors={}, heading='Client Contact Details') %}
 <div class="box box--grid">
   <div class="box-head">{{ heading }}</div>
   <div class="frow">
-    <div class="fcell fcell--label">Key contact</div>
-    <div class="fcell fcell--edit">
-      <input type="text" name="key_contact" value="{{ v.get('key_contact') or '' }}"
-             placeholder="e.g. Cara Mason" form="{{ form_id }}">
-    </div>
     <div class="fcell fcell--label">Phone</div>
     <div class="fcell fcell--edit">
       <input type="tel" name="client_phone" value="{{ v.get('client_phone') or '' }}"
              placeholder="Not set" form="{{ form_id }}">
     </div>
-  </div>
-  <div class="frow">
     <div class="fcell fcell--label">Mobile</div>
     <div class="fcell fcell--edit">
       <input type="tel" name="client_mobile" value="{{ v.get('client_mobile') or '' }}"
              placeholder="Not set" form="{{ form_id }}">
     </div>
+  </div>
+  <div class="frow frow--full">
     <div class="fcell fcell--label">Email</div>
     <div class="{{ _cls(errors, 'client_email') }}">
       <input type="email" name="client_email" value="{{ v.get('client_email') or '' }}"
