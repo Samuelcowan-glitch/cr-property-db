@@ -1,0 +1,53 @@
+{#
+   Choose the person an instruction is for.
+
+   Searches the people already in the CRM by name, by the company they belong
+   to, by email or by telephone, and links their contact record. The company
+   shown after the name comes from that record, so it follows a rename and is
+   never a second copy of the company's name.
+#}
+
+{% macro client_picker(contact, form_id, label='Client', can_change=true, legacy=None) %}
+<div class="clientpick" data-client-picker>
+  {# The value the record saves. The search box beside it is only for finding. #}
+  <input type="hidden" name="client_contact_id" form="{{ form_id }}"
+         value="{{ contact.id if contact else '' }}" data-client-value>
+
+  <div class="clientpick-current" {{ 'hidden' if not contact }}>
+    {% if contact %}
+    <a class="clientpick-name" href="{{ url_for('contact_detail', id=contact.id) }}"
+       title="{{ contact_label(contact) }}">{{ contact_label(contact) }}</a>
+    {% if contact.job_title or contact.email %}
+    <span class="clientpick-meta">
+      {{ contact.job_title or '' }}{% if contact.job_title and contact.email %} &middot; {% endif %}{{ contact.email or '' }}
+    </span>
+    {% endif %}
+    {% endif %}
+    {% if can_change %}
+    <span class="clientpick-act">
+      <button type="button" class="btn btn-outline btn-xs" data-client-change>Change</button>
+      <button type="button" class="btn btn-outline btn-xs" data-client-clear>Remove</button>
+    </span>
+    {% endif %}
+  </div>
+
+  {% if can_change %}
+  <div class="clientpick-choose" {{ 'hidden' if contact }}>
+    <input type="search" class="clientpick-q" autocomplete="off" data-client-search
+           placeholder="Search name, company, email or telephone…"
+           aria-label="Search for a {{ label|lower }}">
+    <div class="clientpick-results" hidden data-client-results></div>
+  </div>
+  {% else %}
+  {% if not contact %}<span class="clientpick-none">Not set</span>{% endif %}
+  {% endif %}
+
+  {% if legacy and not contact %}
+  {# The name typed in before clients were linked. Kept exactly as it is, and
+     shown so it does not disappear while the two are being reconciled. #}
+  <div class="clientpick-legacy" title="{{ legacy }}">
+    Recorded as &ldquo;{{ legacy }}&rdquo;. Search above to link the person.
+  </div>
+  {% endif %}
+</div>
+{% endmacro %}

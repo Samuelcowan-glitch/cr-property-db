@@ -1,3 +1,4 @@
+{% import "crm/_client_picker.html" as cp %}
 {#
   Project record fields, shared by the Project Overview and the New Project
   page so the two never drift apart.
@@ -85,9 +86,8 @@
   <div class="frow">
     {% if show_name %}
     <div class="fcell fcell--label">Client</div>
-    <div class="fcell fcell--edit">
-      <input type="text" name="client" value="{{ v.get('client') or '' }}"
-             placeholder="Not set" form="{{ form_id }}">
+    <div class="fcell fcell--edit fcell--flush">
+      {{ cp.client_picker(v.get('client_contact'), form_id, legacy=v.get('client')) }}
     </div>
     {% else %}
     <div class="fcell fcell--label">Status</div>
@@ -144,9 +144,8 @@
      two inputs of the same name in one form would overwrite each other. #}
   <div class="frow frow--full">
     <div class="fcell fcell--label">Client</div>
-    <div class="fcell fcell--edit">
-      <input type="text" name="client" value="{{ v.get('client') or '' }}"
-             placeholder="Not set" form="{{ form_id }}">
+    <div class="fcell fcell--edit fcell--flush">
+      {{ cp.client_picker(v.get('client_contact'), form_id, legacy=v.get('client')) }}
     </div>
   </div>
   {% endif %}

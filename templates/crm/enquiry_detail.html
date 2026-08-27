@@ -74,13 +74,13 @@
           <select name="contact_id" data-search>
             <option value="">— None —</option>
             {% for c in all_contacts %}
-            <option value="{{ c.id }}" {{ 'selected' if e.contact_id == c.id }}>{{ c.full_name }}</option>
+            <option value="{{ c.id }}" {{ 'selected' if e.contact_id == c.id }}>{{ contact_label(c) }}</option>
             {% endfor %}
           </select>
         </div>
         <div class="fcell fcell--label">Record</div>
         <div class="fcell">
-          {% if e.contact %}<a href="{{ url_for('contact_detail', id=e.contact.id) }}">{{ e.contact.full_name }}</a>
+          {% if e.contact %}<a href="{{ url_for('contact_detail', id=e.contact.id) }}">{{ contact_label(e.contact) }}</a>
           {% else %}<span style="color:var(--grey-400)">Not linked</span>{% endif %}
         </div>
       </div>

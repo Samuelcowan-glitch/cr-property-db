@@ -203,7 +203,7 @@
             <div class="enq-sub">{{ e.stage or 'Enquiry Received' }}</div>
           </td>
           <td>
-            {% if e.contact %}<a href="{{ url_for('contact_detail', id=e.contact.id) }}">{{ e.contact.full_name }}</a>
+            {% if e.contact %}<a href="{{ url_for('contact_detail', id=e.contact.id) }}">{{ contact_label(e.contact) }}</a>
             {% else %}<span style="color:var(--grey-400)">—</span>{% endif %}
             {% if e.organisation %}
             <div class="enq-sub"><a href="{{ url_for('organisation_detail', id=e.organisation.id) }}">{{ e.organisation.name }}</a></div>

@@ -99,7 +99,7 @@
           <option value="">— No contact —</option>
           {% for c in contacts %}
           <option value="{{ c.id }}" {{ 'selected' if enquiry and enquiry.contact_id == c.id else '' }}>
-            {{ c.full_name }}{% if c.organisation %} ({{ c.organisation.name }}){% endif %}
+            {{ contact_label(c) }}
           </option>
           {% endfor %}
         </select>

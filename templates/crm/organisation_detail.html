@@ -98,7 +98,7 @@
               {% endif %}
               <div class="rel-meta">
                 {% if r.contact %}
-                  <a href="{{ url_for('contact_detail', id=r.contact.id) }}">{{ r.contact.full_name }}</a>
+                  <a href="{{ url_for('contact_detail', id=r.contact.id) }}" title="{{ contact_label(r.contact) }}">{{ contact_label(r.contact) }}</a>
                 {% else %}
                   <span class="rel-none">No contact for this relationship</span>
                 {% endif %}

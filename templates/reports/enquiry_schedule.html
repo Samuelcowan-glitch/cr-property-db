@@ -157,7 +157,7 @@
   <div class="facts">
     <div class="fact"><div class="k">Enquiries this period</div><div class="v">{{ rows|length }}</div></div>
     <div class="fact"><div class="k">Since instruction</div><div class="v">{{ total_all_time }}</div></div>
-    <div class="fact"><div class="k">Prepared for</div><div class="v small">{{ project.client or project.landlord_name or '&mdash;'|safe }}</div></div>
+    <div class="fact"><div class="k">Prepared for</div><div class="v small">{{ project.client_display or project.landlord_name or '&mdash;'|safe }}</div></div>
     <div class="fact"><div class="k">Instruction</div><div class="v small">{{ project.instruction_type or project.name }}</div></div>
     <div class="fact"><div class="k">Acting</div><div class="v small">{{ project.fee_earner or project.agent_assigned or 'Cowan &amp; Rutter'|safe }}</div></div>
   </div>
@@ -182,7 +182,7 @@
       <tr>
         <td class="date">{{ r.on.strftime('%d %b %Y') if r.on else '&mdash;'|safe }}</td>
         <td>
-          <div class="applicant">{{ e.contact.full_name if e.contact else (e.subject|truncate(40)) }}</div>
+          <div class="applicant">{{ contact_label(e.contact) if e.contact else (e.subject|truncate(40)) }}</div>
           {% if e.organisation %}<div class="org">{{ e.organisation.name }}</div>{% endif %}
           {% if e.contact and e.contact.phone %}<div class="org">{{ e.contact.phone }}</div>{% endif %}
         </td>

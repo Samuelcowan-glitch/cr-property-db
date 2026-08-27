@@ -224,7 +224,7 @@
         <tr>
           <td>{{ p.project_ref or '—' }}</td>
           <td><a href="{{ url_for('project_detail', id=p.id) }}">{{ p.name }}</a></td>
-          <td>{{ p.client or '—' }}</td>
+          <td title="{{ p.client_display or '' }}">{{ p.client_display or '—' }}</td>
           <td>{{ p.fee_earner or '—' }}</td>
           <td>{{ p.instruction_date.strftime('%d %b %Y') if p.instruction_date else '—' }}</td>
           <td>

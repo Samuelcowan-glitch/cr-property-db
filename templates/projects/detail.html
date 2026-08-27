@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% import "crm/_org_picker.html" as op %}
 {% import "projects/_record_boxes.html" as rb %}
 {% import "projects/_doc_box.html" as db %}
 {% set pv = project_form_values(project) %}
@@ -290,7 +289,7 @@
           <div style="padding:10px 12px;border-bottom:1px solid #f1f3f4">
             {% if e.contact %}
             <div style="font-size:13px;font-weight:600;color:#e0303f;margin-bottom:3px">
-              <a href="{{ url_for('contact_detail', id=e.contact.id) }}" style="color:#e0303f">{{ e.contact.full_name }}</a>
+              <a href="{{ url_for('contact_detail', id=e.contact.id) }}" style="color:#e0303f">{{ contact_label(e.contact) }}</a>
             </div>
             {% if e.contact.phone %}
             <div style="font-size:11.5px;color:#5f6368;margin-bottom:2px">{{ e.contact.phone }}</div>
@@ -336,20 +335,6 @@
     {# What the instruction is worth. Kept out of Instruction Details. #}
     {{ rb.fee_box(pv, 'project-form') }}
 
-    {# Who the instruction is for, linked to the organisation record rather
-       than typed again. The names above are kept exactly as they are. #}
-    <div class="box">
-      <div class="box-head">Linked organisations</div>
-      {% for role, legacy in [('Client', project.client),
-                              ('Landlord', project.landlord_name)] %}
-      <div class="orgpick-row">
-        <div class="orgpick-label">{{ role }}</div>
-        <div class="orgpick-field">
-          {{ op.org_picker(role, 'project', project.id, legacy) }}
-        </div>
-      </div>
-      {% endfor %}
-    </div>
     {# Marketing & publishing continues in this column #}
 
 

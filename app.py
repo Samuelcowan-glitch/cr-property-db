@@ -1053,6 +1053,9 @@ class Project(db.Model):
     status = db.Column(db.String(20), default='Active')   # Active, Complete, On Hold
     fee_earner = db.Column(db.String(100))   # kept: what was typed before
     fee_earner_id = db.Column(db.Integer, db.ForeignKey('users.id'), index=True)
+    # Who the instruction is for. The company beside their name comes from
+    # their own contact record, never copied here.
+    client_contact_id = db.Column(db.Integer, db.ForeignKey('contacts.id'), index=True)
     client = db.Column(db.String(255))
     instruction_date = db.Column(db.Date)
     notes = db.Column(db.Text)
@@ -1072,6 +1075,16 @@ class Project(db.Model):
     location_description = db.Column(db.Text)
 
     documents = db.relationship('ProjectDocument', backref='project', lazy=True, cascade='all, delete-orphan')
+
+    @property
+    def client_contact(self):
+        return Contact.query.get(self.client_contact_id) if self.client_contact_id else None
+
+    @property
+    def client_display(self):
+        """The client's name, with their company, or the name typed before."""
+        linked = self.client_contact
+        return contact_label(linked) if linked else (self.client or None)
 
     def docs_in_folder(self, folder):
         return [d for d in self.documents if d.folder == folder]
@@ -1529,6 +1542,20 @@ def requires(action):
             return fn(*a, **kw)
         return guarded
     return wrapper
+
+
+def contact_label(contact):
+    """A person's name, with their company after it where they have one.
+
+    "Jane Smith (Example Holdings Ltd)", or just "Jane Smith". The company is
+    read from the person's own record, so it follows a rename rather than
+    going stale, and somebody with no company shows no empty brackets.
+    """
+    if contact is None:
+        return ''
+    name = contact.full_name
+    company = contact.organisation.name if contact.organisation else None
+    return f'{name} ({company})' if company else name
 
 
 def fee_earners():
@@ -2916,6 +2943,7 @@ TRANSACTION_STATUS_CLASS = {
 }
 app.jinja_env.globals['status_class'] = \
     lambda st: TRANSACTION_STATUS_CLASS.get(st, 'st-draft')
+app.jinja_env.globals['contact_label'] = contact_label
 app.jinja_env.globals['fee_earners'] = fee_earners
 app.jinja_env.globals['fee_earner_name'] = fee_earner_name
 app.jinja_env.globals['ORG_TYPES'] = ORG_TYPES
@@ -3532,10 +3560,16 @@ def _inject_crm_constants():
 
 
 @app.route('/projects/new', methods=['GET', 'POST'])
+@requires('create')
 def project_new():
     properties = Property.query.order_by(Property.address).all()
 
     def render(v, errors=None):
+        # A rejected form comes back holding the client that was chosen, not
+        # just their id, so the selector still shows who it was.
+        v = dict(v)
+        chosen = _fcontact(v.get('client_contact_id'))
+        v['client_contact'] = Contact.query.get(chosen) if chosen else None
         return render_template('projects/form.html', properties=properties,
                                project=None, v=v, errors=errors or {})
 
@@ -3642,6 +3676,10 @@ def project_form_values(project):
         'available_from': d(project.available_from),
         'next_call': d(project.next_call),
         'fee_earner': project.fee_earner or '',
+        'fee_earner_id': project.fee_earner_id or '',
+        'client_contact_id': project.client_contact_id or '',
+        'client_contact': (Contact.query.get(project.client_contact_id)
+                           if project.client_contact_id else None),
         'fee_percent': project.fee_percent or '', 'fee_fixed': project.fee_fixed or '',
         'key_contact': project.key_contact or '',
         'client_phone': project.client_phone or '', 'client_mobile': project.client_mobile or '',
@@ -3762,6 +3800,7 @@ def project_detail(id):
 
 
 @app.route('/projects/<int:id>/edit', methods=['GET', 'POST'])
+@requires('edit')
 def project_edit(id):
     project = Project.query.get_or_404(id)
     properties = Property.query.order_by(Property.address).all()
@@ -3770,6 +3809,7 @@ def project_edit(id):
         # only the fields on screen, so a save must not blank the others.
         was_named = project.name
         was_type = project.instruction_type
+        was_client = project.client_contact_id
         if 'instruction_type' in request.form and not instruction_type_ok(
                 request.form.get('instruction_type'), was_type):
             flash('Choose one of: ' + ', '.join(INSTRUCTION_TYPES) + '.', 'warning')
@@ -3786,6 +3826,14 @@ def project_edit(id):
         if project.instruction_type != was_type:
             audit('edit', entity='Project', entity_id=project.id,
                   detail=f'instruction type {was_type or "none"} to {project.instruction_type or "none"}')
+        # Who an instruction is for matters, so a change of client is recorded
+        # by name rather than only by id.
+        if project.client_contact_id != was_client:
+            audit('edit', entity='Project', entity_id=project.id,
+                  detail='client {} to {}'.format(
+                      contact_label(Contact.query.get(was_client)) if was_client else 'none',
+                      contact_label(Contact.query.get(project.client_contact_id))
+                      if project.client_contact_id else 'none'))
         flash('Project updated.', 'success')
         return _back_to('project_detail', id=project.id)
     return render_template('projects/form.html', properties=properties, project=project,
@@ -4309,6 +4357,52 @@ def organisation_requirement_close(id, rid):
     return redirect(url_for('organisation_detail', id=id) + '#requirements')
 
 
+@app.route('/api/contacts')
+def api_contacts():
+    """People, for a client or tenant selector.
+
+    Searches what somebody would actually type: the person's name, the company
+    they belong to, their email or their telephone number. Returns the
+    contact's id, so a record links to the person rather than copying a name.
+    """
+    q = (request.args.get('q') or '').strip()
+    if len(q) < 2:
+        return jsonify([])
+    like = f'%{q}%'
+    found = {c.id: c for c in Contact.query.filter(db.or_(
+        Contact.first_name.ilike(like), Contact.last_name.ilike(like),
+        Contact.email.ilike(like), Contact.phone.ilike(like),
+        Contact.mobile.ilike(like))).limit(25).all()}
+
+    # Somebody looking for "Marsden" usually means the company, not a surname.
+    for org in Organisation.query.filter(db.or_(
+            Organisation.name.ilike(like), Organisation.trading_name.ilike(like)
+            )).limit(10).all():
+        for person in org.contacts:
+            found.setdefault(person.id, person)
+
+    # A telephone number is typed with spaces as often as not.
+    digits = re.sub(r'\D', '', q)
+    if len(digits) >= 6:
+        for person in Contact.query.filter(db.or_(
+                Contact.phone.isnot(None), Contact.mobile.isnot(None))).limit(400).all():
+            joined = re.sub(r'\D', '', f'{person.phone or ""}{person.mobile or ""}')
+            if digits in joined:
+                found.setdefault(person.id, person)
+
+    rows = list(found.values())[:25]
+    return jsonify([{
+        'id': c.id,
+        'label': contact_label(c),
+        'name': c.full_name,
+        'company': c.organisation.name if c.organisation else None,
+        'job_title': c.job_title,
+        'email': c.email,
+        'phone': c.phone or c.mobile,
+        'url': url_for('contact_detail', id=c.id),
+    } for c in rows])
+
+
 @app.route('/api/organisations')
 def api_organisations():
     """The searchable picker behind every Landlord / Tenant / Client field.
@@ -4695,6 +4789,15 @@ def _fint(v):
         return None
 
 
+def _fcontact(v):
+    """A contact's id, or nothing. Anything that is not a real person is
+    refused rather than stored."""
+    raw = str(v or '').strip()
+    if not raw.isdigit():
+        return None
+    return int(raw) if Contact.query.get(int(raw)) else None
+
+
 def _fid(v):
     """A fee earner's id, or nothing.
 
@@ -4836,6 +4939,7 @@ TRANSACTION_FIELDS = [
 
 PROJECT_FIELDS = [
     ('fee_earner_id',      'fee_earner_id',      _fid),
+    ('client_contact_id',  'client_contact_id',  _fcontact),
     ('name',                 'name',                 None),
     ('project_ref',          'project_ref',          _ftext),
     ('status',               'status',               _ftext),
@@ -7248,6 +7352,7 @@ def _migrate_project_columns():
         for table in ('transactions', 'organisations', 'enquiries', 'projects',
                       'project_services', 'contacts'):
             _add_columns(table, [('fee_earner_id', 'INTEGER')])
+        _add_columns('projects', [('client_contact_id', 'INTEGER')])
 
         try:
             _name_the_users()

@@ -167,7 +167,7 @@
         {% for c in landlords_to_call %}
         <div class="org-row">
           <div class="org-main">
-            <a class="org-title" href="{{ url_for('contact_detail', id=c.id) }}">{{ c.full_name }}</a>
+            <a class="org-title" href="{{ url_for('contact_detail', id=c.id) }}" title="{{ contact_label(c) }}">{{ contact_label(c) }}</a>
             <div class="org-sub">
               {{ c.contact_type or 'Landlord' }}
               {% if c.last_contact_date %} &middot; last called {{ c.last_contact_date.strftime('%d/%m/%Y') }}

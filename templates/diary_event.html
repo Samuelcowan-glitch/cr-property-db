@@ -98,7 +98,7 @@
             <select name="contact_id">
               <option value="">— None —</option>
               {% for c in contacts %}
-              <option value="{{ c.id }}" {{ 'selected' if ev.contact_id == c.id else '' }}>{{ c.full_name }}</option>
+              <option value="{{ c.id }}" {{ 'selected' if ev.contact_id == c.id else '' }}>{{ contact_label(c) }}</option>
               {% endfor %}
             </select>
           </div>

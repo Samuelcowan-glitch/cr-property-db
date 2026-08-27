@@ -54,7 +54,7 @@
     <tbody>
       {% for c in contacts %}
       <tr>
-        <td><a href="{{ url_for('contact_detail', id=c.id) }}"><strong>{{ c.full_name }}</strong></a>
+        <td><a href="{{ url_for('contact_detail', id=c.id) }}"><strong title="{{ contact_label(c) }}">{{ contact_label(c) }}</strong></a>
           {% if c.follow_up_overdue %}<span title="Follow-up overdue" style="color:#c0392b">⚠</span>{% endif %}</td>
         <td><span style="display:inline-block;padding:2px 9px;border-radius:3px;font-size:11px;font-weight:700;color:#fff;background:{{ status_colors.get(c.status, '#5f6368') }}">{{ c.status or '—' }}</span></td>
         <td>
