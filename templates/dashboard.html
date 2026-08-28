@@ -189,23 +189,63 @@
     <section class="org-panel">
       <header>
         <span>Recent Transactions</span>
-        <a href="{{ url_for('transactions_list') }}">All</a>
+        <a href="{{ url_for('transactions_list') }}">View all transactions</a>
       </header>
+
+      {# Stage and payment are separate questions, so they filter separately.
+         Both read the transaction itself; nothing is stored here. #}
+      <form method="get" class="tx-filter" action="{{ url_for('dashboard') }}">
+        <select name="tx_stage" onchange="this.form.submit()" aria-label="Filter by stage">
+          <option value="">Any stage</option>
+          {% for st in TRANSACTION_STAGES %}
+          <option value="{{ st }}" {{ 'selected' if tx_stage == st }}>{{ st }}</option>
+          {% endfor %}
+          <option value="Fallen Through" {{ 'selected' if tx_stage == 'Fallen Through' }}>Fallen Through</option>
+          <option value="Archived" {{ 'selected' if tx_stage == 'Archived' }}>Archived</option>
+        </select>
+        <select name="tx_payment" onchange="this.form.submit()" aria-label="Filter by payment">
+          <option value="">Any payment</option>
+          {% for ps in PAYMENT_STATES %}
+          <option value="{{ ps }}" {{ 'selected' if tx_payment == ps }}>{{ ps }}</option>
+          {% endfor %}
+        </select>
+        {% if tx_stage or tx_payment %}
+        <a href="{{ url_for('dashboard') }}" class="btn btn-outline btn-xs">Clear</a>
+        {% endif %}
+      </form>
+
       <div class="org-body short">
         {% for t in recent_transactions %}
-        <div class="org-row">
-          <div class="org-main">
-            <a class="org-title" href="{{ url_for('transaction_detail', id=t.id) }}">
-              {{ t.property.address if t.property else 'Transaction' }}
-            </a>
-            <div class="org-sub">
-              {{ t.transaction_type or '—' }}
-              {% if t.created_at %} &middot; {{ t.created_at.strftime('%d/%m/%Y') }}{% endif %}
-            </div>
-          </div>
-        </div>
+        {# The whole entry opens the transaction; the link fills the row. #}
+        <a class="org-row tx-row" href="{{ url_for('transaction_detail', id=t.id) }}">
+          <span class="org-main">
+            <span class="org-title">{{ t.property.address if t.property else 'Transaction' }}</span>
+
+            <span class="tx-states">
+              <span class="st {{ stage_class(t.stage) }}">{{ t.stage }}</span>
+              {% if t.shows_payment_state %}
+              <span class="st {{ payment_class(t.payment_state) }}">{{ t.payment_state }}</span>
+              {% endif %}
+            </span>
+
+            <span class="org-line">
+              {{ t.transaction_type or 'Transaction' }}
+              {%- if t.client_display %} &middot; {{ t.client_display }}{% endif -%}
+              {%- if t.counterparty %} &middot; {{ t.counterparty }}{% endif -%}
+            </span>
+            <span class="org-line">
+              {%- if t.net_commission %}{{ money_gbp(t.net_commission) }} commission
+              {%- else %}No commission recorded{% endif -%}
+              {%- if t.completion_date %} &middot; completed {{ t.completion_date.strftime('%d %b %Y') }}{% endif -%}
+              {%- if t.fee_earner_display %} &middot; {{ t.fee_earner_display }}{% endif -%}
+            </span>
+          </span>
+        </a>
         {% else %}
-        <div class="org-empty">No transactions recorded yet.</div>
+        <div class="org-empty">
+          {% if tx_stage or tx_payment %}No transactions at that stage.
+          {% else %}No transactions recorded yet.{% endif %}
+        </div>
         {% endfor %}
       </div>
     </section>

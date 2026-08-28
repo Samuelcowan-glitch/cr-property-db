@@ -319,17 +319,40 @@ def same_property_type(wanted, found):
 # ── Transactions: the shared vocabulary and the money rules ──────────────────
 
 TRANSACTION_STATUSES = [
-    'Draft', 'In progress', 'Terms agreed', 'Solicitors instructed',
-    'Completed', 'Commission billed', 'Part paid', 'Paid',
-    'Fallen through', 'Archived',
+    'Draft', 'In Progress', 'Under Offer', 'Terms Agreed',
+    'Solicitors Instructed', 'Completed', 'Commission Billed', 'Part Paid',
+    'Paid', 'Fallen Through', 'Archived',
 ]
 
+# How far a transaction has actually got. The single status field mixes
+# progression with payment — "Paid" says nothing about whether it completed —
+# so the two are read apart. A transaction that has been billed or paid must
+# have completed to get there, so its stage is Completed.
+TRANSACTION_STAGES = [
+    'Draft', 'In Progress', 'Under Offer', 'Terms Agreed',
+    'Solicitors Instructed', 'Completed',
+]
+
+STATUS_TO_STAGE = {
+    'Commission Billed': 'Completed',
+    'Part Paid': 'Completed',
+    'Paid': 'Completed',
+}
+
+# Where the money has got to. Worked out from what is actually recorded
+# against the transaction, never from its stage: completing a deal does not
+# pay the invoice.
+PAYMENT_STATES = ['Not Billed', 'Commission Billed', 'Part Paid', 'Paid']
+
 # Earned nothing, so left out of every figure on the dashboard.
-TRANSACTION_EXCLUDED = {'Fallen through', 'Archived'}
+TRANSACTION_EXCLUDED = {'Fallen Through', 'Archived'}
 
 # Reached completion. A transaction does not stop being completed once the
 # invoice is raised or paid, so those statuses count too.
-TRANSACTION_COMPLETED = {'Completed', 'Commission billed', 'Part paid', 'Paid'}
+TRANSACTION_COMPLETED = {'Completed', 'Commission Billed', 'Part Paid', 'Paid'}
+
+# Pipeline weight for the new stage, between agreed and with the solicitors.
+
 
 # A letting goes through solicitors; a licence does not, so the solicitor
 # details are put away when one is chosen.
@@ -451,6 +474,10 @@ class Transaction(db.Model):
     other_solicitor_email  = db.Column(db.String(255))
     other_solicitor_phone  = db.Column(db.String(60))
 
+    organisation_links = db.relationship(
+        'OrganisationRole', lazy=True,
+        primaryjoin='Transaction.id == foreign(OrganisationRole.transaction_id)',
+        viewonly=True)
     payments  = db.relationship('TransactionPayment', backref='transaction',
                                 lazy=True, cascade='all, delete-orphan')
     documents = db.relationship('TransactionDocument', backref='transaction',
@@ -595,6 +622,61 @@ class Transaction(db.Model):
     def is_overdue(self):
         return bool(self.payment_due_date and self.outstanding > 0.005
                     and self.payment_due_date < date.today())
+
+    @property
+    def client_display(self):
+        """Who the transaction is for: the linked organisation, or the name
+        typed before organisations were linked."""
+        live = [r for r in getattr(self, 'organisation_links', [])
+                if r.role == 'Client' and r.is_current]
+        if live:
+            return live[0].organisation.display_name
+        return self.client or None
+
+    @property
+    def fee_earner_display(self):
+        """The fee earner's full name, or whatever was recorded before."""
+        return fee_earner_name(self.fee_earner_id, self.fee_earner)
+
+    @property
+    def stage(self):
+        """How far the transaction has got, apart from the money.
+
+        A transaction that has been billed or paid must have completed to get
+        there, so it still reads as Completed. Somebody looking at the
+        Organiser can see that a deal completed as well as whether the
+        commission has come in.
+        """
+        status = self.status or 'Draft'
+        if status in TRANSACTION_EXCLUDED:
+            return status              # fallen through or archived is the whole story
+        return STATUS_TO_STAGE.get(status, status)
+
+    @property
+    def payment_state(self):
+        """Where the money has got to, from what is actually recorded.
+
+        The same invoice and payment rules the Transactions page uses, so the
+        two can never disagree. Completing a deal does not pay its invoice, so
+        a completed transaction with no invoice reads as Not Billed.
+        """
+        if not self.is_billed:
+            return 'Not Billed'
+        total, received = self.total_invoice, self.commission_received
+        if received <= 0.005:
+            return 'Commission Billed'
+        if received + 0.005 < total:
+            return 'Part Paid'
+        return 'Paid'
+
+    @property
+    def shows_payment_state(self):
+        """Whether a payment position is worth showing at all.
+
+        Nothing was ever going to be billed on a deal that fell through or was
+        archived, so saying "Not Billed" about it would only mislead.
+        """
+        return self.counts_towards_totals
 
     @property
     def fee_basis_label(self):
@@ -2223,7 +2305,19 @@ def dashboard():
                          .limit(25).all())
     diary_items = _diary_items()[:12]
 
-    recent_transactions = Transaction.query.order_by(Transaction.created_at.desc()).limit(10).all()
+    # Recent transactions, narrowed by stage or payment position if asked.
+    # Both are read from the transaction itself, so the Organiser can never
+    # disagree with the Transactions page.
+    tx_stage = (request.args.get('tx_stage') or '').strip()
+    tx_payment = (request.args.get('tx_payment') or '').strip()
+    recent_transactions = Transaction.query.order_by(
+        Transaction.created_at.desc()).limit(60).all()
+    if tx_stage in TRANSACTION_STAGES or tx_stage in TRANSACTION_EXCLUDED:
+        recent_transactions = [t for t in recent_transactions if t.stage == tx_stage]
+    if tx_payment in PAYMENT_STATES:
+        recent_transactions = [t for t in recent_transactions
+                               if t.shows_payment_state and t.payment_state == tx_payment]
+    recent_transactions = recent_transactions[:10]
     enq_count = Enquiry.query.filter(Enquiry.status == 'Open').count()
     contact_count = Contact.query.count()
 
@@ -2238,6 +2332,7 @@ def dashboard():
                            enq_count=enq_count,
                            contacts=contacts,
                            recent_transactions=recent_transactions,
+                           tx_stage=tx_stage, tx_payment=tx_payment,
                            today=today)
 
 
@@ -2501,9 +2596,9 @@ def transaction_dashboard(rows=None):
 # these figures to match how the office actually converts.
 PIPELINE_WEIGHTS = {
     'Draft': 0.0,
-    'In progress': 0.10,
-    'Terms agreed': 0.50,
-    'Solicitors instructed': 0.80,
+    'In Progress': 0.10,
+    'Terms Agreed': 0.50,
+    'Solicitors Instructed': 0.80,
 }
 
 
@@ -2618,7 +2713,7 @@ def transaction_extras(rows, everyone):
              if t.invoice_date and p.received_on and p.received_on >= t.invoice_date]
 
     # ── Won against lost ──
-    lost = [t for t in everyone if t.status == 'Fallen through']
+    lost = [t for t in everyone if t.status == 'Fallen Through']
     settled = len([t for t in rows if t.has_completed]) + len(lost)
 
     # ── Who did it ──
@@ -2710,8 +2805,8 @@ TRANSACTION_VIEWS = [
 # Where commission is expected to come from. A transaction sits in exactly one
 # of these, checked in this order, so nothing is counted twice.
 EXPECTED_STAGES = [
-    ('terms',      'Terms agreed',                 '#9fb0cb'),
-    ('solicitors', 'Solicitors instructed',        '#5b7bb0'),
+    ('terms',      'Terms Agreed',                 '#9fb0cb'),
+    ('solicitors', 'Solicitors Instructed',        '#5b7bb0'),
     ('awaiting',   'Completed, awaiting invoice',  '#26406e'),
     ('invoiced',   'Invoiced, awaiting payment',   '#b5762c'),
 ]
@@ -2719,18 +2814,18 @@ EXPECTED_STAGES = [
 # Where a transaction has got to. Part paid sits with commission billed: the
 # invoice is out, so that is the stage it has reached.
 COUNT_STAGES = [
-    ('terms',      'Terms agreed',          '#9fb0cb'),
-    ('solicitors', 'Solicitors instructed', '#5b7bb0'),
+    ('terms',      'Terms Agreed',          '#9fb0cb'),
+    ('solicitors', 'Solicitors Instructed', '#5b7bb0'),
     ('completed',  'Completed',             '#26406e'),
-    ('billed',     'Commission billed',     '#b5762c'),
+    ('billed',     'Commission Billed',     '#b5762c'),
     ('paid',       'Paid',                  '#2f7a4f'),
-    ('fallen',     'Fallen through',        '#b3463c'),
+    ('fallen',     'Fallen Through',        '#b3463c'),
 ]
 
 COUNT_STATUS_STAGE = {
-    'Terms agreed': 'terms', 'Solicitors instructed': 'solicitors',
-    'Completed': 'completed', 'Commission billed': 'billed',
-    'Part paid': 'billed', 'Paid': 'paid', 'Fallen through': 'fallen',
+    'Terms Agreed': 'terms', 'Solicitors Instructed': 'solicitors',
+    'Completed': 'completed', 'Commission Billed': 'billed',
+    'Part Paid': 'billed', 'Paid': 'paid', 'Fallen Through': 'fallen',
 }
 
 # How close to target still counts as close.
@@ -2749,9 +2844,9 @@ def expected_stage(t):
         return 'invoiced'
     if t.has_completed and not t.is_billed:
         return 'awaiting'
-    if t.status == 'Solicitors instructed':
+    if t.status == 'Solicitors Instructed':
         return 'solicitors'
-    if t.status == 'Terms agreed':
+    if t.status == 'Terms Agreed':
         return 'terms'
     return None
 
@@ -3033,10 +3128,10 @@ def next_transaction_reference():
 
 
 TRANSACTION_STATUS_CLASS = {
-    'Draft': 'st-draft', 'In progress': 'st-progress', 'Terms agreed': 'st-terms',
-    'Solicitors instructed': 'st-solicitors', 'Completed': 'st-completed',
-    'Commission billed': 'st-billed', 'Part paid': 'st-part', 'Paid': 'st-paid',
-    'Fallen through': 'st-fallen', 'Archived': 'st-archived',
+    'Draft': 'st-draft', 'In Progress': 'st-progress', 'Terms Agreed': 'st-terms',
+    'Solicitors Instructed': 'st-solicitors', 'Completed': 'st-completed',
+    'Commission Billed': 'st-billed', 'Part Paid': 'st-part', 'Paid': 'st-paid',
+    'Fallen Through': 'st-fallen', 'Archived': 'st-archived',
 }
 app.jinja_env.globals['status_class'] = \
     lambda st: TRANSACTION_STATUS_CLASS.get(st, 'st-draft')
@@ -3068,6 +3163,20 @@ app.jinja_env.globals['ORG_ROLE_NAMES'] = ORG_ROLE_NAMES
 app.jinja_env.globals['money_gbp'] = money_gbp
 app.jinja_env.globals['money_short'] = money_short
 app.jinja_env.globals['TRANSACTION_STATUSES'] = TRANSACTION_STATUSES
+STAGE_CLASS = {
+    'Draft': 'st-draft', 'In Progress': 'st-progress', 'Under Offer': 'st-offer',
+    'Terms Agreed': 'st-terms', 'Solicitors Instructed': 'st-solicitors',
+    'Completed': 'st-completed', 'Fallen Through': 'st-fallen',
+    'Archived': 'st-archived',
+}
+PAYMENT_CLASS = {
+    'Not Billed': 'st-notbilled', 'Commission Billed': 'st-billed',
+    'Part Paid': 'st-part', 'Paid': 'st-paid',
+}
+app.jinja_env.globals['stage_class'] = lambda v: STAGE_CLASS.get(v, 'st-draft')
+app.jinja_env.globals['payment_class'] = lambda v: PAYMENT_CLASS.get(v, 'st-draft')
+app.jinja_env.globals['TRANSACTION_STAGES'] = TRANSACTION_STAGES
+app.jinja_env.globals['PAYMENT_STATES'] = PAYMENT_STATES
 app.jinja_env.globals['AGREEMENT_TYPES'] = AGREEMENT_TYPES
 app.jinja_env.globals['TRANSACTION_PERIODS'] = TRANSACTION_PERIODS
 app.jinja_env.globals['VAT_RATE_DEFAULT'] = VAT_RATE_DEFAULT
@@ -5367,7 +5476,7 @@ def _enquiry_overview(enqs, today):
             panel('Pipeline summary',
                   [('Contact made', contacted),
                    ('Viewing arranged', viewings),
-                   ('Terms agreed', terms),
+                   ('Terms Agreed', terms),
                    ('Converted', converted)],
                   'Conversion rate', rate(converted)),
             panel('Follow-up summary',
@@ -7472,6 +7581,12 @@ def _migrate_project_columns():
             _add_columns(table, [('client_contact_id', 'INTEGER')])
 
         try:
+            _restyle_transaction_statuses()
+        except Exception:
+            db.session.rollback()
+            app.logger.exception('Could not bring transaction statuses to one casing')
+
+        try:
             _name_the_users()
             _link_fee_earners()
         except Exception:
@@ -7738,6 +7853,39 @@ def _add_columns(table, columns):
     if failed:
         app.logger.error('MIGRATION INCOMPLETE on %s: %s', table, ', '.join(failed))
     return failed
+
+
+def _restyle_transaction_statuses():
+    """Bring stored statuses to the one casing the CRM now uses.
+
+    Only these exact strings are rewritten, so a status nobody recognises is
+    left exactly as it is rather than being guessed at. Nothing about a
+    transaction's money or dates is touched.
+    """
+    renames = {
+        'In progress': 'In Progress',
+        'Terms agreed': 'Terms Agreed',
+        'Solicitors instructed': 'Solicitors Instructed',
+        'Commission billed': 'Commission Billed',
+        'Part paid': 'Part Paid',
+        'Fallen through': 'Fallen Through',
+    }
+    changed = 0
+    for old, new in renames.items():
+        rows = Transaction.query.filter(Transaction.status == old).all()
+        for row in rows:
+            row.status = new
+            changed += 1
+    if changed:
+        db.session.commit()
+        app.logger.info('Transaction statuses: %s brought to one casing.', changed)
+    odd = {t.status for t in Transaction.query.all()
+           if t.status and t.status not in TRANSACTION_STATUSES}
+    if odd:
+        app.logger.warning(
+            'Transaction statuses the CRM does not recognise, left as they are — %s',
+            ', '.join(sorted(odd)))
+    return changed
 
 
 def _name_the_users():

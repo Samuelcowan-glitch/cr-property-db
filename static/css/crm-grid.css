@@ -865,12 +865,12 @@ table.rec-table td.actions { white-space: nowrap; text-align: right; }
   font-size: 10.5px; font-weight: var(--w-heading); white-space: nowrap;
 }
 .st-draft       { background: #f1f3f4; color: #80868b; }
-.st-progress    { background: #eef2f8; color: #3c5488; }
+.st-progress    { background: #eef1f5; color: #5a6b85; }   /* blue-grey */
 .st-terms       { background: #e8f0fe; color: #1a4e8a; }
-.st-solicitors  { background: #eae6f7; color: #4b2ea8; }
+.st-solicitors  { background: #e3e8f2; color: #0e1f44; }   /* navy */
 .st-completed   { background: #e6f4ea; color: #1b7a3f; }
-.st-billed      { background: #fff6e3; color: #8a5a12; }
-.st-part        { background: #fdeec9; color: #8a5a12; }
+.st-billed      { background: #eae6f7; color: #4b2ea8; }   /* muted purple */
+.st-part        { background: #fdeec9; color: #8a4a12; }   /* orange */
 .st-paid        { background: #dff0e4; color: #14653a; }
 .st-fallen      { background: #fce8e6; color: #b3463c; }
 .st-archived    { background: #e8eaed; color: #5f6368; }
@@ -1444,4 +1444,37 @@ body.pg-open { overflow: hidden; }
   .pg-frame { height: min(50vh, 420px); }
   .pg-nav { width: 34px; height: 48px; }
   .pg-thumb { width: 56px; height: 42px; }
+}
+
+/* ── Transaction stage and payment, on the Organiser ─────────────────────────
+   Two separate things, shown separately. The wording carries the meaning;
+   colour only supports it, so nothing is lost without it. */
+.st-offer      { background: #fff3e0; color: #8a5a12; }   /* Under Offer — amber */
+.st-notbilled  { background: #f1f3f4; color: #6c757d; }   /* nothing invoiced yet */
+
+.tx-row {
+  display: block; text-decoration: none; color: inherit;
+}
+.tx-row:hover { background: #f8fafc; }
+.tx-row:focus-visible { outline: 2px solid var(--orange); outline-offset: -2px; }
+.tx-row .org-title { display: block; }
+.tx-row .org-line { display: block; }
+
+.tx-states { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 3px; }
+
+.tx-filter {
+  display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
+  padding: 7px 12px; border-bottom: 1px solid var(--grey-200);
+  background: var(--grey-50);
+}
+.tx-filter select {
+  height: 28px; font-size: 11.5px; border: 1px solid var(--grey-200);
+  border-radius: 3px; padding: 0 6px; background: var(--white); color: var(--text);
+  font-family: var(--font); font-weight: var(--w-label); flex: 1 1 auto; min-width: 0;
+}
+.tx-filter select:focus { outline: none; border-color: var(--navy); }
+
+@media (max-width: 700px) {
+  .tx-filter { flex-direction: column; align-items: stretch; }
+  .tx-filter select { width: 100%; }
 }
