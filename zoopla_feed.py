@@ -324,12 +324,38 @@ def _base_row(listing, branch_id):
         'POSTCODE2':      pc2,
         'LATITUDE':       listing.lat or (prop.lat if prop else '') or '',
         'LONGITUDE':      listing.lng or (prop.lng if prop else '') or '',
-        'FEATURE1':       listing.key_terms or '',
-        'FEATURE2':       (('EPC ' + str(listing.epc_band)) if listing.epc_band else ''),
-        'FEATURE3':       (listing.use_class or listing.residential_use or ''),
+        **_features(listing),
         'CREATE_DATE':    created,
         'UPDATE_DATE':    now,
     }
+
+
+# Zoopla accepts FEATURE1 to FEATURE10.
+FEATURE_SLOTS = 10
+
+
+def _features(listing):
+    """The key terms as separate features, one per slot.
+
+    Everything used to go into FEATURE1 as a single string, so a property with
+    five key terms published one long feature and the other nine slots stayed
+    empty. Each term now gets its own slot, in the order it was entered, with
+    the EPC and use class taking whatever slots are left over.
+    """
+    from app import key_terms_list
+    terms = key_terms_list(listing.key_terms, limit=FEATURE_SLOTS)
+    extras = []
+    if listing.epc_band:
+        extras.append(f'EPC {listing.epc_band}')
+    if listing.use_class or listing.residential_use:
+        extras.append(str(listing.use_class or listing.residential_use))
+    for extra in extras:
+        if len(terms) >= FEATURE_SLOTS:
+            break
+        if extra.lower() not in {t.lower() for t in terms}:
+            terms.append(extra)
+    return {f'FEATURE{i}': (terms[i - 1] if i <= len(terms) else '')
+            for i in range(1, FEATURE_SLOTS + 1)}
 
 
 def generate_feed(listings, branch_id=None):

@@ -14,6 +14,7 @@
   {% endif %}
 {% endblock %}
 
+{% import "_key_terms.html" as kt %}
 {% block content %}
 
 {% macro field(label, name, type='text', placeholder='', val='', required=false, hint='') %}
@@ -375,7 +376,8 @@
     {% endfor %}
   </div>
 </div>
-{{ field('Key Terms', 'key_terms', type='textarea', placeholder='Short key terms shown on the website — e.g. New FRI lease · Available now · EPC B', val=(l.key_terms or '') if l else '', hint='Brief headline terms (separate from the full description)') }}
+{{ kt.key_terms_field((l.key_terms if l else ''), none, 'Key Terms', 'key_terms',
+     'One term per line. These become the bullets on the particulars, the list on the website and the Zoopla features.') }}
 <div style="padding:10px 0;border-bottom:1px solid #f1f3f4;display:grid;grid-template-columns:200px 1fr;gap:12px;align-items:start">
   <label style="font-size:13px;color:#374151">Full Description</label>
   <textarea name="blurb" rows="6" placeholder="Full marketing description shown on the website..."

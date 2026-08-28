@@ -6790,6 +6790,62 @@ def cover_wording(strapline, instruction):
     return f'{line} | {missing}'
 
 
+# ── Key terms ───────────────────────────────────────────────────────────────
+# One field, one list, used by the particulars, the website and the portals.
+# It is stored as text with one term to a line, so nothing had to be migrated
+# and an older single-line entry still reads correctly.
+
+KEY_TERMS_MAX = 6          # how many a set of particulars will print
+
+# Separators somebody might actually use. A hyphen is only treated as a bullet
+# at the start of a line, never inside a term, or "Self-contained" would break
+# in half.
+_TERM_BULLET = re.compile(r'^[\s]*[\u2022\u00b7\u25aa\u25cf\u2023\u2043*\-\u2013\u2014]+\s*')
+_TERM_NUMBER = re.compile(r'^[\s]*\d{1,2}[.)]\s+')
+_TERM_SPLIT = re.compile(r'[\n\r\u2022\u00b7\u25aa\u25cf\u2023\u2043|;]+')
+
+
+def key_terms_list(value, limit=None):
+    """The saved key terms as separate entries, in the order they were entered.
+
+    Wording, capitalisation and order are preserved exactly. Nothing is
+    rewritten, summarised or combined, and nothing is invented: this only
+    splits what was typed and tidies the bullet somebody pasted in front of it.
+
+    Duplicates are dropped, comparing case-insensitively but keeping the first
+    spelling, so the same term cannot appear twice on a brochure.
+    """
+    if not value:
+        return []
+    if isinstance(value, (list, tuple)):
+        raw = list(value)
+    else:
+        raw = _TERM_SPLIT.split(str(value))
+    out, seen = [], set()
+    for item in raw:
+        term = _TERM_NUMBER.sub('', _TERM_BULLET.sub('', str(item))).strip()
+        term = re.sub(r'\s+', ' ', term).strip(' .;,\u00b7')
+        if not term:
+            continue
+        key = term.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(term)
+        if limit and len(out) >= limit:
+            break
+    return out
+
+
+def key_terms_text(terms):
+    """A list of terms back to how the field stores them: one to a line."""
+    return '\n'.join(key_terms_list(terms))
+
+
+app.jinja_env.globals['key_terms_list'] = key_terms_list
+app.jinja_env.globals['KEY_TERMS_MAX'] = KEY_TERMS_MAX
+
+
 def clean_strapline(value):
     """A strapline as it will be used: one line, spacing tidied, nothing else.
 
@@ -7193,7 +7249,12 @@ def particulars_data(project):
                              getattr(prop, 'description', None)),
         'location': first(getattr(listing, 'location_description', None),
                           getattr(project, 'location_description', None)),
-        'terms': getattr(listing, 'key_terms', None),
+        # Bullets from the Key Terms field alone. The strapline, the
+        # description, the location and the instruction type are all separate
+        # fields and none of them stands in for this one when it is empty.
+        'key_terms': key_terms_list(getattr(listing, 'key_terms', None),
+                                    limit=KEY_TERMS_MAX),
+        'key_terms_all': key_terms_list(getattr(listing, 'key_terms', None)),
         'instruction': instruction,
         'cover_line': cover_wording(getattr(listing, 'strapline', None), instruction),
         'rent': rent,
@@ -7236,6 +7297,49 @@ PARTICULARS_ESSENTIALS = [
 ]
 
 
+def project_floorplans(project):
+    """Every floorplan available for a project, newest source first.
+
+    A floorplan may have been attached to the instruction or to the property
+    itself. Both are offered; nothing is invented and no photograph is ever
+    passed off as a floorplan.
+    """
+    out = []
+    listing = (project.project_listings[0]
+               if getattr(project, 'project_listings', None) else None)
+    if listing and listing.floor_plan_data:
+        out.append({'key': f'listing-{listing.id}',
+                    'name': listing.floor_plan_filename or 'Floorplan (instruction)',
+                    'source': 'Instruction', 'data': listing.floor_plan_data})
+    prop = project.property
+    if prop and prop.floor_plan_data:
+        out.append({'key': f'property-{prop.id}',
+                    'name': prop.floor_plan_filename or 'Floorplan (property)',
+                    'source': 'Property', 'data': prop.floor_plan_data})
+    # A floorplan saved as a document, filed under photographs and images.
+    for doc in (getattr(project, 'documents', None) or []):
+        name = (getattr(doc, 'filename', '') or '').lower()
+        if 'floor' in name and getattr(doc, 'file_data', None):
+            out.append({'key': f'document-{doc.id}',
+                        'name': doc.filename, 'source': 'Documents',
+                        'data': doc.file_data})
+    return out
+
+
+def chosen_floorplans(project, keys=None):
+    """The floorplans the user picked, in the order they picked them."""
+    available = {f['key']: f for f in project_floorplans(project)}
+    if not keys:
+        first = next(iter(available.values()), None)
+        return [first] if first else []
+    picked = []
+    for key in keys:
+        found = available.get(key)
+        if found and found not in picked:
+            picked.append(found)
+    return picked[:2]
+
+
 def particulars_gaps(data, photo_count):
     """What is missing that a brochure really ought to carry.
 
@@ -7257,6 +7361,10 @@ def particulars_gaps(data, photo_count):
     # somebody to make knowingly, not something to discover afterwards.
     if not data.get('rates_council'):
         missing.append('Local authority (the rates note will name no council)')
+    # Nothing is substituted for the key terms, so their absence is reported
+    # rather than papered over with another field.
+    if not data.get('key_terms'):
+        missing.append('Key Terms missing')
     if photo_count == 0:
         missing.append('Photographs')
     return missing
@@ -7272,15 +7380,22 @@ def particulars_start(id):
     photos = sorted(listing.photos, key=lambda p: (p.sort_order or 0, p.id)) \
         if listing else []
     data = particulars_data(project)
+    import particulars as pp
     return render_template(
         'projects/particulars.html', project=project, listing=listing,
         photos=photos, data=data,
         rates=rates_summary(project.property),
+        floorplans=project_floorplans(project),
+        saved_terms=data.get('key_terms_all') or [],
+        plan=pp.photo_plan(photos, 4),
+        gallery_max=pp.GALLERY_MAX,
+        cover_photos=pp.COVER_PHOTOS, detail_photos=pp.DETAIL_PHOTOS,
         gaps=particulars_gaps(data, len(photos)),
-        have_font=__import__('particulars').HAVE_MUSTICA)
+        have_font=pp.HAVE_MUSTICA)
 
 
-def _particulars_bytes(project, pages, photo_ids):
+def _particulars_bytes(project, pages, photo_ids, floorplan_keys=None,
+                       term_order=None):
     """Render the document. One path, used by preview and by saving."""
     import particulars as pp
     listing = (project.project_listings[0]
@@ -7296,7 +7411,30 @@ def _particulars_bytes(project, pages, photo_ids):
                 seen.add(pid)
                 chosen.append(by_id[pid].file_data)
     data = particulars_data(project)
-    return pp.build(data, chosen, pages), pp.filename_for(data['address'], pages)
+    if term_order:
+        data['key_terms'] = reorder_key_terms(data['key_terms_all'], term_order)
+    plans = [f['data'] for f in chosen_floorplans(project, floorplan_keys)]
+    return (pp.build(data, chosen, pages, floorplans=plans),
+            pp.filename_for(data['address'], pages))
+
+
+def reorder_key_terms(saved, wanted):
+    """The terms the user chose for this document, in the order they chose.
+
+    Only terms that are actually saved may be used, so nothing can be typed
+    into the request that was never entered on the record, and no more than
+    the six a set of particulars prints.
+    """
+    allowed = {t.lower(): t for t in (saved or [])}
+    out, seen = [], set()
+    for raw in (wanted or []):
+        term = allowed.get(str(raw).strip().lower())
+        if term and term.lower() not in seen:
+            seen.add(term.lower())
+            out.append(term)
+        if len(out) >= KEY_TERMS_MAX:
+            break
+    return out or list(saved or [])[:KEY_TERMS_MAX]
 
 
 @app.route('/projects/<int:id>/particulars/preview', methods=['POST'])
@@ -7306,8 +7444,10 @@ def particulars_preview(id):
     project = Project.query.get_or_404(id)
     pages = 4 if request.form.get('pages') == '4' else 2
     try:
-        pdf, name = _particulars_bytes(project, pages,
-                                       request.form.getlist('photo_ids'))
+        pdf, name = _particulars_bytes(
+            project, pages, request.form.getlist('photo_ids'),
+            floorplan_keys=request.form.getlist('floorplan_keys'),
+            term_order=request.form.getlist('key_terms'))
     except Exception:
         app.logger.exception('Could not build particulars for project %s', id)
         abort(500, description='The particulars could not be produced.')
@@ -7321,7 +7461,16 @@ def particulars_preview(id):
 def particulars_download(id):
     project = Project.query.get_or_404(id)
     pages = 4 if request.form.get('pages') == '4' else 2
-    pdf, name = _particulars_bytes(project, pages, request.form.getlist('photo_ids'))
+    if pages == 4 and not project_floorplans(project) \
+            and not request.form.get('no_floorplan_ok'):
+        flash('No floorplan has been uploaded, so page four would be empty. '
+              'Upload one, switch to two pages, or tick the box to go ahead '
+              'without it.', 'error')
+        return redirect(url_for('particulars_start', id=id))
+    pdf, name = _particulars_bytes(
+        project, pages, request.form.getlist('photo_ids'),
+        floorplan_keys=request.form.getlist('floorplan_keys'),
+        term_order=request.form.getlist('key_terms'))
     audit('export', entity='Project', entity_id=id,
           detail=f'{pages}-page particulars downloaded')
     from flask import send_file
@@ -7346,7 +7495,10 @@ def particulars_save(id):
         return redirect(url_for('project_detail', id=id))
 
     pages = 4 if request.form.get('pages') == '4' else 2
-    pdf, name = _particulars_bytes(project, pages, request.form.getlist('photo_ids'))
+    pdf, name = _particulars_bytes(
+        project, pages, request.form.getlist('photo_ids'),
+        floorplan_keys=request.form.getlist('floorplan_keys'),
+        term_order=request.form.getlist('key_terms'))
 
     replacing = bool(listing.brochure_filename)
     choice = (request.form.get('existing') or '').strip()
@@ -8319,7 +8471,10 @@ def _save_listing_from_form(form, l):
     setf('blurb', 'blurb')            # Description (shown on website)
     # ── Website listing criteria (the four listing types) ──
     setf('residential_use', 'residential_use')
-    setf('key_terms', 'key_terms')
+    if 'key_terms' in form:
+        # Stored one term to a line whatever separators were typed, so the
+        # particulars, the website and Zoopla all read the same list.
+        l.key_terms = key_terms_text(form.get('key_terms')) or None
     setf('location_description', 'location_description')
     setf('initial_yield', 'initial_yield', pf)
     setf('investment_vacant', 'investment_vacant')
@@ -8539,7 +8694,8 @@ def api_listings():
                 'beds':          l.beds or p.beds,
                 'baths':         l.baths or p.baths,
                 'measurement':   l.measurement_type or ('GIA' if l.website_category == 'residential' else None),
-                'keyTerms':      l.key_terms or None,
+                'keyTerms':      key_terms_text(l.key_terms) or None,
+                'keyTermsList':  key_terms_list(l.key_terms) or None,
                 'locationText':  l.location_description or None,
                 'yield':         l.initial_yield or None,
                 'tenure':        l.investment_vacant or l.residential_use or None,

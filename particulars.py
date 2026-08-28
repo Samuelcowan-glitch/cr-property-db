@@ -158,6 +158,53 @@ def draw_paragraph(canvas, text, x, y, width, size=9.5, leading=13,
     return y
 
 
+def draw_bullets(canvas, items, x, y, width, size=9.5, leading=12.6,
+                 colour=INK, weight='regular', gap=3):
+    """Draw a list of key terms, one bullet each. Returns the y it finished at.
+
+    Each term is printed exactly as it was entered — nothing is rewritten,
+    shortened or joined with another. A long term wraps and its continuation
+    lines are indented to sit under the first word rather than under the
+    bullet, so the list still reads as a list.
+    """
+    font = face(weight)
+    canvas.setFont(font, size)
+    canvas.setFillColor(colour)
+    indent = 11
+    for item in items:
+        text = clean(item)
+        if not text:
+            continue
+        lines = wrap(canvas, text, font, size, width - indent)
+        canvas.drawString(x, y, '\u2022')
+        for i, line in enumerate(lines):
+            canvas.drawString(x + indent, y, line)
+            y -= leading
+        y -= gap
+    return y
+
+
+def block_height(canvas, body, width, size=9.5, leading=12.6, gap=3):
+    """How tall a block's body will be, paragraph or bullet list alike."""
+    if isinstance(body, (list, tuple)):
+        total = 0
+        for item in body:
+            text = clean(item)
+            if not text:
+                continue
+            total += leading * max(1, len(wrap(canvas, text, face('regular'),
+                                               size, width - 11))) + gap
+        return total
+    return leading * max(1, len(wrap(canvas, body, face('regular'), size, width)))
+
+
+def has_body(body):
+    """Whether a block has anything to show."""
+    if isinstance(body, (list, tuple)):
+        return any(clean(x) for x in body)
+    return bool(clean(body))
+
+
 def draw_heading(canvas, text, x, y, size=11, colour=NAVY):
     canvas.setFont(face('medium'), size)
     canvas.setFillColor(colour)
@@ -165,11 +212,16 @@ def draw_heading(canvas, text, x, y, size=11, colour=NAVY):
     return y - size - 4
 
 
-def draw_image(canvas, source, x, y, w, h):
-    """Draw a photograph filling the box, cropped rather than distorted.
+def draw_image(canvas, source, x, y, w, h, fit=False):
+    """Draw an image in the box, keeping its proportions.
 
-    The aspect ratio is kept and the overflow trimmed, which is what
-    object-fit: cover does on the web.
+    By default it fills the box and the overflow is trimmed, which is what
+    object-fit: cover does on the web and what a photograph wants.
+
+    With fit=True the whole image is scaled to sit inside the box instead, and
+    centred. A floorplan must never be cropped — the room names, dimensions,
+    boundaries and scale bar around its edges are the reason it is there — so
+    it is always drawn this way, and the spare space is simply left blank.
     """
     if not source:
         return False
@@ -179,13 +231,14 @@ def draw_image(canvas, source, x, y, w, h):
         iw, ih = reader.getSize()
         if not iw or not ih:
             return False
-        scale = max(w / iw, h / ih)
+        scale = (min if fit else max)(w / iw, h / ih)
         dw, dh = iw * scale, ih * scale
         canvas.saveState()
-        path = canvas.beginPath()
-        path.rect(x, y, w, h)
-        canvas.clipPath(path, stroke=0, fill=0)
-        canvas.drawImage(reader, x - (dw - w) / 2, y - (dh - h) / 2,
+        if not fit:
+            path = canvas.beginPath()
+            path.rect(x, y, w, h)
+            canvas.clipPath(path, stroke=0, fill=0)
+        canvas.drawImage(reader, x + (w - dw) / 2, y + (h - dh) / 2,
                          width=dw, height=dh, mask='auto')
         canvas.restoreState()
         return True
@@ -304,10 +357,10 @@ def measure_blocks(canvas, blocks, width, size=9.5, leading=12.6,
     """
     total = 30
     for title, body in blocks:
-        if not clean(body):
+        if not has_body(body):
             continue
         total += heading
-        total += leading * max(1, len(wrap(canvas, body, face('regular'), size, width - 44)))
+        total += block_height(canvas, body, width - 44, size, leading)
         total += gap
     return total + 12
 
@@ -347,14 +400,18 @@ def _navy_panel(canvas, x, y, w, h, blocks):
     width = w - 44
     cursor = y + h - 30
     for title, body in blocks:
-        if not clean(body):
+        if not has_body(body):
             continue
         canvas.setFont(face('medium'), 11)
         canvas.setFillColor(white)
         canvas.drawString(inner, cursor, clean(title))
         cursor -= 15
-        cursor = draw_paragraph(canvas, body, inner, cursor, width,
-                                size=9.5, leading=12.6, colour=white)
+        if isinstance(body, (list, tuple)):
+            cursor = draw_bullets(canvas, body, inner, cursor, width,
+                                  size=9.5, leading=12.6, colour=white)
+        else:
+            cursor = draw_paragraph(canvas, body, inner, cursor, width,
+                                    size=9.5, leading=12.6, colour=white)
         cursor -= 10
         if cursor < y + 20:
             break
@@ -369,14 +426,18 @@ def _grey_panel(canvas, x, y, w, h, blocks):
     width = w - 44
     cursor = y + h - 30
     for title, body in blocks:
-        if not clean(body):
+        if not has_body(body):
             continue
         canvas.setFont(face('medium'), 10.5)
         canvas.setFillColor(NAVY)
         canvas.drawString(inner, cursor, clean(title))
         cursor -= 14
-        cursor = draw_paragraph(canvas, body, inner, cursor, width,
-                                size=9.5, leading=12.4, colour=INK)
+        if isinstance(body, (list, tuple)):
+            cursor = draw_bullets(canvas, body, inner, cursor, width,
+                                  size=9.5, leading=12.4, colour=INK)
+        else:
+            cursor = draw_paragraph(canvas, body, inner, cursor, width,
+                                    size=9.5, leading=12.4, colour=INK)
         cursor -= 9
         if cursor < y + 16:
             break
@@ -426,7 +487,7 @@ def disclaimer_block(canvas, x, y, w):
             cursor -= 8
 
 
-def detail_page(canvas, data, photos, with_terms=True, closing=True):
+def detail_page(canvas, data, photos):
     """Words on the left, pictures and contact on the right."""
     half = (PW - MARGIN * 2 - GUTTER) / 2
     left_x = 0
@@ -437,13 +498,13 @@ def detail_page(canvas, data, photos, with_terms=True, closing=True):
              ('Description', data.get('description'))]
     # A letting shows Rent, a sale shows Price, and a unit offered both ways
     # shows each under its own heading. The two figures are never merged.
-    terms = ([('Terms', data.get('terms'))]
+    terms = ([('Key Terms', data.get('key_terms'))]
              + ([('Rent', data.get('rent'))] if data.get('to_let') else [])
              + ([('Price', data.get('price_to_buy'))] if data.get('for_sale') else [])
              + [('Business Rates', data.get('rates')),
                 ('Service Charge', data.get('service_charge')),
-                ('EPC', data.get('epc'))]) if with_terms else []
-    terms = [(t, b) for t, b in terms if clean(b)]
+                ('EPC', data.get('epc'))])
+    terms = [(t, b) for t, b in terms if has_body(b)]
 
     # Each panel is the height of what it holds, so nothing is left as a band
     # of empty colour. With no terms, the navy block takes the whole column.
@@ -472,136 +533,256 @@ def detail_page(canvas, data, photos, with_terms=True, closing=True):
         for i, photo in enumerate(rest):
             draw_image(canvas, photo, right_x + i * (each + gap), cursor, each, pair_h)
 
-    if closing:
-        # Only where this is the last page. The four-page layout ends on its
-        # own closing page, and the notice belongs there once, not twice.
-        contact_block(canvas, right_x, 128, right_w, data)
-        disclaimer_block(canvas, right_x, 30, right_w)
-
-
-def gallery_page(canvas, data, photos, title='Accommodation'):
-    """Schedule and specification beside a grid of photographs."""
-    half = (PW - MARGIN * 2 - GUTTER) / 2
-    right_x = MARGIN + half + GUTTER
-    right_w = PW - MARGIN - right_x
-
-    blocks = ([(title, data.get('accommodation')),
-               ('Specification', data.get('specification')),
-               ('Key Terms', data.get('terms'))]
-              + ([('Rent', data.get('rent'))] if data.get('to_let') else [])
-              + ([('Price', data.get('price_to_buy'))] if data.get('for_sale') else []))
-    blocks = [(t, b) for t, b in blocks if clean(b)]
-    photos = [p for p in (photos or []) if p]
-    if blocks:
-        # With no photographs left for this page the panels take the width,
-        # rather than leaving half the sheet blank beside them.
-        panel_w = (MARGIN + half) if photos else (PW - MARGIN)
-        upper, lower = blocks[:2], blocks[2:]
-        if lower:
-            navy_h, grey_h = _share_column(canvas, upper, lower, panel_w, PH - 16)
-        else:
-            navy_h, grey_h = PH - 8, 0
-        _navy_panel(canvas, 0, PH - navy_h, panel_w, navy_h, upper)
-        if lower:
-            _grey_panel(canvas, 0, 8, panel_w, grey_h, lower)
-        if not photos:
-            return
-    elif photos:
-        # Nothing to say, so the photographs take the width rather than sitting
-        # beside an empty panel.
-        _photo_grid(canvas, photos, MARGIN, MARGIN, PW - MARGIN * 2, PH - MARGIN * 2)
-        return
-
-    _photo_grid(canvas, photos, right_x, MARGIN, right_w, PH - MARGIN * 2)
-
-
-def _photo_grid(canvas, photos, x, y, w, h, columns=2):
-    """A tidy grid, filling the space it is given."""
-    photos = [p for p in photos if p][:6]
-    if not photos:
-        return
-    rows = max(1, (len(photos) + columns - 1) // columns)
-    gap = 12
-    cell_w = (w - gap * (columns - 1)) / columns
-    cell_h = (h - gap * (rows - 1)) / rows
-    for i, photo in enumerate(photos):
-        col, row = i % columns, i // columns
-        draw_image(canvas, photo,
-                   x + col * (cell_w + gap),
-                   y + h - cell_h - row * (cell_h + gap),
-                   cell_w, cell_h)
-
-
-def closing_page(canvas, data, photos):
-    """Where it is, what it costs to run, and who to ring."""
-    half = (PW - MARGIN * 2 - GUTTER) / 2
-    right_x = MARGIN + half + GUTTER
-    right_w = PW - MARGIN - right_x
-
-    blocks = [('Location', data.get('location')),
-              ('Transport & Local Area', data.get('transport')),
-              ('Business Rates', data.get('rates')),
-              ('EPC', data.get('epc')),
-              ('Planning & Use', data.get('use_class'))]
-    blocks = [(t, b) for t, b in blocks if clean(b)]
-    if blocks:
-        _navy_panel(canvas, 0, PH * 0.40, MARGIN + half, PH * 0.60, blocks)
-
-    viewing = [('Viewing', data.get('viewing') or
-                'Strictly by appointment through the sole agent.')]
-    _grey_panel(canvas, 0, 8, MARGIN + half, PH * 0.40 - 16, viewing)
-
-    top = data.get('map') or data.get('floorplan')
-    cursor = PH - MARGIN
-    if top:
-        h = 250
-        cursor -= h
-        draw_image(canvas, top, right_x, cursor, right_w, h)
-        cursor -= 16
-    if photos:
-        # Whatever room is left goes to the photographs, so nothing is blank.
-        available = cursor - 150
-        if available > 70:
-            _photo_grid(canvas, photos[:2], right_x, cursor - available,
-                        right_w, available, columns=2)
-
+    # Page two carries the contact details and the disclaimer in both formats,
+    # because it is the same page two in both.
     contact_block(canvas, right_x, 128, right_w, data)
     disclaimer_block(canvas, right_x, 30, right_w)
 
 
-# ── Putting a document together ──────────────────────────────────────────────
+def page_footer(canvas, data, page_no):
+    """The mark, the address and the page number, along the foot of a page.
 
-def build(data, photos, pages=2):
+    The same on page three and page four, so the added pages sit with the
+    first two rather than looking like a different document.
+    """
+    canvas.setStrokeColor(RULE)
+    canvas.setLineWidth(0.6)
+    canvas.line(MARGIN, 44, PW - MARGIN, 44)
+
+    logo_w = draw_logo(canvas, MARGIN, 16, height=22)
+    canvas.setFont(face('regular'), 8)
+    canvas.setFillColor(MUTED)
+    address = clean(data.get('address'))
+    if address:
+        room = PW - MARGIN * 2 - logo_w - 80
+        while canvas.stringWidth(address, face('regular'), 8) > room and len(address) > 8:
+            address = address[:-2]
+        canvas.drawString(MARGIN + logo_w + 18, 24, address)
+    if page_no:
+        canvas.drawRightString(PW - MARGIN, 24, str(page_no))
+
+
+def page_title(canvas, text):
+    """A heading for an added page, in the house style of the panels."""
+    canvas.setFont(face('medium'), 13)
+    canvas.setFillColor(NAVY)
+    canvas.drawString(MARGIN, PH - MARGIN - 4, clean(text).upper())
+    canvas.setStrokeColor(RULE)
+    canvas.setLineWidth(0.8)
+    canvas.line(MARGIN, PH - MARGIN - 14, MARGIN + 150, PH - MARGIN - 14)
+    return PH - MARGIN - 30
+
+
+GALLERY_MAX = 6          # more than this and none of them is worth looking at
+
+
+def _orientation(photo):
+    """'landscape', 'portrait' or 'square' — or None if it cannot be read."""
+    try:
+        reader = ImageReader(io.BytesIO(photo) if isinstance(photo, bytes) else photo)
+        w, h = reader.getSize()
+        if not w or not h:
+            return None
+        ratio = w / h
+        if ratio > 1.15:
+            return 'landscape'
+        if ratio < 0.87:
+            return 'portrait'
+        return 'square'
+    except Exception:
+        return None
+
+
+def gallery_layout(photos):
+    """Where each photograph goes, chosen from how many there are and which
+    way round they are.
+
+    Returns a list of (x, y, w, h) in the same order as `photos`. The shapes
+    are picked so portraits are given tall cells and landscapes wide ones,
+    rather than everything being forced into the same square and cropped hard.
+    """
+    n = len(photos)
+    if not n:
+        return []
+    left, right = MARGIN, PW - MARGIN
+    top = PH - MARGIN - 34
+    bottom = 56
+    w, h = right - left, top - bottom
+    gap = 12
+    shapes = [_orientation(p) for p in photos]
+    portraits = sum(1 for s in shapes if s == 'portrait')
+
+    if n == 1:
+        return [(left, bottom, w, h)]
+
+    if n == 2:
+        if portraits >= 1:
+            # Side by side gives a portrait its height.
+            each = (w - gap) / 2
+            return [(left + i * (each + gap), bottom, each, h) for i in range(2)]
+        # Two landscapes read better stacked, each full width.
+        each = (h - gap) / 2
+        return [(left, bottom + (1 - i) * (each + gap), w, each) for i in range(2)]
+
+    if n == 3:
+        if shapes[0] == 'portrait':
+            # A tall photograph beside two stacked.
+            big = (w - gap) * 0.5
+            small_h = (h - gap) / 2
+            return [(left, bottom, big, h),
+                    (left + big + gap, bottom + small_h + gap, w - big - gap, small_h),
+                    (left + big + gap, bottom, w - big - gap, small_h)]
+        # One wide photograph above two.
+        big_h = h * 0.58
+        small_w = (w - gap) / 2
+        return [(left, bottom + h - big_h, w, big_h),
+                (left, bottom, small_w, h - big_h - gap),
+                (left + small_w + gap, bottom, small_w, h - big_h - gap)]
+
+    if n == 4:
+        each_w, each_h = (w - gap) / 2, (h - gap) / 2
+        return [(left + (i % 2) * (each_w + gap),
+                 bottom + (1 - i // 2) * (each_h + gap), each_w, each_h)
+                for i in range(4)]
+
+    if n == 5:
+        # Two across the top, three beneath.
+        top_h = h * 0.54
+        top_w = (w - gap) / 2
+        low_w = (w - gap * 2) / 3
+        low_h = h - top_h - gap
+        out = [(left + i * (top_w + gap), bottom + low_h + gap, top_w, top_h)
+               for i in range(2)]
+        out += [(left + i * (low_w + gap), bottom, low_w, low_h) for i in range(3)]
+        return out
+
+    # Six: a plain, even grid.
+    each_w, each_h = (w - gap * 2) / 3, (h - gap) / 2
+    return [(left + (i % 3) * (each_w + gap),
+             bottom + (1 - i // 3) * (each_h + gap), each_w, each_h)
+            for i in range(6)]
+
+
+def photos_page(canvas, data, photos, page_no=3):
+    """Page three: further photographs, and nothing else.
+
+    No description, no location, no terms, no costs — those are on page two and
+    repeating them here would only push the photographs about. The layout is
+    chosen from how many photographs there are and which way round they are,
+    and an empty cell is never drawn.
+    """
+    photos = [p for p in (photos or []) if p][:GALLERY_MAX]
+    cursor = page_title(canvas, 'Further photographs')
+    if not photos:
+        # Nothing to show. Say so rather than printing an empty frame.
+        canvas.setFont(face('regular'), 10.5)
+        canvas.setFillColor(MUTED)
+        canvas.drawString(MARGIN, cursor - 14,
+                          'No further photographs were selected for this page.')
+        page_footer(canvas, data, page_no)
+        return
+    for photo, (x, y, w, h) in zip(photos, gallery_layout(photos)):
+        draw_image(canvas, photo, x, y, w, h)
+    page_footer(canvas, data, page_no)
+
+
+def floorplan_page(canvas, data, floorplans, page_no=4):
+    """Page four: the floorplan, as large as it will go.
+
+    Fitted rather than cropped, and never overlaid: a floorplan's room names,
+    dimensions and scale bar are the whole point of it, and a logo across the
+    middle would cover exactly the part somebody is trying to read. The mark
+    and the page number stay in the footer, clear of the drawing.
+    """
+    floorplans = [f for f in (floorplans or []) if f][:2]
+    cursor = page_title(canvas, 'Floorplan')
+    left, right = MARGIN, PW - MARGIN
+    bottom, top = 56, cursor - 6
+
+    if not floorplans:
+        canvas.setFont(face('regular'), 10.5)
+        canvas.setFillColor(MUTED)
+        canvas.drawCentredString(PW / 2, (top + bottom) / 2,
+                                 'No floorplan has been uploaded for this property.')
+        page_footer(canvas, data, page_no)
+        return
+
+    if len(floorplans) == 1:
+        draw_image(canvas, floorplans[0], left, bottom, right - left, top - bottom,
+                   fit=True)
+    else:
+        gap = 16
+        each = (right - left - gap) / 2
+        for i, plan in enumerate(floorplans):
+            draw_image(canvas, plan, left + i * (each + gap), bottom, each,
+                       top - bottom, fit=True)
+    page_footer(canvas, data, page_no)
+
+
+# How many photographs each of the first two pages uses. Page three starts
+# after these, so a photograph is never printed twice.
+COVER_PHOTOS = 1
+DETAIL_PHOTOS = 3
+
+
+def build(data, photos, pages=2, floorplans=None):
     """The particulars as PDF bytes.
 
-    `pages` is 2 or 4. Both are the same components in a different order, so
-    neither can drift away from the other.
+    `pages` is 2 or 4, and the four-page version IS the two-page version with
+    two pages added. Pages one and two are the same calls with the same
+    arguments in both, so a change to the two-page layout cannot fail to reach
+    the four-page one — there is no second copy of them to forget.
+
+        page 1   cover            shared
+        page 2   property details shared
+        page 3   photographs      four-page only
+        page 4   floorplan        four-page only
     """
     pages = 4 if int(pages or 2) == 4 else 2
     photos = [p for p in (photos or []) if p]
+    floorplans = [f for f in (floorplans or []) if f]
     buf = io.BytesIO()
     canvas = pdfcanvas.Canvas(buf, pagesize=PAGE)
     canvas.setTitle(f"Particulars — {clean(data.get('address')) or 'Property'}")
     canvas.setAuthor(COMPANY['name'])
     canvas.setSubject('Property particulars')
 
+    # ── Pages one and two: identical in both formats ──
     cover = dict(data)
     cover['cover'] = photos[0] if photos else None
     cover_page(canvas, cover)
     canvas.showPage()
 
-    rest = photos[1:]
-    if pages == 2:
-        detail_page(canvas, data, rest[:3])
-    else:
-        detail_page(canvas, data, rest[:3], with_terms=False, closing=False)
+    detail_photos = photos[COVER_PHOTOS:COVER_PHOTOS + DETAIL_PHOTOS]
+    detail_page(canvas, data, detail_photos)
+
+    if pages == 4:
+        # ── Page three: the photographs pages one and two did not use ──
         canvas.showPage()
-        gallery_page(canvas, data, rest[3:9])
+        photos_page(canvas, data, photos[COVER_PHOTOS + DETAIL_PHOTOS:], page_no=3)
+        # ── Page four: the floorplan ──
         canvas.showPage()
-        closing_page(canvas, data, rest[9:11] or rest[:2])
+        floorplan_page(canvas, data, floorplans, page_no=4)
+
     canvas.showPage()
     canvas.save()
     return buf.getvalue()
+
+
+def photo_plan(photos, pages=2):
+    """Where each photograph will appear, so the screen can say so.
+
+    Returns a dict of lists, in the user's own order. Nothing appears twice.
+    """
+    photos = list(photos or [])
+    pages = 4 if int(pages or 2) == 4 else 2
+    cover = photos[:COVER_PHOTOS]
+    detail = photos[COVER_PHOTOS:COVER_PHOTOS + DETAIL_PHOTOS]
+    rest = photos[COVER_PHOTOS + DETAIL_PHOTOS:]
+    gallery = rest[:GALLERY_MAX] if pages == 4 else []
+    used = COVER_PHOTOS + DETAIL_PHOTOS + len(gallery)
+    return {'cover': cover, 'detail': detail, 'gallery': gallery,
+            'excluded': photos[used:] if pages == 4 else rest}
 
 
 def filename_for(address, pages, when=None):

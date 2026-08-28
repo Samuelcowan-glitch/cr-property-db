@@ -119,7 +119,13 @@
     <!-- ── Photographs ── -->
     <div class="fin-band">
       <h3>Photographs</h3>
-      <span class="fin-note">Drag to reorder &middot; the first is the cover &middot; untick to leave one out</span>
+      <span class="fin-note">Drag to reorder &middot; each tile says where it will appear &middot; untick to leave one out</span>
+    </div>
+    <div class="pt-legend">
+      <span class="pt-key pt-key--cover">Cover</span> page 1
+      <span class="pt-key pt-key--detail">Page 2</span> beside the details
+      <span class="pt-key pt-key--gallery">Page 3</span> the photographs page, four-page only
+      <span class="pt-key pt-key--out">Not used</span>
     </div>
 
     {% if photos %}
@@ -129,7 +135,7 @@
         <img src="{{ url_for('listing_photo_image', id=ph.id, w=300) }}" alt="">
         <label>
           <input type="checkbox" name="photo_ids" value="{{ ph.id }}" checked>
-          <span data-pt-pos>{{ 'Cover' if loop.first else loop.index }}</span>
+          <span class="pt-where" data-pt-pos>{{ 'Cover' if loop.first else loop.index }}</span>
         </label>
       </div>
       {% endfor %}
@@ -137,10 +143,79 @@
     <div class="pt-warn" data-pt-warn hidden>
       Fewer than three photographs selected — the particulars will look sparse.
     </div>
+    <div class="pt-warn" data-pt-gallery-warn hidden>
+      Not enough photographs to fill page three of the four-page particulars.
+      It will use a layout suited to however many there are; none is repeated.
+    </div>
     {% else %}
     <div class="fin-nudge">
       <strong>No photographs.</strong> Add some to the instruction first; a
       brochure without them will be mostly empty.
+    </div>
+    {% endif %}
+
+    <!-- ── Key terms ── -->
+    <div class="fin-band">
+      <h3>Key Terms</h3>
+      <span class="fin-note">Up to {{ KEY_TERMS_MAX }} bullets on page two &middot; drag to reorder</span>
+    </div>
+    {% if saved_terms %}
+    <ul class="pt-terms" data-pt-terms>
+      {% for term in saved_terms %}
+      <li class="pt-term" draggable="true" data-pt-term>
+        <span class="kt-grip" aria-hidden="true">&#10239;</span>
+        <label>
+          <input type="checkbox" name="key_terms" value="{{ term }}"
+                 {{ 'checked' if loop.index0 < KEY_TERMS_MAX }}>
+          <span>{{ term }}</span>
+        </label>
+      </li>
+      {% endfor %}
+    </ul>
+    <div class="pt-warn" data-pt-terms-warn hidden>
+      Only the first {{ KEY_TERMS_MAX }} ticked terms will be printed.
+    </div>
+    {% else %}
+    <div class="fin-nudge">
+      <strong>Key Terms missing.</strong> None have been saved for this
+      instruction, so the Key Terms box will be left off page two and the rest
+      of the page will close up. Nothing is substituted for them.
+      <a href="{{ url_for('project_detail', id=project.id) }}">Add them on the
+      instruction</a> if they should appear.
+    </div>
+    {% endif %}
+
+    <!-- ── Floorplan ── -->
+    <div class="fin-band">
+      <h3>Floorplan</h3>
+      <span class="fin-note">Page four of the four-page particulars</span>
+    </div>
+    {% if floorplans %}
+    <div class="pt-plans">
+      {% for plan in floorplans %}
+      <label class="pt-plan">
+        <input type="checkbox" name="floorplan_keys" value="{{ plan.key }}"
+               {{ 'checked' if loop.first }}>
+        <span class="pt-plan-name">{{ plan.name }}</span>
+        <span class="pt-plan-source">{{ plan.source }}</span>
+      </label>
+      {% endfor %}
+    </div>
+    <p class="fin-note">
+      Fitted whole on the page, never cropped and never printed over, so the
+      room names, dimensions and scale bar stay readable. Two will sit side by
+      side if you choose two.
+    </p>
+    {% else %}
+    <div class="fin-nudge" data-pt-noplan>
+      <strong>No floorplan uploaded.</strong> Page four of the four-page
+      particulars would be empty. Upload one on the property or the
+      instruction, choose the two-page format above, or confirm below.
+      <label class="pt-confirm">
+        <input type="checkbox" name="no_floorplan_ok" value="1">
+        Produce the four-page particulars anyway, with a note in place of the
+        floorplan
+      </label>
     </div>
     {% endif %}
 

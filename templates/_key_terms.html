@@ -1,0 +1,65 @@
+{#
+   Key Terms: one field, edited as a list.
+
+   The same macro everywhere the terms are entered, so the Add Instruction page
+   and the Instruction record cannot drift apart. It posts a single textarea —
+   one term to a line — which is exactly how the column stores it, so the
+   server contract is unchanged and the editor still works with JavaScript off.
+#}
+{% macro key_terms_field(value, form_id=none, label='Key Terms', name='key_terms',
+                         hint=none) %}
+{% set terms = key_terms_list(value) %}
+<div class="frow frow--full">
+  <div class="fcell fcell--label fcell--top">{{ label }}</div>
+  <div class="fcell fcell--edit">
+    <div class="kt" data-key-terms data-name="{{ name }}"
+         {% if form_id %}data-form="{{ form_id }}"{% endif %}>
+
+      {# The value that is actually posted. Rewritten from the rows below. #}
+      <textarea name="{{ name }}" data-kt-value hidden
+                {% if form_id %}form="{{ form_id }}"{% endif %}
+                >{{ terms|join('\n') }}</textarea>
+
+      <ul class="kt-list" data-kt-list>
+        {% for term in terms %}
+        <li class="kt-row" data-kt-row draggable="true">
+          <span class="kt-grip" data-kt-grip title="Drag to reorder" aria-hidden="true">⠿</span>
+          <input type="text" class="kt-input" data-kt-input value="{{ term }}"
+                 aria-label="Key term {{ loop.index }}">
+          <button type="button" class="kt-x" data-kt-remove
+                  aria-label="Remove this term">&times;</button>
+        </li>
+        {% endfor %}
+      </ul>
+
+      {# Without JavaScript this is the whole editor, and it still works. #}
+      <noscript>
+        <textarea name="{{ name }}" rows="6"
+                  {% if form_id %}form="{{ form_id }}"{% endif %}
+                  placeholder="One term per line">{{ terms|join('\n') }}</textarea>
+      </noscript>
+
+      <div class="kt-actions">
+        <button type="button" class="btn btn-outline btn-sm" data-kt-add>Add a term</button>
+        <span class="kt-count" data-kt-count></span>
+      </div>
+      <span class="fcell-hint">
+        {{ hint or 'One term per line. Paste a bullet list and it will be split
+           into separate terms. The first ' ~ KEY_TERMS_MAX ~ ' appear on the
+           particulars, in this order.' }}
+      </span>
+    </div>
+  </div>
+</div>
+{% endmacro %}
+
+
+{# The terms as they will read, for a record page that only shows them. #}
+{% macro key_terms_view(value, empty='Not set') %}
+{% set terms = key_terms_list(value) %}
+{% if terms %}
+<ul class="kt-view">
+  {% for term in terms %}<li>{{ term }}</li>{% endfor %}
+</ul>
+{% else %}<span class="is-empty">{{ empty }}</span>{% endif %}
+{% endmacro %}
