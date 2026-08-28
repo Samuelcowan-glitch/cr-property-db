@@ -158,6 +158,13 @@
         .then(function (r) { return r.ok ? r.json() : null; })
         .then(function (payload) {
           if (!payload || !multiplierSelect) { return; }
+          /* A year with nothing on record says so. Silently hiding every
+             option leaves an empty list and looks like a broken calculator. */
+          var emptyEl = root.querySelector('[data-br-empty]');
+          if (emptyEl) {
+            emptyEl.hidden = !payload.empty;
+            emptyEl.textContent = payload.message || '';
+          }
           /* Only options for this tax year can be chosen. */
           Array.prototype.forEach.call(multiplierSelect.options, function (o) {
             if (!o.value) { return; }

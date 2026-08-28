@@ -2,6 +2,7 @@
 {% import "_photo_gallery.html" as pg %}
 {% import "crm/_client_picker.html" as cp %}
 {% block title %}{{ prop.address }}{% endblock %}
+{% import "properties/_rates.html" as rates %}
 {% block topbar_title %}Property Overview{% endblock %}
 {% block topbar_actions %}
   <a href="{{ url_for('transaction_new') }}?property_id={{ prop.id }}" class="btn btn-teal btn-sm">+ Record Transaction</a>
@@ -43,7 +44,6 @@
 <div class="rec-toolbar">
   <span style="border:0;background:none;padding:0 6px 0 0;font-weight:700;color:#0e1f44">Property</span>
   <span class="sp"></span>
-  <a href="{{ url_for('property_edit', id=prop.id) }}"><span class="ic">&#9998;</span>All details</a>
   <span class="rec-save">
     <span data-save-status></span>
     <button type="submit" class="btn btn-primary btn-save" data-save>Save</button>
@@ -143,6 +143,29 @@
           </select>
         </div>
       </div>
+      <div class="frow">
+        <div class="fcell fcell--label">Use class</div>
+        <div class="fcell fcell--edit"><input type="text" name="use_class" value="{{ prop.use_class or '' }}" placeholder="e.g. Class E"></div>
+        <div class="fcell fcell--label">Added</div>
+        <div class="fcell is-empty">{{ prop.created_at.strftime('%d %b %Y') if prop.created_at else '—' }}</div>
+      </div>
+      {{ rates.local_authority_field(prop, 'property-form', errors|default({})) }}
+      <div class="frow">
+        <div class="fcell fcell--label">Residential use</div>
+        <div class="fcell fcell--edit">
+          <select name="residential_use">
+            <option value="">— Not residential —</option>
+            {% for u in ['Owner Occupied','HMO','Residential Investment','Vacant'] %}
+            <option value="{{ u }}" {{ 'selected' if prop.residential_use == u }}>{{ u }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="fcell fcell--label">Beds / baths</div>
+        <div class="fcell fcell--edit br-pair">
+          <input type="number" name="beds" min="0" value="{{ prop.beds if prop.beds else '' }}" placeholder="Beds" aria-label="Bedrooms">
+          <input type="number" name="baths" min="0" value="{{ prop.baths if prop.baths else '' }}" placeholder="Baths" aria-label="Bathrooms">
+        </div>
+      </div>
       <div class="frow frow--full">
         <div class="fcell fcell--label fcell--top">Description</div>
         <div class="fcell fcell--edit"><textarea name="description" placeholder="Not set">{{ prop.description or '' }}</textarea></div>
@@ -154,6 +177,15 @@
 {# Read live from the linked client record. Nothing is copied onto the
    property, so a change made on their own page shows here. #}
 </form>
+
+{# Their own forms, so they cannot nest inside the property form above and so
+   saving the property never saves a rates calculation by accident. #}
+<div class="rec-cols-proj rec-cols--one" style="margin-top:8px">
+  <div class="rec-col">
+    {{ rates.rates_calculator(prop, tax_years, multipliers, rates_summary(prop),
+                              default_tax_year, years_with_multipliers) }}
+  </div>
+</div>
 
 <div class="rec-cols-narrow" style="margin-top:8px">
   <div>{{ cp.client_details(prop.client_contact) }}</div>

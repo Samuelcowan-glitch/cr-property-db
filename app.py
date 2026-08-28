@@ -2597,15 +2597,25 @@ def property_new():
 
 @app.route('/properties/<int:id>')
 def property_detail(id):
+    """Everything about a property, on one page.
+
+    There is no separate All details page: the Overview is the record, and it
+    is edited in place. /edit still accepts the form post, and answers a GET by
+    sending the reader here, so an old link or bookmark still works.
+    """
     prop = Property.query.get_or_404(id)
-    folder_labels = FOLDER_LABELS
-    return render_template('properties/detail.html', prop=prop, folder_labels=folder_labels)
+    return render_template('properties/detail.html', prop=prop,
+                           folder_labels=FOLDER_LABELS,
+                           **rates_form_context())
 
 
 @app.route('/properties/<int:id>/edit', methods=['GET', 'POST'])
 @requires('edit')
 def property_edit(id):
     prop = Property.query.get_or_404(id)
+    if request.method == 'GET':
+        # The Overview is the record. Anything still pointing here goes there.
+        return redirect(url_for('property_detail', id=prop.id))
     if request.method == 'POST':
         # Presence-guarded so the property record page, which shows part of the
         # record, cannot blank what it does not display.
@@ -2614,7 +2624,8 @@ def property_edit(id):
         if 'council_id' in request.form and not _fcouncil(request.form.get('council_id')):
             flash('Choose the local authority. It decides which council’s '
                   'details go on the particulars, so it is not guessed.', 'error')
-            return render_template('properties/form.html', prop=prop,
+            return render_template('properties/detail.html', prop=prop,
+                                   folder_labels=FOLDER_LABELS,
                                    errors={'council_id': 'Choose the local authority.'},
                                    **rates_form_context())
         was_council = prop.council_id
@@ -2628,8 +2639,7 @@ def property_edit(id):
         audit('edit', entity='Property', entity_id=prop.id)
         flash('Property updated.', 'success')
         return _back_to('property_detail', id=prop.id)
-    return render_template('properties/form.html', prop=prop,
-                           **rates_form_context())
+    return redirect(url_for('property_detail', id=prop.id))
 
 
 @app.route('/properties/<int:id>/delete', methods=['POST'])
@@ -2809,7 +2819,12 @@ def _rates_inputs(form, prop=None):
         if row and (row.tax_year != tax_year or not row.active):
             row = None
         if not row:
-            errors['multiplier_id'] = 'Choose a multiplier for this tax year.'
+            if not multiplier_rows(tax_year):
+                errors['multiplier_id'] = (
+                    f'No multiplier is on record for {tax_year}. Add it under '
+                    'More \u2192 Business rates, or choose an earlier year.')
+            else:
+                errors['multiplier_id'] = 'Choose a multiplier for this tax year.'
         else:
             value = row.value
 
@@ -2961,7 +2976,7 @@ def property_rates_save(id):
     if errors or not result:
         flash('The rates calculation could not be saved: '
               + '; '.join(errors.values()), 'error')
-        return _back_to('property_edit', id=prop.id)
+        return _back_to('property_detail', id=prop.id)
 
     # The previous estimate becomes history rather than being overwritten.
     for old in prop.rates_calculations:
@@ -3000,7 +3015,7 @@ def property_rates_save(id):
     audit('rates-calculated', entity='Property', entity_id=prop.id, detail=detail)
     flash(f"Estimated business rates saved: {br.money(result['total'])} "
           f"for {inputs['tax_year']}.", 'success')
-    return _back_to('property_edit', id=prop.id)
+    return _back_to('property_detail', id=prop.id)
 
 
 @app.route('/properties/<int:id>/rates/suggest')
@@ -3014,6 +3029,10 @@ def property_rates_suggest(id):
     rows = multiplier_rows(tax_year)
     return jsonify({
         'suggested_id': pick['id'] if pick else None,
+        'empty': not rows,
+        'message': (f'No multiplier is on record for {tax_year}. Add it under '
+                    'More \u2192 Business rates, or choose an earlier year.'
+                    if not rows else None),
         'why': pick['why'] if pick else None,
         'verified': bool(pick and pick.get('verified_on')) if pick else False,
         'options': [{'id': r['id'], 'name': r['name'],
@@ -7016,10 +7035,42 @@ def rates_summary(prop):
     }
 
 
+def years_with_multipliers():
+    """Tax years that actually have a multiplier on record, newest first."""
+    rows = (db.session.query(RatesMultiplier.tax_year)
+            .filter_by(active=True).distinct().all())
+    return sorted({r[0] for r in rows}, reverse=True)
+
+
+def default_tax_year():
+    """The year the calculator should open on.
+
+    The current one where it has multipliers, and otherwise the most recent
+    year that does. Opening on a year with nothing on record leaves no
+    multiplier to choose and no figure can be produced, which reads as the
+    calculator being broken rather than as the table needing next year's
+    figures.
+    """
+    today = date.today()
+    current = br.tax_year_of(today)
+    have = years_with_multipliers()
+    if current in have or not have:
+        return current
+    earlier = [y for y in have if y <= current]
+    return earlier[0] if earlier else have[-1]
+
+
 def rates_form_context():
     """The years and multipliers the calculator may offer."""
+    today = date.today()
+    # Every year worth offering, plus any year already on record, so an older
+    # calculation can still be opened on the year it was made for.
+    years = sorted(set(br.tax_year_options(today)) | set(years_with_multipliers()),
+                   reverse=True)
     return {
-        'tax_years': br.tax_year_options(date.today()),
+        'tax_years': years,
+        'default_tax_year': default_tax_year(),
+        'years_with_multipliers': years_with_multipliers(),
         'multipliers': (RatesMultiplier.query.filter_by(active=True)
                         .order_by(RatesMultiplier.tax_year.desc(),
                                   RatesMultiplier.name).all()),

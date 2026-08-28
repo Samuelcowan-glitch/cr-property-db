@@ -163,7 +163,8 @@
   {% if editing %}
   <div class="rec-cols rec-cols--one">
     <div class="rec-col">
-      {{ rates.rates_calculator(prop, tax_years, multipliers, rates_summary(prop)) }}
+      {{ rates.rates_calculator(prop, tax_years, multipliers, rates_summary(prop),
+                                default_tax_year, years_with_multipliers) }}
     </div>
   </div>
   {% else %}

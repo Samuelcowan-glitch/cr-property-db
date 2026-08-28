@@ -41,7 +41,8 @@
 
 
 {# ── The calculator ──────────────────────────────────────────────────────── #}
-{% macro rates_calculator(prop, tax_years, multipliers, summary) %}
+{% macro rates_calculator(prop, tax_years, multipliers, summary,
+                          default_tax_year=none, years_with_multipliers=[]) %}
 {% set current = prop.current_rates %}
 <form id="rates-form" method="post"
       action="{{ url_for('property_rates_save', id=prop.id) }}"></form>
@@ -72,7 +73,10 @@
     <div class="fcell fcell--edit">
       <select name="tax_year" form="rates-form" data-br="tax_year">
         {% for y in tax_years %}
-        <option value="{{ y }}" {{ 'selected' if (current.tax_year if current else tax_years[0]) == y }}>{{ y }}</option>
+        <option value="{{ y }}"
+                {{ 'selected' if (current.tax_year if current else (default_tax_year or tax_years[0])) == y }}>
+          {{ y }}{% if y not in years_with_multipliers %} — no multiplier yet{% endif %}
+        </option>
         {% endfor %}
       </select>
     </div>
@@ -91,6 +95,7 @@
         </option>
         {% endfor %}
       </select>
+      <span class="fcell-hint" data-br-empty hidden></span>
       <span class="fcell-hint" data-br-why>
         {% if current and current.multiplier_overridden %}
         Entered by hand: {{ br.multiplier_str(current.multiplier_value) }}.
