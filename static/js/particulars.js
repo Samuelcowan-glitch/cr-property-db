@@ -134,17 +134,88 @@
 
   /* One press is one document: a second click while the first is still going
      would otherwise produce two. */
-  function guardOnce() {
+  /* Guarding the action buttons.
+   *
+   * The previous version set btn.disabled = true inside the button's own click
+   * handler. A disabled submit button cannot activate its form, so the browser
+   * abandoned the submission and NOTHING was sent — which is why Download and
+   * Save to Brochure did nothing while Preview, which had no guard, worked.
+   *
+   * So the guard now hangs off the form's submit event and disables on the
+   * next tick, once the submission is already under way. Each button has its
+   * own state: running one must not disable the others, and every one comes
+   * back if the request fails or the user returns to the page.
+   */
+  function guardActions() {
+    var form = document.getElementById('particulars-form');
+    if (!form) { return; }
+    var busy = null;
+
+    function release(btn) {
+      if (!btn) { return; }
+      btn.disabled = false;
+      if (btn.dataset.ptLabel) { btn.textContent = btn.dataset.ptLabel; }
+      btn.removeAttribute('aria-busy');
+      if (busy === btn) { busy = null; }
+    }
+
+    /* Which button submitted, remembered before the submit event fires. */
+    var clicked = null;
+    var confirmed = null;
     document.querySelectorAll('[data-pt-once]').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        var original = btn.textContent;
-        btn.disabled = true;
-        btn.textContent = 'Working…';
-        setTimeout(function () {
-          btn.disabled = false;
-          btn.textContent = original;
-        }, 6000);
+      btn.addEventListener('click', function (e) {
+        /* An existing brochure is never overwritten without being asked. */
+        var dialogId = btn.getAttribute('data-pt-confirm');
+        if (dialogId && confirmed !== btn) {
+          var dlg = document.getElementById(dialogId);
+          if (dlg && dlg.showModal) {
+            e.preventDefault();
+            dlg.showModal();
+            dlg.addEventListener('click', function once(ev) {
+              if (ev.target.closest('[data-pt-cancel]')) {
+                dlg.close();
+                dlg.removeEventListener('click', once);
+              } else if (ev.target.closest('[data-pt-go]')) {
+                dlg.close();
+                dlg.removeEventListener('click', once);
+                confirmed = btn;
+                btn.click();          /* now it goes through */
+              }
+            });
+            return;
+          }
+        }
+        confirmed = null;
+        clicked = btn;
       });
+    });
+
+    form.addEventListener('submit', function () {
+      var btn = clicked;
+      clicked = null;
+      if (!btn) { return; }                 /* Preview guards itself */
+      /* On the next tick, so the submission this click started is not the one
+         being cancelled. */
+      window.setTimeout(function () {
+        if (!btn.dataset.ptLabel) { btn.dataset.ptLabel = btn.textContent; }
+        btn.disabled = true;
+        btn.setAttribute('aria-busy', 'true');
+        btn.textContent = btn.getAttribute('data-pt-busy') || 'Working…';
+        busy = btn;
+      }, 0);
+
+      /* A download does not navigate, so nothing would ever put the button
+         back. A save navigates and the page is rebuilt anyway. */
+      window.setTimeout(function () { release(btn); }, 8000);
+    });
+
+    /* Coming back to the page from a download or from history must never leave
+       a button stuck. */
+    window.addEventListener('pageshow', function () {
+      document.querySelectorAll('[data-pt-once]').forEach(release);
+    });
+    window.addEventListener('focus', function () {
+      if (busy) { window.setTimeout(function () { release(busy); }, 1200); }
     });
   }
 
@@ -152,7 +223,7 @@
     document.querySelectorAll('[data-pt-terms]').forEach(wireTerms);
     var grid = document.querySelector('[data-pt-photos]');
     if (grid) { wire(grid); }
-    guardOnce();
+    guardActions();
   }
 
   if (document.readyState === 'loading') {

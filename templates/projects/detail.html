@@ -86,6 +86,19 @@
         {% else %}
           <span style="font-size:12px;color:#9aa0a6">No property linked</span>
         {% endif %}
+        {# Which property this instruction is for, changeable with the one Save
+           button like everything else on the page. #}
+        <label class="pf-label" for="project-property" style="margin-top:8px;display:block">Linked property</label>
+        <select name="property_id" id="project-property" form="project-form" data-search
+                data-placeholder="Search properties…" style="width:100%;box-sizing:border-box">
+          <option value="">Not linked</option>
+          {% for candidate in properties %}
+          <option value="{{ candidate.id }}"
+                  {{ 'selected' if project.property_id == candidate.id }}>
+            {{ candidate.address }}{% if candidate.postcode %}, {{ candidate.postcode }}{% endif %}
+          </option>
+          {% endfor %}
+        </select>
       </div>
     </div>
 
@@ -374,7 +387,10 @@
         </div>
       </div>
       {% endfor %}
-      <form method="post" action="{{ url_for('listing_edit', id=lst.id) }}" class="listing-edit-form">
+      {# Part of the record form, targeted by id — a form cannot nest inside
+         another. These fields used to sit in a form of their own with its own
+         Save button, so the main Save silently discarded every marketing edit. #}
+      <div class="listing-edit-form">
         <div class="lst-start">
 
 </div>
@@ -383,13 +399,13 @@
 
           <div class="frow">
   <div class="fcell fcell--label">Unit Name</div>
-  <div class="fcell fcell--edit"><input type="text" name="unit_name" value="{{ lst.unit_name or '' }}" placeholder="e.g. Ground Floor, Unit 3 (blank = whole building)"></div>
+  <div class="fcell fcell--edit"><input type="text" name="unit_name" value="{{ lst.unit_name or '' }}" placeholder="e.g. Ground Floor, Unit 3 (blank = whole building)" form="project-form"></div>
 </div>
 
 
           <div class="frow">
   <div class="fcell fcell--label">Category</div>
-  <div class="fcell fcell--edit"><select name="website_category">
+  <div class="fcell fcell--edit"><select name="website_category" form="project-form">
               <option value="commercial" {{ 'selected' if lst.website_category == 'commercial' else '' }}>Commercial</option>
               <option value="residential" {{ 'selected' if lst.website_category == 'residential' else '' }}>Residential</option>
             </select></div>
@@ -398,7 +414,7 @@
 
           <div class="frow lst-com">
   <div class="fcell fcell--label">Use Class</div>
-  <div class="fcell fcell--edit"><select name="use_class">
+  <div class="fcell fcell--edit"><select name="use_class" form="project-form">
               <option value="">— Select —</option>
               <option value="office" {{ 'selected' if lst.use_class == 'office' else '' }}>Office</option>
               <option value="retail" {{ 'selected' if lst.use_class == 'retail' else '' }}>Retail</option>
@@ -409,7 +425,7 @@
 
           <div class="frow">
   <div class="fcell fcell--label">Status</div>
-  <div class="fcell fcell--edit"><select name="listing_status">
+  <div class="fcell fcell--edit"><select name="listing_status" form="project-form">
               {% for s in ['available','under-offer','let-agreed','sold','withdrawn'] %}
               <option value="{{ s }}" {{ 'selected' if lst.listing_status == s else '' }}>{{ s|replace('-',' ')|title }}</option>
               {% endfor %}
@@ -423,23 +439,23 @@
 
           <div class="frow">
   <div class="fcell fcell--label">Size (sq ft)</div>
-  <div class="fcell fcell--edit"><input type="number" name="size" value="{{ lst.size|int if lst.size else '' }}" placeholder="e.g. 1665"></div>
+  <div class="fcell fcell--edit"><input type="number" name="size" value="{{ lst.size|int if lst.size else '' }}" placeholder="e.g. 1665" form="project-form"></div>
 </div>
 
 
           <div class="frow lst-com">
   <div class="fcell fcell--label">Size range</div>
   <div class="fcell fcell--edit fcell--pair">
-              <input type="number" name="min_size" value="{{ lst.min_size|int if lst.min_size else '' }}" placeholder="from e.g. 500">
+              <input type="number" name="min_size" value="{{ lst.min_size|int if lst.min_size else '' }}" placeholder="from e.g. 500" form="project-form">
               <span style="color:#9aa0a6;font-size:13px">–</span>
-              <input type="number" name="max_size" value="{{ lst.max_size|int if lst.max_size else '' }}" placeholder="to e.g. 2500">
+              <input type="number" name="max_size" value="{{ lst.max_size|int if lst.max_size else '' }}" placeholder="to e.g. 2500" form="project-form">
 </div>
 
           </div>
 
           <div class="frow lst-com">
   <div class="fcell fcell--label">Measurement</div>
-  <div class="fcell fcell--edit"><select name="measurement_type">
+  <div class="fcell fcell--edit"><select name="measurement_type" form="project-form">
               {% for m in ['NIA','GIA','GEA','IPMS 1','IPMS 2'] %}
               <option value="{{ m }}" {{ 'selected' if lst.measurement_type == m else '' }}>{{ m }}</option>
               {% endfor %}
@@ -453,23 +469,23 @@
 
           <div class="frow">
   <div class="fcell fcell--label"><span class="price-label">Price / Rent (&pound;)</span></div>
-  <div class="fcell fcell--edit"><input type="number" name="listing_price" value="{{ lst.listing_price|int if lst.listing_price else '' }}" placeholder="e.g. 42120"></div>
+  <div class="fcell fcell--edit"><input type="number" name="listing_price" value="{{ lst.listing_price|int if lst.listing_price else '' }}" placeholder="e.g. 42120" form="project-form"></div>
 </div>
 
 
           <div class="frow">
   <div class="fcell fcell--label">Listing Type</div>
-  <div class="fcell fcell--edit fcell--pair"><select name="transaction" class="transaction-select">
+  <div class="fcell fcell--edit fcell--pair"><select name="transaction" class="transaction-select" form="project-form">
               <option value="let"  {{ 'selected' if not lst.listing_price_unit or lst.listing_price_unit != 'sale' else '' }}>To Let</option>
               <option value="sale" {{ 'selected' if lst.listing_price_unit == 'sale' else '' }}>For Sale</option>
             </select>
-            <input type="hidden" name="listing_price_unit" class="price-unit-hidden" value="{{ lst.listing_price_unit or 'pa' }}"></div>
+            <input type="hidden" name="listing_price_unit" class="price-unit-hidden" value="{{ lst.listing_price_unit or 'pa' }}" form="project-form"></div>
 </div>
 
 
           <div class="frow frow--full">
   <div class="fcell fcell--label fcell--top">Custom Price Display <span style="font-weight:400"></span></div>
-  <div class="fcell fcell--edit"><input type="text" name="price_display" value="{{ lst.price_display or '' }}" placeholder="Leave blank to auto-format"></div>
+  <div class="fcell fcell--edit"><input type="text" name="price_display" value="{{ lst.price_display or '' }}" placeholder="Leave blank to auto-format" form="project-form"></div>
 </div>
 
 
@@ -479,13 +495,13 @@
 
           <div class="frow">
   <div class="fcell fcell--label">Area</div>
-  <div class="fcell fcell--edit"><input type="text" name="area" value="{{ lst.area or '' }}" placeholder="e.g. Chelsea Harbour"></div>
+  <div class="fcell fcell--edit"><input type="text" name="area" value="{{ lst.area or '' }}" placeholder="e.g. Chelsea Harbour" form="project-form"></div>
 </div>
 
 
           <div class="frow">
   <div class="fcell fcell--label">Photo ID</div>
-  <div class="fcell fcell--edit"><input type="text" name="photo_id" value="{{ lst.photo_id or '' }}" placeholder="photo-1497366216548-37526070297c"></div>
+  <div class="fcell fcell--edit"><input type="text" name="photo_id" value="{{ lst.photo_id or '' }}" placeholder="photo-1497366216548-37526070297c" form="project-form"></div>
 </div>
 
 
@@ -497,7 +513,7 @@
   <div class="fcell fcell--edit">
     <textarea name="strapline" rows="2" data-strapline
               data-limit="{{ zoopla_summary_limit() }}"
-              placeholder="GROUND FLOOR OFFICE SPACE | TO LET | FULHAM SW6">{{ lst.strapline or '' }}</textarea>
+              placeholder="GROUND FLOOR OFFICE SPACE | TO LET | FULHAM SW6" form="project-form">{{ lst.strapline or '' }}</textarea>
     <span class="fcell-hint">
       The headline on the particulars and Zoopla's summary.
       <span data-strapline-count></span>
@@ -506,7 +522,7 @@
 </div>
           <div class="frow frow--full">
   <div class="fcell fcell--label fcell--top">Marketing Description</div>
-  <div class="fcell fcell--edit"><textarea name="blurb" rows="4">{{ lst.blurb or '' }}</textarea></div>
+  <div class="fcell fcell--edit"><textarea name="blurb" rows="4" form="project-form">{{ lst.blurb or '' }}</textarea></div>
 </div>
 
 
@@ -516,12 +532,12 @@
 
           <div class="frow lst-res">
   <div class="fcell fcell--label">Bedrooms</div>
-  <div class="fcell fcell--edit"><input type="number" name="beds" min="0" value="{{ lst.beds or '' }}" placeholder="e.g. 3"></div>
+  <div class="fcell fcell--edit"><input type="number" name="beds" min="0" value="{{ lst.beds or '' }}" placeholder="e.g. 3" form="project-form"></div>
 </div>
 
           <div class="frow lst-res">
   <div class="fcell fcell--label">Bathrooms</div>
-  <div class="fcell fcell--edit"><input type="number" name="baths" min="0" value="{{ lst.baths or '' }}" placeholder="e.g. 2"></div>
+  <div class="fcell fcell--edit"><input type="number" name="baths" min="0" value="{{ lst.baths or '' }}" placeholder="e.g. 2" form="project-form"></div>
 </div>
 
 
@@ -531,12 +547,12 @@
 
           <div class="frow lst-sale">
   <div class="fcell fcell--label"><span class="yield-label">Initial / Gross Yield (%)</span></div>
-  <div class="fcell fcell--edit"><input type="number" name="initial_yield" class="yield-input" step="0.01" min="0" value="{{ lst.initial_yield or '' }}" placeholder="e.g. 5.25"></div>
+  <div class="fcell fcell--edit"><input type="number" name="initial_yield" class="yield-input" step="0.01" min="0" value="{{ lst.initial_yield or '' }}" placeholder="e.g. 5.25" form="project-form"></div>
 </div>
 
           <div class="frow lst-sale">
   <div class="fcell fcell--label">Investment / Vacant</div>
-  <div class="fcell fcell--edit"><select name="investment_vacant">
+  <div class="fcell fcell--edit"><select name="investment_vacant" form="project-form">
               <option value="">— Select —</option>
               <option value="Investment" {{ 'selected' if lst.investment_vacant == 'Investment' else '' }}>Investment</option>
               <option value="Vacant Possession" {{ 'selected' if lst.investment_vacant == 'Vacant Possession' else '' }}>Vacant Possession</option>
@@ -545,7 +561,7 @@
 
           <div class="frow lst-sale">
   <div class="fcell fcell--label">Tenure</div>
-  <div class="fcell fcell--edit"><select name="tenure">
+  <div class="fcell fcell--edit"><select name="tenure" form="project-form">
               <option value="">— Select —</option>
               <option value="Freehold" {{ 'selected' if lst.tenure == 'Freehold' else '' }}>Freehold</option>
               <option value="Long Leasehold" {{ 'selected' if lst.tenure == 'Long Leasehold' else '' }}>Long Leasehold</option>
@@ -554,7 +570,7 @@
 
           <div class="frow lst-leasehold">
   <div class="fcell fcell--label">Lease Years Remaining</div>
-  <div class="fcell fcell--edit"><input type="number" name="lease_years_remaining" min="0" value="{{ lst.lease_years_remaining or '' }}" placeholder="e.g. 125"></div>
+  <div class="fcell fcell--edit"><input type="number" name="lease_years_remaining" min="0" value="{{ lst.lease_years_remaining or '' }}" placeholder="e.g. 125" form="project-form"></div>
 </div>
 
 
@@ -562,11 +578,11 @@
 <div class="box box--grid lst-box">
   <div class="box-head">🔑 Key Terms & Location</div>
 
-          {{ kt.key_terms_field(lst.key_terms) }}
+          {{ kt.key_terms_field(lst.key_terms, 'project-form') }}
 
           <div class="frow frow--full">
   <div class="fcell fcell--label fcell--top">Location</div>
-  <div class="fcell fcell--edit"><textarea name="location_description" rows="2" placeholder="e.g. Moments from the King's Road, close to the river and excellent transport links">{{ lst.location_description or '' }}</textarea></div>
+  <div class="fcell fcell--edit"><textarea name="location_description" rows="2" placeholder="e.g. Moments from the King's Road, close to the river and excellent transport links" form="project-form">{{ lst.location_description or '' }}</textarea></div>
 </div>
 
 
@@ -576,14 +592,14 @@
           <div class="frow lst-let-com">
   <div class="fcell fcell--label">Rent psf</div>
   <div class="fcell fcell--edit fcell--pair">
-              <input type="number" step="0.01" name="rent_from" value="{{ '%.2f'|format(lst.rent_from) if lst.rent_from else '' }}" placeholder="from">
-              <input type="number" step="0.01" name="rent_to" value="{{ '%.2f'|format(lst.rent_to) if lst.rent_to else '' }}" placeholder="to">
+              <input type="number" step="0.01" name="rent_from" value="{{ '%.2f'|format(lst.rent_from) if lst.rent_from else '' }}" placeholder="from" form="project-form">
+              <input type="number" step="0.01" name="rent_to" value="{{ '%.2f'|format(lst.rent_to) if lst.rent_to else '' }}" placeholder="to" form="project-form">
 </div>
 
           </div>
           <div class="frow lst-let-com">
   <div class="fcell fcell--label">Rent Qualifier</div>
-  <div class="fcell fcell--edit"><select name="rent_qualifier">
+  <div class="fcell fcell--edit"><select name="rent_qualifier" form="project-form">
               <option value="">— Select —</option>
               {% for o in ['Quoting','Guideline','Asking','Fixed'] %}<option value="{{ o }}" {{ 'selected' if lst.rent_qualifier == o else '' }}>{{ o }}</option>{% endfor %}
             </select></div>
@@ -591,7 +607,7 @@
 
           <div class="frow lst-let-com">
   <div class="fcell fcell--label">Rent Basis</div>
-  <div class="fcell fcell--edit"><select name="rent_inclusive">
+  <div class="fcell fcell--edit"><select name="rent_inclusive" form="project-form">
               <option value="">— Select —</option>
               {% for o in ['Exclusive','Inclusive','N/A'] %}<option value="{{ o }}" {{ 'selected' if lst.rent_inclusive == o else '' }}>{{ o }}</option>{% endfor %}
             </select></div>
@@ -600,14 +616,14 @@
           <div class="frow lst-let-com">
   <div class="fcell fcell--label">Lease length</div>
   <div class="fcell fcell--edit fcell--pair">
-              <input type="number" name="lease_length_years" value="{{ lst.lease_length_years or '' }}" placeholder="years">
-              <input type="number" name="lease_length_months" value="{{ lst.lease_length_months or '' }}" placeholder="months">
+              <input type="number" name="lease_length_years" value="{{ lst.lease_length_years or '' }}" placeholder="years" form="project-form">
+              <input type="number" name="lease_length_months" value="{{ lst.lease_length_months or '' }}" placeholder="months" form="project-form">
 </div>
 
           </div>
           <div class="frow lst-let-com">
   <div class="fcell fcell--label">Lease Type</div>
-  <div class="fcell fcell--edit"><select name="lease_type">
+  <div class="fcell fcell--edit"><select name="lease_type" form="project-form">
               <option value="">— Select —</option>
               {% for o in ['New Lease','Assignment','Sub-lease','Renewal','Licence'] %}<option value="{{ o }}" {{ 'selected' if lst.lease_type == o else '' }}>{{ o }}</option>{% endfor %}
             </select></div>
@@ -615,7 +631,7 @@
 
           <div class="frow lst-let-com">
   <div class="fcell fcell--label">1954 Act</div>
-  <div class="fcell fcell--edit"><select name="inside_1954_act">
+  <div class="fcell fcell--edit"><select name="inside_1954_act" form="project-form">
               <option value="">— Select —</option>
               {% for o in ['Inside 1954 Act','Outside 1954 Act','Contracted Out'] %}<option value="{{ o }}" {{ 'selected' if lst.inside_1954_act == o else '' }}>{{ o }}</option>{% endfor %}
             </select></div>
@@ -623,7 +639,7 @@
 
           <div class="frow lst-let-com">
   <div class="fcell fcell--label">Repair &amp; Insuring</div>
-  <div class="fcell fcell--edit"><select name="repair_insuring">
+  <div class="fcell fcell--edit"><select name="repair_insuring" form="project-form">
               <option value="">— Select —</option>
               {% for o in ['FRI — Full Repairing & Insuring','IRI — Internal Repairing & Insuring','Internal Only','Landlord Insuring'] %}<option value="{{ o }}" {{ 'selected' if lst.repair_insuring == o else '' }}>{{ o }}</option>{% endfor %}
             </select></div>
@@ -632,22 +648,22 @@
           <div class="frow lst-let-com">
   <div class="fcell fcell--label">Service charge</div>
   <div class="fcell fcell--edit fcell--pair"><div style="display:flex;gap:8px;align-items:center">
-              <input type="number" step="0.01" name="service_charge" value="{{ '%.2f'|format(lst.service_charge) if lst.service_charge else '' }}" placeholder="per sq ft">
-              <label class="na-check"><input type="checkbox" name="service_charge_na" value="1" {{ 'checked' if lst.service_charge_na else '' }}> N/A</label></div>
+              <input type="number" step="0.01" name="service_charge" value="{{ '%.2f'|format(lst.service_charge) if lst.service_charge else '' }}" placeholder="per sq ft" form="project-form">
+              <label class="na-check"><input type="checkbox" name="service_charge_na" value="1" {{ 'checked' if lst.service_charge_na else '' }} form="project-form"> N/A</label></div>
 </div>
 
           </div>
           <div class="frow lst-let-com">
   <div class="fcell fcell--label">Rateable value</div>
   <div class="fcell fcell--edit fcell--pair"><div style="display:flex;gap:8px;align-items:center">
-              <input type="number" name="rateable_value" value="{{ lst.rateable_value|int if lst.rateable_value else '' }}" placeholder="rateable value">
-              <label class="na-check"><input type="checkbox" name="rateable_value_na" value="1" {{ 'checked' if lst.rateable_value_na else '' }}> N/A</label></div>
+              <input type="number" name="rateable_value" value="{{ lst.rateable_value|int if lst.rateable_value else '' }}" placeholder="rateable value" form="project-form">
+              <label class="na-check"><input type="checkbox" name="rateable_value_na" value="1" {{ 'checked' if lst.rateable_value_na else '' }} form="project-form"> N/A</label></div>
 </div>
 
           </div>
           <div class="frow lst-let-com">
   <div class="fcell fcell--label">EPC Rating</div>
-  <div class="fcell fcell--edit"><select name="epc_band">
+  <div class="fcell fcell--edit"><select name="epc_band" form="project-form">
               <option value="">— Select —</option>
               {% for o in ['A','B','C','D','E','F','G','Exempt'] %}<option value="{{ o }}" {{ 'selected' if lst.epc_band == o else '' }}>{{ o }}</option>{% endfor %}
             </select></div>
@@ -655,12 +671,12 @@
 
           <div class="frow lst-let-com">
   <div class="fcell fcell--label">Parking Ratio</div>
-  <div class="fcell fcell--edit"><input type="text" name="parking_ratio" value="{{ lst.parking_ratio or '' }}" placeholder="e.g. 1:500 sq ft"></div>
+  <div class="fcell fcell--edit"><input type="text" name="parking_ratio" value="{{ lst.parking_ratio or '' }}" placeholder="e.g. 1:500 sq ft" form="project-form"></div>
 </div>
 
           <div class="frow lst-let-com">
   <div class="fcell fcell--label">Parking Spaces</div>
-  <div class="fcell fcell--edit"><input type="number" name="parking_spaces" value="{{ lst.parking_spaces or '' }}" placeholder="e.g. 4"></div>
+  <div class="fcell fcell--edit"><input type="number" name="parking_spaces" value="{{ lst.parking_spaces or '' }}" placeholder="e.g. 4" form="project-form"></div>
 </div>
 
 
@@ -668,21 +684,18 @@
              the three labels wrap a word at a time. #}
           <div class="lst-publish">
             <label class="pub-check">
-              <input type="checkbox" name="website_listed" value="1" {{ 'checked' if lst.website_listed else '' }}> Show on website
+              <input type="checkbox" name="website_listed" value="1" {{ 'checked' if lst.website_listed else '' }} form="project-form"> Show on website
             </label>
             <label class="pub-check">
-              <input type="checkbox" name="featured" value="1" {{ 'checked' if lst.featured else '' }}> Featured
+              <input type="checkbox" name="featured" value="1" {{ 'checked' if lst.featured else '' }} form="project-form"> Featured
             </label>
             <label class="pub-check" title="Also publish this listing to the Zoopla data feed">
-              <input type="checkbox" name="zoopla_listed" value="1" {{ 'checked' if lst.zoopla_listed else '' }}> Publish to Zoopla
+              <input type="checkbox" name="zoopla_listed" value="1" {{ 'checked' if lst.zoopla_listed else '' }} form="project-form"> Publish to Zoopla
             </label>
           </div>
 
         </div>
-        <div style="display:flex;gap:10px;align-items:center">
-          <button type="submit" class="btn btn-primary">Save Listing</button>
-        </div>
-      </form>
+      </div>
       <!-- Delete must be its OWN form, outside the edit form. Nested forms are
            invalid HTML — the browser ignored the inner one, so 'Remove Listing'
            was submitting the edit form and merely updating the listing. -->
@@ -805,7 +818,6 @@
   <input type="hidden" name="next" value="{{ url_for('project_detail', id=project.id) }}">
 </form>
 {% endif %}
-</div>
 
 <!-- ══════════════════════════════════════════════════════════════
      TAB 3: WEBSITE LISTING

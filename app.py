@@ -4651,7 +4651,25 @@ def project_detail(id):
                            folder_labels=FOLDER_LABELS, today=date.today(),
                            matches=matches, registered_ids=registered_ids,
                            activity=activity, enquiries=enquiries,
+                           properties=Property.query.order_by(Property.address).all(),
                            notes_timeline=notes_timeline, pub=pub)
+
+
+# Whether a posted form carried the marketing section. Presence of any one of
+# these means the listing fields were on screen and should be saved with the
+# rest; their absence means this form did not show them and they are left
+# alone, exactly as every other partial save on these pages behaves.
+# Names that exist on both records. Where the marketing section is on screen,
+# the field shown is the listing's, so the project's copy is not touched.
+LISTING_OWNED = ('location_description',)
+
+LISTING_FORM_KEYS = (
+    'strapline', 'key_terms', 'blurb', 'location_description', 'listing_price',
+    'listing_price_unit', 'price_display', 'sale_price', 'sale_price_display',
+    'service_charge', 'rateable_value', 'epc_band', 'website_listed',
+    'listing_status', 'website_category', 'set_as_to_let', 'set_as_for_sale',
+    'specification', 'accommodation_text', 'use_class', 'lease_type',
+)
 
 
 @app.route('/projects/<int:id>/edit', methods=['GET', 'POST'])
@@ -4669,7 +4687,15 @@ def project_edit(id):
                 request.form.get('instruction_type'), was_type):
             flash('Choose one of: ' + ', '.join(INSTRUCTION_TYPES) + '.', 'warning')
             return _back_to('project_detail', id=project.id)
-        apply_form_fields(project, request.form, PROJECT_FIELDS)
+        # One name lives on both records: location_description. When the
+        # marketing section is on the form, that field on screen is the
+        # listing's, so the project's own copy is left alone rather than being
+        # quietly overwritten with the website's wording.
+        fields = PROJECT_FIELDS
+        listing_present = any(k in request.form for k in LISTING_FORM_KEYS)
+        if listing_present:
+            fields = [f for f in PROJECT_FIELDS if f[1] not in LISTING_OWNED]
+        apply_form_fields(project, request.form, fields)
         if not (project.name or '').strip():
             project.name = was_named          # a project is never left nameless
         if 'property_id' in request.form:
@@ -4677,6 +4703,17 @@ def project_edit(id):
             project.property_id = int(raw) if raw else None
         if any(k in request.form for k in ('client', 'client_email', 'client_phone', 'client_mobile')):
             _upsert_client_contact(request.form)   # keep CRM in sync with client details
+
+        # The marketing fields — strapline, key terms, description, location,
+        # rent, service charge, the website and portal switches — live on the
+        # instruction's listing. They are edited on this same page, so one Save
+        # has to save them too. Before this, they sat in a second form with its
+        # own button and the main Save silently discarded every marketing edit.
+        listing = (project.project_listings[0]
+                   if getattr(project, 'project_listings', None) else None)
+        if listing is not None and any(k in request.form for k in LISTING_FORM_KEYS):
+            _save_listing_from_form(request.form, listing)
+
         db.session.commit()
         if project.instruction_type != was_type:
             audit('edit', entity='Project', entity_id=project.id,
@@ -7394,6 +7431,52 @@ def particulars_start(id):
         have_font=pp.HAVE_MUSTICA)
 
 
+class ParticularsError(Exception):
+    """Something went wrong making a set of particulars.
+
+    Carries a sentence fit to show somebody, while the detail that is only
+    useful for diagnosis goes to the log and not to the browser.
+    """
+
+    def __init__(self, message, detail=None):
+        super().__init__(message)
+        self.message = message
+        self.detail = detail
+
+
+def validate_particulars(pdf, pages):
+    """Check the bytes really are the document we meant to produce.
+
+    Cheap, and worth it: a download that turns out to be an HTML error page
+    with a .pdf name, or a nought-byte file, wastes somebody's afternoon and
+    looks like the CRM losing their work.
+    """
+    if not pdf:
+        raise ParticularsError('The particulars came out empty. Nothing was produced.')
+    if not pdf.startswith(b'%PDF-'):
+        raise ParticularsError(
+            'What was produced is not a PDF, so it has not been offered for '
+            'download.', detail=f'first bytes: {pdf[:16]!r}')
+    try:
+        import pymupdf
+    except ImportError:
+        return len(pdf)          # nothing further can be checked here
+    try:
+        doc = pymupdf.open(stream=pdf, filetype='pdf')
+        count = doc.page_count
+        for page in doc:
+            page.get_text()      # every page must open
+    except Exception as e:
+        raise ParticularsError('The particulars could not be read back after '
+                               'being made.', detail=str(e))
+    if count != pages:
+        raise ParticularsError(
+            f'The {pages}-page particulars came out with {count} '
+            f'page{"" if count == 1 else "s"}.',
+            detail=f'expected {pages}, got {count}')
+    return len(pdf)
+
+
 def _particulars_bytes(project, pages, photo_ids, floorplan_keys=None,
                        term_order=None):
     """Render the document. One path, used by preview and by saving."""
@@ -7414,8 +7497,15 @@ def _particulars_bytes(project, pages, photo_ids, floorplan_keys=None,
     if term_order:
         data['key_terms'] = reorder_key_terms(data['key_terms_all'], term_order)
     plans = [f['data'] for f in chosen_floorplans(project, floorplan_keys)]
-    return (pp.build(data, chosen, pages, floorplans=plans),
-            pp.filename_for(data['address'], pages))
+    try:
+        pdf = pp.build(data, chosen, pages, floorplans=plans)
+    except Exception as e:
+        app.logger.exception('Could not build particulars for project %s',
+                             project.id)
+        raise ParticularsError('The particulars could not be produced.',
+                               detail=str(e))
+    validate_particulars(pdf, pages)
+    return pdf, pp.filename_for(data['address'], pages)
 
 
 def reorder_key_terms(saved, wanted):
@@ -7448,6 +7538,10 @@ def particulars_preview(id):
             project, pages, request.form.getlist('photo_ids'),
             floorplan_keys=request.form.getlist('floorplan_keys'),
             term_order=request.form.getlist('key_terms'))
+    except ParticularsError as e:
+        app.logger.error('Particulars preview failed for project %s: %s (%s)',
+                         id, e.message, e.detail)
+        abort(500, description=e.message)
     except Exception:
         app.logger.exception('Could not build particulars for project %s', id)
         abort(500, description='The particulars could not be produced.')
@@ -7467,12 +7561,21 @@ def particulars_download(id):
               'Upload one, switch to two pages, or tick the box to go ahead '
               'without it.', 'error')
         return redirect(url_for('particulars_start', id=id))
-    pdf, name = _particulars_bytes(
-        project, pages, request.form.getlist('photo_ids'),
-        floorplan_keys=request.form.getlist('floorplan_keys'),
-        term_order=request.form.getlist('key_terms'))
+    try:
+        pdf, name = _particulars_bytes(
+            project, pages, request.form.getlist('photo_ids'),
+            floorplan_keys=request.form.getlist('floorplan_keys'),
+            term_order=request.form.getlist('key_terms'))
+    except ParticularsError as e:
+        # The selections are all on the page they came from, so sending them
+        # back there loses none of the work.
+        app.logger.error('Particulars download failed for project %s: %s (%s)',
+                         id, e.message, e.detail)
+        flash(f'The download failed. {e.message} Your selections have been kept '
+              'so you can try again.', 'error')
+        return redirect(url_for('particulars_start', id=id))
     audit('export', entity='Project', entity_id=id,
-          detail=f'{pages}-page particulars downloaded')
+          detail=f'{pages}-page particulars downloaded ({len(pdf)} bytes)')
     from flask import send_file
     return send_file(io.BytesIO(pdf), mimetype='application/pdf',
                      download_name=name, as_attachment=True)
@@ -7495,10 +7598,17 @@ def particulars_save(id):
         return redirect(url_for('project_detail', id=id))
 
     pages = 4 if request.form.get('pages') == '4' else 2
-    pdf, name = _particulars_bytes(
-        project, pages, request.form.getlist('photo_ids'),
-        floorplan_keys=request.form.getlist('floorplan_keys'),
-        term_order=request.form.getlist('key_terms'))
+    try:
+        pdf, name = _particulars_bytes(
+            project, pages, request.form.getlist('photo_ids'),
+            floorplan_keys=request.form.getlist('floorplan_keys'),
+            term_order=request.form.getlist('key_terms'))
+    except ParticularsError as e:
+        app.logger.error('Particulars save failed for project %s: %s (%s)',
+                         id, e.message, e.detail)
+        flash(f'Nothing was saved to the brochure. {e.message} Your selections '
+              'have been kept so you can try again.', 'error')
+        return redirect(url_for('particulars_start', id=id))
 
     replacing = bool(listing.brochure_filename)
     choice = (request.form.get('existing') or '').strip()
@@ -7507,13 +7617,24 @@ def particulars_save(id):
         return redirect(url_for('particulars_start', id=id))
 
     if replacing and choice == 'keep':
-        # The previous document stays; this one is offered as a download so
-        # nothing already attached is disturbed.
-        audit('export', entity='Project', entity_id=id,
-              detail=f'{pages}-page particulars kept alongside the existing brochure')
-        from flask import send_file
-        return send_file(io.BytesIO(pdf), mimetype='application/pdf',
-                         download_name=name, as_attachment=True)
+        # Both are kept. The brochure on the listing stays the current one, and
+        # this new version is filed with the project's documents rather than
+        # being handed over as a download and then lost.
+        db.session.add(ProjectDocument(
+            project_id=id, folder='key_documents',
+            document_name=name,
+            notes=(f'{pages}-page particulars generated '
+                   f'{date.today():%d %b %Y}. Kept alongside the current '
+                   f'brochure, which remains {listing.brochure_filename}.'),
+            file_data=pdf, file_mime='application/pdf', file_size=len(pdf)))
+        db.session.commit()
+        audit('create', entity='Project', entity_id=id,
+              detail=(f'{pages}-page particulars filed with the documents; '
+                      f'{listing.brochure_filename} remains the brochure'))
+        flash(f'Both versions kept. {listing.brochure_filename} is still the '
+              'brochure; the new particulars are filed under Key Documents.',
+              'success')
+        return redirect(url_for('project_detail', id=id) + '#tab-documents')
 
     was = listing.brochure_filename
     listing.brochure_data = pdf

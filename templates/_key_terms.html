@@ -15,9 +15,13 @@
     <div class="kt" data-key-terms data-name="{{ name }}"
          {% if form_id %}data-form="{{ form_id }}"{% endif %}>
 
-      {# The value that is actually posted. Rewritten from the rows below. #}
-      <textarea name="{{ name }}" data-kt-value hidden
+      {# The one field that is posted, and the whole editor without JavaScript.
+         The row editor hides it and keeps it in step; there is deliberately no
+         second copy, because two controls with one name post twice and the
+         later one wins. #}
+      <textarea name="{{ name }}" data-kt-value rows="5"
                 {% if form_id %}form="{{ form_id }}"{% endif %}
+                placeholder="One term per line"
                 >{{ terms|join('\n') }}</textarea>
 
       <ul class="kt-list" data-kt-list>
@@ -31,13 +35,6 @@
         </li>
         {% endfor %}
       </ul>
-
-      {# Without JavaScript this is the whole editor, and it still works. #}
-      <noscript>
-        <textarea name="{{ name }}" rows="6"
-                  {% if form_id %}form="{{ form_id }}"{% endif %}
-                  placeholder="One term per line">{{ terms|join('\n') }}</textarea>
-      </noscript>
 
       <div class="kt-actions">
         <button type="button" class="btn btn-outline btn-sm" data-kt-add>Add a term</button>

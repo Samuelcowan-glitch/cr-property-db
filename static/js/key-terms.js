@@ -195,6 +195,13 @@
       list.insertBefore(dragging, below ? over.nextSibling : over);
     });
 
+    /* The textarea is the field and the no-JavaScript editor both. Now that
+       the rows are running it is hidden, but it is still the only control
+       posted — there is no second copy to disagree with it. */
+    store.hidden = true;
+    store.setAttribute('aria-hidden', 'true');
+    store.tabIndex = -1;
+
     if (!rows().length) { add(''); }
     sync();
   }

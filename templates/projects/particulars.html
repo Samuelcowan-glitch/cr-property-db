@@ -222,24 +222,57 @@
     <!-- ── What to do ── -->
     <div class="fin-band"><h3>Preview</h3></div>
     <div class="pt-actions">
-      <button type="submit" class="btn btn-secondary" data-pt-preview>Preview</button>
+      <button type="submit" class="btn btn-secondary" data-pt-preview
+              data-pt-busy="Preparing preview&hellip;">Preview PDF</button>
+
       <button type="submit" class="btn btn-outline"
               formaction="{{ url_for('particulars_download', id=project.id) }}"
-              formtarget="_self" data-pt-once>Download PDF</button>
-
-      {% if listing and listing.brochure_filename %}
-      <span class="pt-existing">
-        A brochure is already attached: <strong>{{ listing.brochure_filename }}</strong>
-        <label><input type="radio" name="existing" value="replace"> Replace it</label>
-        <label><input type="radio" name="existing" value="keep" checked> Keep it and download this</label>
-      </span>
-      {% endif %}
+              formtarget="_self" data-pt-once
+              data-pt-busy="Preparing Download&hellip;">Download PDF</button>
 
       <button type="submit" class="btn btn-primary"
               formaction="{{ url_for('particulars_save', id=project.id) }}"
-              formtarget="_self" data-pt-once>Save to Brochure</button>
-      <a href="{{ url_for('project_detail', id=project.id) }}" class="btn btn-outline">Cancel</a>
+              formtarget="_self" data-pt-once
+              data-pt-busy="Saving&hellip;"
+              {% if listing and listing.brochure_filename %}
+              data-pt-confirm="brochure-choice"
+              {% endif %}>Save to Brochure</button>
+
+      <a href="{{ url_for('particulars_start', id=project.id) }}"
+         class="btn btn-outline">Create Another Version</a>
+      <a href="{{ url_for('project_detail', id=project.id) }}"
+         class="btn btn-outline">Close</a>
     </div>
+
+    {% if listing and listing.brochure_filename %}
+    {# Asked before anything is overwritten, never after. #}
+    <dialog id="brochure-choice" class="pt-dialog">
+      <h3>A brochure is already attached</h3>
+      <p>
+        <strong>{{ listing.brochure_filename }}</strong> is the current brochure
+        for this instruction. What would you like to do with the new one?
+      </p>
+      <label class="pt-choice">
+        <input type="radio" name="existing" value="replace" form="particulars-form">
+        <span>
+          <strong>Replace Existing Brochure</strong>
+          The new particulars become the brochure. The old file is not kept.
+        </span>
+      </label>
+      <label class="pt-choice">
+        <input type="radio" name="existing" value="keep" form="particulars-form" checked>
+        <span>
+          <strong>Keep Both Versions</strong>
+          {{ listing.brochure_filename }} stays the current brochure, and the new
+          particulars are filed under Key Documents.
+        </span>
+      </label>
+      <div class="pt-dialog-actions">
+        <button type="button" class="btn btn-outline" data-pt-cancel>Cancel</button>
+        <button type="button" class="btn btn-primary" data-pt-go>Continue</button>
+      </div>
+    </dialog>
+    {% endif %}
 
     <iframe name="particulars-preview" class="pt-preview" title="Particulars preview"></iframe>
   </form>
