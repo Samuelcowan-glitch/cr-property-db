@@ -744,7 +744,8 @@
              url_for('listing_brochure_download', id=lst.id),
              url_for('listing_brochure_delete', id=lst.id),
              url_for('listing_brochure_upload', id=lst.id),
-             'brochure', '.pdf', 'Brochure', back) }}
+             'brochure', '.pdf', 'Brochure', back,
+             make_url=url_for('particulars_start', id=project.id)) }}
 
         {{ db.doc_box('Floor Plan', '&#128506;&#65039;', lst.floor_plan_filename,
              url_for('listing_floorplan_download', id=lst.id, inline=1),

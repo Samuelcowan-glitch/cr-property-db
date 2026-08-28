@@ -15,9 +15,14 @@
     next_url  where to return after uploading or removing
 #}
 {% macro doc_box(title, icon, filename, view_url, down_url, del_url,
-                 action, field, accept, label, next_url) %}
+                 action, field, accept, label, next_url, make_url=None) %}
 <div class="doc-box">
   <div class="doc-title">{{ icon|safe }} {{ title }}</div>
+
+  {# The brochure can be produced from the instruction itself. #}
+  {% if make_url %}
+  <a href="{{ make_url }}" class="btn btn-sm btn-primary doc-make">Create Particulars</a>
+  {% endif %}
 
   {% if filename %}
   <div class="doc-file" title="{{ filename }}">{{ filename }}</div>

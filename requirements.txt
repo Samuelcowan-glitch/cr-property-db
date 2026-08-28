@@ -8,3 +8,4 @@ sqlalchemy==2.0.51
 psycopg2-binary==2.9.9
 paramiko==5.0.0
 Pillow==12.3.0
+reportlab==5.0.1

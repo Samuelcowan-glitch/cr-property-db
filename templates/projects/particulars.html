@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}Create PDF Particulars{% endblock %}
+{% block topbar_title %}Create PDF Particulars{% endblock %}
+{% block topbar_actions %}
+  <a href="{{ url_for('project_detail', id=project.id) }}" class="btn btn-outline btn-sm">Cancel</a>
+{% endblock %}
+
+{#
+   Choose a format, choose the photographs, see what is missing, then look at
+   the document before deciding what to do with it. Nothing is saved against
+   the instruction until Save to Brochure is pressed.
+#}
+
+{% block content %}
+<div class="rec-page">
+  <div class="breadcrumb">
+    <a href="{{ url_for('projects_list') }}">Projects</a><span class="sep">/</span>
+    <a href="{{ url_for('project_detail', id=project.id) }}">{{ project.name }}</a><span class="sep">/</span>
+    <span class="current">Particulars</span>
+  </div>
+
+  <form id="particulars-form" method="post"
+        action="{{ url_for('particulars_preview', id=project.id) }}"
+        target="particulars-preview">
+
+    <!-- ── Which format ── -->
+    <div class="fin-band"><h3>Which format would you like to create?</h3></div>
+    <div class="pt-formats">
+      <label class="pt-format">
+        <input type="radio" name="pages" value="2" checked>
+        <span class="pt-pick">
+          <span class="pt-pages"><i></i><i></i></span>
+          <strong>2-page particulars</strong>
+          <span>A concise marketing brochure with the essential property
+                information and selected photographs.</span>
+        </span>
+      </label>
+      <label class="pt-format">
+        <input type="radio" name="pages" value="4">
+        <span class="pt-pick">
+          <span class="pt-pages"><i></i><i></i><i></i><i></i></span>
+          <strong>4-page particulars</strong>
+          <span>A fuller brochure with more photographs, accommodation,
+                property detail and marketing content.</span>
+        </span>
+      </label>
+    </div>
+
+    <!-- ── What is missing ── -->
+    {% if gaps %}
+    <div class="dup-warning">
+      <div class="dup-head">Some details are missing</div>
+      <p>These are usually expected on particulars. You can carry on without
+         them — nothing will be invented, the sections are simply left out.</p>
+      <ul style="margin:0 0 0 18px">
+        {% for gap in gaps %}<li>{{ gap }}</li>{% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+    {% if not have_font %}
+    <div class="fin-nudge">
+      <strong>Mustica Pro is not installed.</strong>
+      The particulars are set in the nearest available face until the licensed
+      files are added to <code>static/fonts</code>. Everything else is unaffected.
+    </div>
+    {% endif %}
+
+    <!-- ── Photographs ── -->
+    <div class="fin-band">
+      <h3>Photographs</h3>
+      <span class="fin-note">Drag to reorder &middot; the first is the cover &middot; untick to leave one out</span>
+    </div>
+
+    {% if photos %}
+    <div class="pt-photos" data-pt-photos>
+      {% for ph in photos %}
+      <div class="pt-photo" draggable="true" data-pt-photo>
+        <img src="{{ url_for('listing_photo_image', id=ph.id, w=300) }}" alt="">
+        <label>
+          <input type="checkbox" name="photo_ids" value="{{ ph.id }}" checked>
+          <span data-pt-pos>{{ 'Cover' if loop.first else loop.index }}</span>
+        </label>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="pt-warn" data-pt-warn hidden>
+      Fewer than three photographs selected — the particulars will look sparse.
+    </div>
+    {% else %}
+    <div class="fin-nudge">
+      <strong>No photographs.</strong> Add some to the instruction first; a
+      brochure without them will be mostly empty.
+    </div>
+    {% endif %}
+
+    <!-- ── What to do ── -->
+    <div class="fin-band"><h3>Preview</h3></div>
+    <div class="pt-actions">
+      <button type="submit" class="btn btn-secondary" data-pt-preview>Preview</button>
+      <button type="submit" class="btn btn-outline"
+              formaction="{{ url_for('particulars_download', id=project.id) }}"
+              formtarget="_self" data-pt-once>Download PDF</button>
+
+      {% if listing and listing.brochure_filename %}
+      <span class="pt-existing">
+        A brochure is already attached: <strong>{{ listing.brochure_filename }}</strong>
+        <label><input type="radio" name="existing" value="replace"> Replace it</label>
+        <label><input type="radio" name="existing" value="keep" checked> Keep it and download this</label>
+      </span>
+      {% endif %}
+
+      <button type="submit" class="btn btn-primary"
+              formaction="{{ url_for('particulars_save', id=project.id) }}"
+              formtarget="_self" data-pt-once>Save to Brochure</button>
+      <a href="{{ url_for('project_detail', id=project.id) }}" class="btn btn-outline">Cancel</a>
+    </div>
+
+    <iframe name="particulars-preview" class="pt-preview" title="Particulars preview"></iframe>
+  </form>
+</div>
+{% endblock %}

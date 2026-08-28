@@ -1,3 +1,4 @@
+import io
 import os
 import re
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session, abort
@@ -1489,6 +1490,7 @@ class User(UserMixin, db.Model):
     # How this person is named on a record. The username is for signing in;
     # this is what a client-facing figure should read.
     full_name     = db.Column(db.String(120))
+    email         = db.Column(db.String(255))   # printed on particulars
     # Deliberately not called is_active: Flask-Login reads that name to decide
     # whether somebody may sign in, and a column defaulting to nothing would
     # lock the office out. This only decides who appears in a list.
@@ -6062,6 +6064,226 @@ def match_properties_to_contact(contact, limit=12):
 
 # ── Project Tasks ─────────────────────────────────────────────────────────────
 
+# ── Property particulars ─────────────────────────────────────────────────────
+
+def particulars_data(project):
+    """Everything the particulars need, gathered from the CRM.
+
+    Read only. Nothing is written back, nothing is invented, and nothing
+    confidential goes near a marketing document: no notes, no commission, no
+    client contact details, no activity history.
+    """
+    import particulars as pp
+    prop = project.property
+    listing = (project.project_listings[0]
+               if getattr(project, 'project_listings', None) else None)
+
+    def first(*values):
+        for v in values:
+            if v not in (None, '', 0):
+                return v
+        return None
+
+    price = None
+    if listing and listing.listing_price:
+        unit = (listing.listing_price_unit or '').lower()
+        if unit == 'sale':
+            price = f'{money_gbp(listing.listing_price)}'
+        elif unit == 'pcm':
+            price = f'{money_gbp(listing.listing_price)} per calendar month'
+        elif unit != 'poa':
+            price = f'{money_gbp(listing.listing_price)} per annum'
+
+    size = first(getattr(listing, 'total_size', None),
+                 getattr(listing, 'size', None),
+                 getattr(prop, 'size', None))
+    size_line = None
+    if size:
+        size_line = f'Approx {size:,.0f} sq ft – {size * 0.092903:,.0f} sq m'
+
+    earner = User.query.get(project.fee_earner_id) if project.fee_earner_id else None
+    contact_lines = []
+    if earner:
+        contact_lines.append(earner.display_name)
+    contact_lines.append(f"T: {pp.COMPANY['phone']}")
+    # Only a real address is printed. Making one up from a username would put
+    # an address on a marketing document that nobody reads.
+    if earner and getattr(earner, 'email', None):
+        contact_lines.append(earner.email)
+    contact_lines.append(pp.COMPANY['website'])
+
+    headline = ' / '.join([p for p in [
+        (prop.property_type if prop else None),
+        (project.instruction_type or '').replace(' – Available', ''),
+    ] if p])
+
+    return {
+        'headline': headline or 'Property',
+        'address': ', '.join([p for p in [
+            (prop.address if prop else None),
+            (prop.postcode if prop else None)] if p]),
+        'price': price,
+        'size_line': size_line,
+        'description': first(getattr(listing, 'blurb', None),
+                             getattr(prop, 'description', None)),
+        'location': first(getattr(listing, 'location_description', None),
+                          getattr(project, 'location_description', None)),
+        'terms': getattr(listing, 'key_terms', None),
+        'rent': first(price, getattr(listing, 'rent_comment', None)),
+        'rates': (
+            'Included' if getattr(listing, 'rateable_value_na', False) else
+            (f"Rateable value {money_gbp(listing.rateable_value)}"
+             if listing and listing.rateable_value else None)),
+        'service_charge': first(
+            getattr(listing, 'service_charge_comment', None),
+            ('Included' if getattr(listing, 'service_charge_na', False) else
+             (f"{money_gbp(listing.service_charge)} per annum"
+              if listing and listing.service_charge else None))),
+        'epc': getattr(listing, 'epc_band', None),
+        'accommodation': size_line,
+        'specification': getattr(listing, 'build_status', None),
+        'use_class': getattr(listing, 'use_class', None),
+        'transport': None,
+        'viewing': None,
+        'map': None,
+        'floorplan': (listing.floor_plan_data if listing and
+                      getattr(listing, 'floor_plan_data', None) else None),
+        'contact_lines': contact_lines,
+        'fee_earner': earner.display_name if earner else None,
+    }
+
+
+PARTICULARS_ESSENTIALS = [
+    ('address', 'Property address'), ('description', 'Description'),
+    ('location', 'Location'), ('size_line', 'Floor area'),
+    ('price', 'Rent or price'), ('fee_earner', 'Fee earner'),
+]
+
+
+def particulars_gaps(data, photo_count):
+    """What is missing that a brochure really ought to carry.
+
+    Reported so somebody can decide, never filled in. A particulars document
+    with an invented figure on it would be worse than one with a gap.
+    """
+    missing = [label for key, label in PARTICULARS_ESSENTIALS if not data.get(key)]
+    if photo_count == 0:
+        missing.append('Photographs')
+    return missing
+
+
+@app.route('/projects/<int:id>/particulars', methods=['GET'])
+@requires('edit')
+def particulars_start(id):
+    """Choose a format, choose the photographs, see what is missing."""
+    project = Project.query.get_or_404(id)
+    listing = (project.project_listings[0]
+               if getattr(project, 'project_listings', None) else None)
+    photos = sorted(listing.photos, key=lambda p: (p.sort_order or 0, p.id)) \
+        if listing else []
+    data = particulars_data(project)
+    return render_template(
+        'projects/particulars.html', project=project, listing=listing,
+        photos=photos, data=data,
+        gaps=particulars_gaps(data, len(photos)),
+        have_font=__import__('particulars').HAVE_MUSTICA)
+
+
+def _particulars_bytes(project, pages, photo_ids):
+    """Render the document. One path, used by preview and by saving."""
+    import particulars as pp
+    listing = (project.project_listings[0]
+               if getattr(project, 'project_listings', None) else None)
+    chosen = []
+    if listing:
+        by_id = {p.id: p for p in listing.photos}
+        seen = set()
+        for raw in photo_ids:
+            pid = int(raw) if str(raw).isdigit() else None
+            # A photograph is never used twice, however the list arrives.
+            if pid in by_id and pid not in seen:
+                seen.add(pid)
+                chosen.append(by_id[pid].file_data)
+    data = particulars_data(project)
+    return pp.build(data, chosen, pages), pp.filename_for(data['address'], pages)
+
+
+@app.route('/projects/<int:id>/particulars/preview', methods=['POST'])
+@requires('edit')
+def particulars_preview(id):
+    """The document itself, for looking at before it is kept."""
+    project = Project.query.get_or_404(id)
+    pages = 4 if request.form.get('pages') == '4' else 2
+    try:
+        pdf, name = _particulars_bytes(project, pages,
+                                       request.form.getlist('photo_ids'))
+    except Exception:
+        app.logger.exception('Could not build particulars for project %s', id)
+        abort(500, description='The particulars could not be produced.')
+    from flask import send_file
+    return send_file(io.BytesIO(pdf), mimetype='application/pdf',
+                     download_name=name, as_attachment=False)
+
+
+@app.route('/projects/<int:id>/particulars/download', methods=['POST'])
+@requires('edit')
+def particulars_download(id):
+    project = Project.query.get_or_404(id)
+    pages = 4 if request.form.get('pages') == '4' else 2
+    pdf, name = _particulars_bytes(project, pages, request.form.getlist('photo_ids'))
+    audit('export', entity='Project', entity_id=id,
+          detail=f'{pages}-page particulars downloaded')
+    from flask import send_file
+    return send_file(io.BytesIO(pdf), mimetype='application/pdf',
+                     download_name=name, as_attachment=True)
+
+
+@app.route('/projects/<int:id>/particulars/save', methods=['POST'])
+@requires('edit')
+def particulars_save(id):
+    """Keep the document against the instruction's brochure.
+
+    An existing brochure is never replaced without being asked: the choice is
+    made on the page and carried here, and either way the change is recorded.
+    """
+    project = Project.query.get_or_404(id)
+    listing = (project.project_listings[0]
+               if getattr(project, 'project_listings', None) else None)
+    if listing is None:
+        flash('This instruction has no website listing to attach a brochure to.',
+              'error')
+        return redirect(url_for('project_detail', id=id))
+
+    pages = 4 if request.form.get('pages') == '4' else 2
+    pdf, name = _particulars_bytes(project, pages, request.form.getlist('photo_ids'))
+
+    replacing = bool(listing.brochure_filename)
+    choice = (request.form.get('existing') or '').strip()
+    if replacing and choice not in ('replace', 'keep'):
+        flash('Choose whether to replace the current brochure or keep it.', 'error')
+        return redirect(url_for('particulars_start', id=id))
+
+    if replacing and choice == 'keep':
+        # The previous document stays; this one is offered as a download so
+        # nothing already attached is disturbed.
+        audit('export', entity='Project', entity_id=id,
+              detail=f'{pages}-page particulars kept alongside the existing brochure')
+        from flask import send_file
+        return send_file(io.BytesIO(pdf), mimetype='application/pdf',
+                         download_name=name, as_attachment=True)
+
+    was = listing.brochure_filename
+    listing.brochure_data = pdf
+    listing.brochure_filename = name
+    listing.brochure_size = len(pdf)
+    db.session.commit()
+    audit('create', entity='Project', entity_id=id,
+          detail=(f'{pages}-page particulars saved as the brochure'
+                  + (f', replacing {was}' if was else '')))
+    flash('Particulars saved to the brochure.', 'success')
+    return redirect(url_for('project_detail', id=id) + '#tab-documents')
+
+
 @app.route('/projects/<int:id>/tasks/add', methods=['POST'])
 def task_add(id):
     project = Project.query.get_or_404(id)
@@ -7571,7 +7793,7 @@ def _migrate_project_columns():
         # Records now point at a user rather than holding a typed name. The
         # typed name stays in its own column: it is the evidence for the link,
         # and the only record of anything that could not be identified.
-        _add_columns('users', [('full_name', 'TEXT'),
+        _add_columns('users', [('full_name', 'TEXT'), ('email', 'TEXT'),
                                ('active', 'BOOLEAN DEFAULT TRUE'),
                                ('can_earn_fees', 'BOOLEAN DEFAULT TRUE')])
         for table in ('transactions', 'organisations', 'enquiries', 'projects',
