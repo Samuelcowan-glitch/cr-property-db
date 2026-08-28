@@ -1538,3 +1538,7 @@ body.pg-open { overflow: hidden; }
   .pt-preview { height: 55vh; }
   .pt-actions .btn { flex: 1 1 auto; }
 }
+
+/* The strapline counter — plain until it matters. */
+[data-strapline-count] { color: var(--grey-600); }
+[data-strapline-count].is-over { color: var(--danger); font-weight: var(--w-label); }

@@ -492,6 +492,21 @@
 </div>
 
 
+          {# One line, used as the headline on the particulars and sent to
+             Zoopla as the summary. Deliberately separate from the description
+             below, which Zoopla receives on its own. #}
+          <div class="frow frow--full">
+  <div class="fcell fcell--label fcell--top">Strapline</div>
+  <div class="fcell fcell--edit">
+    <textarea name="strapline" rows="2" data-strapline
+              data-limit="{{ zoopla_summary_limit() }}"
+              placeholder="GROUND FLOOR OFFICE SPACE | TO LET | FULHAM SW6">{{ lst.strapline or '' }}</textarea>
+    <span class="fcell-hint">
+      The headline on the particulars and Zoopla's summary.
+      <span data-strapline-count></span>
+    </span>
+  </div>
+</div>
           <div class="frow frow--full">
   <div class="fcell fcell--label fcell--top">Marketing Description</div>
   <div class="fcell fcell--edit"><textarea name="blurb" rows="4">{{ lst.blurb or '' }}</textarea></div>

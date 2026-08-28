@@ -1254,6 +1254,11 @@ class Listing(db.Model):
     beds               = db.Column(db.Integer)
     baths              = db.Column(db.Integer)
     photo_id           = db.Column(db.String(100))
+    # The one-line headline for this listing, e.g.
+    #   GROUND FLOOR OFFICE SPACE | TO LET | FULHAM SW6
+    # It is the principal summary on the particulars and the summary sent to
+    # Zoopla. There is deliberately only one of it, so the two cannot differ.
+    strapline          = db.Column(db.String(400))
     blurb              = db.Column(db.Text)
     lat                = db.Column(db.Float)
     lng                = db.Column(db.Float)
@@ -3154,6 +3159,16 @@ def can_edit():
 app.jinja_env.globals['can_edit'] = can_edit
 app.jinja_env.globals['property_photographs'] = property_photographs
 app.jinja_env.globals['gallery_photos'] = gallery_photos
+def zoopla_summary_limit():
+    """The character limit Zoopla applies to the summary field."""
+    try:
+        import zoopla_feed as zf
+        return zf.SUMMARY_LIMIT
+    except Exception:
+        return 2000
+
+
+app.jinja_env.globals['zoopla_summary_limit'] = zoopla_summary_limit
 app.jinja_env.globals['contact_label'] = contact_label
 app.jinja_env.globals['fee_earners'] = fee_earners
 app.jinja_env.globals['fee_earner_name'] = fee_earner_name
@@ -6066,6 +6081,16 @@ def match_properties_to_contact(contact, limit=12):
 
 # ── Property particulars ─────────────────────────────────────────────────────
 
+def clean_strapline(value):
+    """A strapline as it will be used: one line, spacing tidied, nothing else.
+
+    The wording, the capitals and the vertical bars are left exactly as they
+    were typed. This only collapses stray whitespace and newlines, which would
+    otherwise break a single-line field.
+    """
+    return ' '.join(str(value or '').split())
+
+
 def particulars_data(project):
     """Everything the particulars need, gathered from the CRM.
 
@@ -6112,10 +6137,15 @@ def particulars_data(project):
         contact_lines.append(earner.email)
     contact_lines.append(pp.COMPANY['website'])
 
-    headline = ' / '.join([p for p in [
-        (prop.property_type if prop else None),
-        (project.instruction_type or '').replace(' – Available', ''),
-    ] if p])
+    # The strapline is the headline. It is the one line the office has chosen
+    # for this property, and the same line Zoopla is sent, so the brochure and
+    # the portal never say different things. With none written, the type and
+    # the instruction stand in on the brochure only — Zoopla is sent nothing
+    # rather than something invented.
+    headline = clean_strapline(getattr(listing, 'strapline', None)) or ' / '.join(
+        [p for p in [(prop.property_type if prop else None),
+                     (project.instruction_type or '').replace(' – Available', '')]
+         if p])
 
     return {
         'headline': headline or 'Property',
@@ -6150,6 +6180,7 @@ def particulars_data(project):
                       getattr(listing, 'floor_plan_data', None) else None),
         'contact_lines': contact_lines,
         'fee_earner': earner.display_name if earner else None,
+        'strapline': clean_strapline(getattr(listing, 'strapline', None)),
     }
 
 
@@ -7224,6 +7255,7 @@ def _save_listing_from_form(form, l):
     setf('lat', 'lat', pf)
     setf('lng', 'lng', pf)
     setf('photo_id', 'photo_id')
+    setf('strapline', 'strapline')    # Headline: particulars and Zoopla summary
     setf('blurb', 'blurb')            # Description (shown on website)
     # ── Website listing criteria (the four listing types) ──
     setf('residential_use', 'residential_use')
@@ -7537,6 +7569,7 @@ def admin_zoopla():
     cfg = zf.feed_config()
     # Send every Zoopla-toggled listing as live, plus any that are on the
     # website but toggled OFF so Zoopla takes them down (PUBLISHED_FLAG=0).
+    # What Zoopla will be told, and anything that would stop it being said.
     live = Listing.query.filter_by(zoopla_listed=True).order_by(Listing.id).all()
     takedown = (Listing.query.filter_by(zoopla_listed=False, website_listed=True)
                              .order_by(Listing.id).all())
@@ -7549,12 +7582,40 @@ def admin_zoopla():
         except Exception:
             return f'Listing #{l.id}'
 
+    from markupsafe import escape as _esc
+
+    def _summary_cell(listing):
+        """What Zoopla will be sent as the summary, and why it might refuse."""
+        problems, text = zf.summary_problems(getattr(listing, 'strapline', None))
+        if problems:
+            return ('<span style="color:#b3463c">'
+                    + '<br>'.join(_esc(p) for p in problems) + '</span>')
+        return f'<span style="color:#1f2333">{_esc(text)}</span>'
+
     live_rows = ''.join(
-        f'<tr><td>CR-{l.id}</td><td>{_t(l)}</td>'
-        f'<td>{l.website_category or "-"}</td>'
+        f'<tr><td>CR-{l.id}</td><td>{_esc(_t(l))}</td>'
+        f'<td>{_summary_cell(l)}</td>'
         f'<td>{l.listing_status or "available"}</td>'
         f'<td>{len(list(l.photos or []))}</td></tr>' for l in live) \
         or '<tr><td colspan=5 style="color:#6b7280">No listings toggled for Zoopla yet.</td></tr>'
+
+    # Anything that would stop a listing going out, said before it is sent.
+    blocked = [(l, zf.summary_problems(getattr(l, 'strapline', None))[0])
+               for l in live]
+    blocked = [(l, p) for l, p in blocked if p]
+    warning = ''
+    if blocked:
+        items = ''.join(
+            f'<li>CR-{l.id} {_esc(_t(l))}: ' + '; '.join(_esc(x) for x in p) + '</li>'
+            for l, p in blocked)
+        warning = (
+            '<div style="background:#fff8e6;border:1px solid #e8d5a3;'
+            'border-left:3px solid #b5762c;border-radius:3px;padding:12px 14px;'
+            'margin:14px 0"><b>Zoopla summary missing or too long</b>'
+            '<p style="margin:6px 0 8px;color:#4a5568">The summary comes from '
+            'the Strapline on the instruction. Nothing is invented and the '
+            'marketing description is never used instead — amend the strapline '
+            f'in the Marketing section.</p><ul style="margin:0 0 0 18px">{items}</ul></div>')
     takedown_note = (f'<p style="color:#6b7280;font-size:13px">Plus '
                      f'<b>{len(takedown)}</b> website listing(s) not on Zoopla — '
                      f'sent with PUBLISHED_FLAG=0 so Zoopla removes them.</p>'
@@ -7582,11 +7643,12 @@ def admin_zoopla():
 <body style="font-family:system-ui,Arial;max-width:920px;margin:40px auto;padding:0 20px;color:#111">
 <h2 style="color:#0e1f44">Zoopla feed</h2>
 {status_html}
+{warning}
 <h3 style="margin-bottom:4px">Listings going to Zoopla ({len(live)})</h3>
 {takedown_note}
 <table style="width:100%;border-collapse:collapse;font-size:14px">
 <thead><tr style="text-align:left;border-bottom:2px solid #0e1f44">
-<th>Ref</th><th>Listing</th><th>Category</th><th>Status</th><th>Photos</th></tr></thead>
+<th>Ref</th><th>Listing</th><th>Zoopla Summary</th><th>Status</th><th>Photos</th></tr></thead>
 <tbody>{live_rows}</tbody></table>
 {push_btn}
 <h3 style="margin-top:28px">BLM file preview</h3>
@@ -7605,15 +7667,27 @@ def admin_zoopla_push():
     live = Listing.query.filter_by(zoopla_listed=True).order_by(Listing.id).all()
     takedown = (Listing.query.filter_by(zoopla_listed=False, website_listed=True)
                              .order_by(Listing.id).all())
-    blm_text, media_files = zf.generate_feed(live + takedown, cfg['branch_id'])
+    # A listing whose summary Zoopla will not take is held back rather than
+    # sent in a form nobody chose. The rest still go.
+    held = [(l, zf.summary_problems(getattr(l, 'strapline', None))[0]) for l in live]
+    held = [(l, p) for l, p in held if p]
+    sending = [l for l in live if l not in {h[0] for h in held}]
+
+    blm_text, media_files = zf.generate_feed(sending + takedown, cfg['branch_id'])
     ok, msg = zf.upload_feed(blm_text, media_files, cfg)
+    audit('publish' if ok else 'denied', entity='Listing',
+          detail=(f'Zoopla feed: {len(sending)} sent, {len(held)} held back'
+                  + ('' if ok else f' — {msg[:180]}')))
+    if held:
+        msg += (' ' + f'{len(held)} listing(s) were not sent because their '
+                'Zoopla summary is missing or too long.')
     colour = '#1b7a3f' if ok else '#b91c1c'
     heading = 'Feed pushed to Zoopla' if ok else 'Push failed'
     return f'''<!doctype html><meta charset=utf-8>
 <body style="font-family:system-ui,Arial;max-width:640px;margin:60px auto;padding:0 20px;color:#111">
 <h2 style="color:{colour}">{heading}</h2>
 <p>{msg}</p>
-<p style="color:#6b7280;font-size:13px">Sent {len(live)} live listing(s). Zoopla ingests the feed on its own schedule, so changes appear on the portal after their next pickup — not instantly.</p>
+<p style="color:#6b7280;font-size:13px">Sent {len(sending)} live listing(s). Zoopla ingests the feed on its own schedule, so changes appear on the portal after their next pickup — not instantly.</p>
 <p><a href="{url_for('admin_zoopla')}" style="display:inline-block;margin-top:10px;background:#0e1f44;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none">← Back to Zoopla feed</a></p>
 </body>'''
 
@@ -7801,6 +7875,7 @@ def _migrate_project_columns():
             _add_columns(table, [('fee_earner_id', 'INTEGER')])
         for table in ('projects', 'properties'):
             _add_columns(table, [('client_contact_id', 'INTEGER')])
+        _add_columns('listings', [('strapline', 'TEXT')])
 
         try:
             _restyle_transaction_statuses()

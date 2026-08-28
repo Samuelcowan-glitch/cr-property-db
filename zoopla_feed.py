@@ -106,11 +106,51 @@ def _split_postcode(postcode):
     return pc, ''
 
 
+# SPEC: Zoopla's own limit for the summary field, to be confirmed against
+# their feed document. The previous code used 2000 and truncated silently;
+# the number is kept, but nothing is cut without the user being told.
+SUMMARY_LIMIT = 2000
+
+# SPEC: characters the feed is known to dislike. The vertical bar is not among
+# them — it is a field separator in some feeds but not in BLM, which uses ^ and
+# ~ — so a strapline written with bars is sent as written. If Zoopla refuse it,
+# their response is shown rather than the strapline being quietly changed.
+SUMMARY_FORBIDDEN = '^~'
+
+
+def summary_problems(strapline):
+    """What is wrong with a strapline, in words, or nothing if it is fine.
+
+    Nothing here alters the text. A strapline that is too long or carries a
+    character the feed cannot take is reported so somebody can amend it, which
+    is the only way it stays the wording that was chosen.
+    """
+    text = ' '.join(str(strapline or '').split())
+    problems = []
+    if not text:
+        problems.append('No strapline has been written, so Zoopla has no summary.')
+        return problems, text
+    if len(text) > SUMMARY_LIMIT:
+        problems.append(
+            f'The strapline is {len(text)} characters; Zoopla accepts '
+            f'{SUMMARY_LIMIT}. Shorten it in the Marketing section.')
+    bad = sorted({c for c in text if c in SUMMARY_FORBIDDEN})
+    if bad:
+        problems.append(
+            'The feed cannot carry ' + ', '.join(repr(c) for c in bad) +
+            '. Please amend the strapline.')
+    return problems, text
+
+
 def _summary(listing, prop):
-    txt = (listing.summary_text or listing.key_terms
-           or listing.blurb or (prop.description if prop else '') or '')
-    txt = ' '.join(str(txt).split())
-    return txt[:2000]
+    """What Zoopla shows as the summary: the strapline, as written.
+
+    Never the marketing description — that goes to the description field on
+    its own — and never a made-up line. An empty strapline sends nothing,
+    which is what makes the missing-summary warning honest.
+    """
+    text = ' '.join(str(getattr(listing, 'strapline', '') or '').split())
+    return text
 
 
 def _description(listing, prop):
