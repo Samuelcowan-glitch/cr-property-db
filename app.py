@@ -453,30 +453,18 @@ class Property(db.Model):
         return _br.to_pence(row.rateable_value)
 
     @property
-    def has_confirmed_rates(self):
-        """A council's own figure, complete enough to quote.
-
-        Both the amount and the date are required: a figure with no date is not
-        evidence of anything, so it is not treated as confirmed.
-        """
-        return bool(self.rates_confirmed
-                    and self.rates_confirmed_amount is not None
-                    and self.rates_confirmed_on)
-
-    @property
     def rates_for_brochure(self):
-        """What a brochure should quote, and on whose authority.
+        """What a brochure may quote, in pence, or None.
 
-        Returns (pence, basis) where basis is 'confirmed' or 'estimated', or
-        (None, None) where there is nothing to quote. The council's own figure
-        always wins; the estimate is never promoted to take its place.
+        The CRM's own estimate, and nothing else. Older records may still hold
+        a council-confirmed figure from when the CRM asked for one; it is not
+        read here and cannot override the estimate. The columns are left in
+        place rather than dropped, so no history is destroyed.
         """
-        if self.has_confirmed_rates:
-            return self.rates_confirmed_amount, 'confirmed'
         current = self.current_rates
         if current and current.estimated_payable is not None:
-            return current.estimated_payable, 'estimated'
-        return None, None
+            return current.estimated_payable
+        return None
 
 
 # ── Property types ───────────────────────────────────────────────────────────
@@ -3012,54 +3000,6 @@ def property_rates_save(id):
     audit('rates-calculated', entity='Property', entity_id=prop.id, detail=detail)
     flash(f"Estimated business rates saved: {br.money(result['total'])} "
           f"for {inputs['tax_year']}.", 'success')
-    return _back_to('property_edit', id=prop.id)
-
-
-@app.route('/properties/<int:id>/rates/confirm', methods=['POST'])
-@requires('edit')
-def property_rates_confirm(id):
-    """Record what the council itself has said.
-
-    Kept apart from the estimate: neither figure overwrites the other, and the
-    calculator's inputs are not touched.
-    """
-    prop = Property.query.get_or_404(id)
-    confirmed = bool(request.form.get('rates_confirmed'))
-
-    if not confirmed:
-        was = prop.rates_confirmed
-        prop.rates_confirmed = False
-        db.session.commit()
-        if was:
-            audit('rates-unconfirmed', entity='Property', entity_id=prop.id,
-                  detail='council confirmation switched off; the figure is kept')
-        flash('The council-confirmed figure is no longer being used. '
-              'It has been kept on the record.', 'success')
-        return _back_to('property_edit', id=prop.id)
-
-    amount = br.to_pence(request.form.get('rates_confirmed_amount'))
-    when = _parse_date(request.form.get('rates_confirmed_on'))
-    problems = []
-    if amount is None:
-        problems.append('the amount the council gave')
-    elif amount < 0:
-        problems.append('an amount that is not negative')
-    if not when:
-        problems.append('the date it was confirmed')
-    if problems:
-        flash('A council-confirmed figure needs ' + ' and '.join(problems) + '.',
-              'error')
-        return _back_to('property_edit', id=prop.id)
-
-    prop.rates_confirmed = True
-    prop.rates_confirmed_amount = amount
-    prop.rates_confirmed_on = when
-    prop.rates_confirmed_ref = (request.form.get('rates_confirmed_ref') or '').strip() or None
-    prop.rates_confirmed_by = getattr(current_user, 'username', None)
-    db.session.commit()
-    audit('rates-confirmed', entity='Property', entity_id=prop.id,
-          detail=f'council figure {br.money(amount)} on {when:%d %b %Y}')
-    flash(f'Council-confirmed rates of {br.money(amount)} recorded.', 'success')
     return _back_to('property_edit', id=prop.id)
 
 
@@ -6946,6 +6886,21 @@ def suggest_multiplier_for(tax_year, rateable_value_pence, property_type=None):
 
 # ── What goes on a brochure ─────────────────────────────────────────────────
 
+def brochure_money(pence):
+    """A rates figure as a brochure writes it: £14,561, not £14,561.00.
+
+    The pennies are kept everywhere they matter — in the calculation, in the
+    saved record and on the screens — and dropped only here, where a qualified
+    estimate does not pretend to that precision.
+    """
+    from decimal import Decimal, ROUND_HALF_UP
+    if pence is None:
+        return None
+    pounds = (Decimal(int(pence)) / 100).quantize(Decimal('1'),
+                                                  rounding=ROUND_HALF_UP)
+    return f'£{pounds:,}'
+
+
 def rates_audience(instruction):
     """Who a rates note addresses, from how the property is being marketed.
 
@@ -6982,48 +6937,46 @@ def council_the(name):
 def rates_paragraph(prop, instruction=None):
     """The business rates note, exactly as it will be printed.
 
-    Four cases, and the difference between them matters:
-      - the council has confirmed a figure, so it is attributed to the council;
-      - the CRM has an estimate, so it is called an estimate and qualified;
-      - the council is known but there is no figure, so the reader is sent to
-        the council;
-      - the council is not known, so nothing is claimed and no council's
+    The figure is always the CRM's own estimate and is always called one. The
+    brochure never suggests the council has supplied or confirmed it, because
+    the council has not: this is the CRM's arithmetic on a rateable value.
+
+    Three cases:
+      - there is an estimate, so it is quoted and qualified;
+      - the council is known but there is no estimate, so the reader is sent to
+        the council rather than shown a made-up figure or a nought;
+      - the council is not known either, so nothing is claimed and no council's
         details are printed.
 
     Internal calculation notes never appear here.
     """
     audience = rates_audience(instruction)
     council = prop.council if prop else None
+    amount = prop.rates_for_brochure if prop else None
 
-    if not council:
-        # Guessing a council from a postcode would put another borough's
-        # telephone number on a brochure. Nothing is guessed.
-        return ('Business rates are payable and will depend on the occupier’s '
-                'circumstances. ' + audience + ' are advised to make their own '
-                'enquiries of the local billing authority to confirm the '
-                'business rates payable.')
-
-    name = council.name
-    phone = (council.phone or '').strip()
-    amount, basis = prop.rates_for_brochure
-
-    if basis == 'confirmed':
-        line = (f'We have been advised by {council_the(name)} that the rates payable for '
-                f'the current year are {br.money(amount)}. {audience} are advised '
-                f'to confirm this information by telephoning the local council')
-        return f'{line} on {phone}.' if phone else f'{line}.'
-
-    if basis == 'estimated':
+    if council and amount is not None:
+        name = council_the(council.name)
+        phone = (council.phone or '').strip()
         line = (f'The estimated rates payable for the current year are '
-                f'{br.money(amount)}, subject to the occupier’s circumstances '
+                f'{brochure_money(amount)}, subject to the occupier’s circumstances '
                 f'and any applicable reliefs or adjustments. {audience} are '
-                f'advised to confirm this information with {council_the(name)}')
+                f'advised to confirm this information with {name}')
         return f'{line} by telephoning {phone}.' if phone else f'{line}.'
 
-    line = (f'Interested parties are advised to contact {council_the(name)} to '
-            f'confirm the '
-            f'business rates payable.')
-    return f'{line} Their business rates team can be reached on {phone}.' if phone else line
+    if council:
+        # No estimate. A nought would read as "no rates are payable", which is
+        # a different and much more damaging claim than "we have not worked it
+        # out", so nothing is quoted at all.
+        name = council_the(council.name)
+        phone = (council.phone or '').strip()
+        line = (f'{audience} are advised to contact {name} to confirm the '
+                f'business rates payable.')
+        return f'{line} Their business rates team can be reached on {phone}.' if phone else line
+
+    # Guessing a council from a postcode would put another borough's telephone
+    # number on a brochure. Nothing is guessed.
+    return (f'{audience} are advised to make their own enquiries with the '
+            f'relevant local authority to confirm the business rates payable.')
 
 
 def rates_summary(prop):
@@ -7032,7 +6985,7 @@ def rates_summary(prop):
     Read only. It reports what is on record, including that nothing is.
     """
     current = prop.current_rates if prop else None
-    amount, basis = prop.rates_for_brochure if prop else (None, None)
+    amount = prop.rates_for_brochure if prop else None
     multiplier = None
     if current and current.multiplier_value is not None:
         multiplier = {
@@ -7058,13 +7011,7 @@ def rates_summary(prop):
                             if current and current.estimated_payable is not None else None),
         'calculated_on': current.calculated_on if current else None,
         'calculated_by': current.calculated_by if current else None,
-        'confirmed': prop.has_confirmed_rates if prop else False,
-        'confirmed_display': (br.money(prop.rates_confirmed_amount)
-                              if prop and prop.has_confirmed_rates else None),
-        'confirmed_on': prop.rates_confirmed_on if prop else None,
-        'confirmed_ref': prop.rates_confirmed_ref if prop else None,
-        'basis': basis,
-        'brochure_amount': br.money(amount) if amount is not None else None,
+        'brochure_amount': brochure_money(amount) if amount is not None else None,
         'history': [c for c in (prop.rates_calculations if prop else []) if not c.is_current],
     }
 
@@ -7203,11 +7150,10 @@ def particulars_data(project):
         'for_sale': for_sale,
         'to_let': to_let,
         'rates': rates_paragraph(prop, instruction) if prop else None,
-        'rates_basis': (prop.rates_for_brochure[1] if prop else None),
         'rates_council': (prop.council.name if prop and prop.council else None),
         'rates_phone': (prop.council.phone if prop and prop.council else None),
-        'rates_amount': (br.money(prop.rates_for_brochure[0])
-                         if prop and prop.rates_for_brochure[0] is not None else None),
+        'rates_amount': (brochure_money(prop.rates_for_brochure)
+                         if prop and prop.rates_for_brochure is not None else None),
         'rateable_value_note': (
             'Included' if getattr(listing, 'rateable_value_na', False) else
             (f"Rateable value {money_gbp(listing.rateable_value)}"

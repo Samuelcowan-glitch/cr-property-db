@@ -1,11 +1,13 @@
 {#
-   Business rates: the local authority, the calculator, and the council's own
-   figure.
+   Business rates: the local authority and the calculator.
 
-   Three separate forms on purpose. Saving the property, saving an estimate and
-   recording what the council said are three different acts, and one should
-   never happen as a side effect of another. They use the HTML form= attribute
-   so the boxes can sit inside the property page without nesting forms.
+   Two separate forms on purpose. Saving the property and saving an estimate
+   are different acts, and one should never happen as a side effect of the
+   other. They use the HTML form= attribute so the boxes can sit inside the
+   property page without nesting forms.
+
+   There is no council-confirmation box: the CRM calculates this figure, so it
+   is always presented as its own estimate and never as the council's.
 #}
 
 {# ── The council, as a field on the Property form ────────────────────────── #}
@@ -49,7 +51,7 @@
      data-suggest-url="{{ url_for('property_rates_suggest', id=prop.id) }}">
   <div class="box-head">
     Business Rates Calculator
-    <span class="br-est-tag">Estimate only</span>
+    <span class="br-est-tag">Estimated figure</span>
   </div>
 
   <div class="frow">
@@ -231,67 +233,6 @@
 </div>
 
 
-{# ── What the council itself has said ────────────────────────────────────── #}
-<form id="rates-confirm-form" method="post"
-      action="{{ url_for('property_rates_confirm', id=prop.id) }}"></form>
-
-<div class="box box--grid br-box">
-  <div class="box-head">
-    Council-confirmed Rates
-    {% if prop.has_confirmed_rates %}<span class="br-conf-tag">Used on particulars</span>{% endif %}
-  </div>
-
-  <div class="frow">
-    <div class="fcell fcell--label">Confirmed by council</div>
-    <div class="fcell fcell--edit">
-      <label class="br-check">
-        <input type="checkbox" name="rates_confirmed" form="rates-confirm-form" value="1"
-               {{ 'checked' if prop.rates_confirmed }}>
-        The council has given us this figure
-      </label>
-    </div>
-    <div class="fcell fcell--label">Amount</div>
-    <div class="fcell fcell--edit">
-      <input type="text" inputmode="decimal" name="rates_confirmed_amount"
-             form="rates-confirm-form" placeholder="£"
-             value="{{ br.from_pence(prop.rates_confirmed_amount) if prop.rates_confirmed_amount is not none else '' }}">
-    </div>
-  </div>
-
-  <div class="frow">
-    <div class="fcell fcell--label">Date confirmed</div>
-    <div class="fcell fcell--edit">
-      <input type="date" name="rates_confirmed_on" form="rates-confirm-form"
-             value="{{ prop.rates_confirmed_on.isoformat() if prop.rates_confirmed_on else '' }}">
-    </div>
-    <div class="fcell fcell--label">Confirmation note</div>
-    <div class="fcell fcell--edit">
-      <input type="text" name="rates_confirmed_ref" form="rates-confirm-form"
-             placeholder="Who at the council said so, and their case number"
-             value="{{ prop.rates_confirmed_ref or '' }}">
-    </div>
-  </div>
-
-  <div class="br-actions">
-    <button type="submit" form="rates-confirm-form" class="btn btn-primary">
-      Save council figure
-    </button>
-    <span class="br-saved">
-      {% if prop.has_confirmed_rates %}
-      The particulars will quote <strong>{{ br.money(prop.rates_confirmed_amount) }}</strong>
-      as advised by the council, not the estimate.
-      {% else %}
-      The particulars will quote the estimate, described as an estimate.
-      {% endif %}
-    </span>
-  </div>
-  <p class="rec-note">
-    Kept separately from the calculator. Recording a council figure does not
-    change or clear the estimate, and the estimate never becomes a council figure.
-  </p>
-</div>
-
-
 {# ── What the brochure will say ──────────────────────────────────────────── #}
 <div class="box br-box">
   <div class="box-head">On the particulars</div>
@@ -299,7 +240,8 @@
   <p class="rec-note">
     Shown as it will read on a letting. Sale particulars address purchasers
     instead, and the exact wording for this instruction is shown on the Create
-    Particulars screen before anything is generated.
+    Particulars screen before anything is generated. The brochure always
+    describes this as an estimate and never attributes it to the council.
   </p>
 </div>
 

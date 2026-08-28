@@ -312,6 +312,33 @@ def measure_blocks(canvas, blocks, width, size=9.5, leading=12.6,
     return total + 12
 
 
+def _share_column(canvas, upper, lower, width, total, floor=0.20):
+    """Divide a column between two stacked panels, by what each needs.
+
+    The lower panel carries the terms — rent, price, business rates, the EPC —
+    and those are the sentences that must not be cut off halfway. So it is
+    given the height it asks for, and the upper panel takes what is left.
+
+    Neither is allowed below `floor` of the column, so a very long rates note
+    cannot squeeze the description down to a stripe. When the two together want
+    more than there is, the space is split in proportion to what each asked
+    for, which at least fails evenly rather than silently truncating one.
+    """
+    want_up = measure_blocks(canvas, upper, width)
+    want_low = measure_blocks(canvas, lower, width)
+    least = total * floor
+
+    if want_up + want_low <= total:
+        # Room for both. The slack goes to the upper panel, so the column
+        # fills without leaving a band of bare page between them.
+        low = max(want_low, least)
+        return total - low, low
+
+    share = total * want_low / (want_up + want_low)
+    low = min(max(share, least), total - least)
+    return total - low, low
+
+
 def _navy_panel(canvas, x, y, w, h, blocks):
     """The navy block: white headings and text, as on the reference."""
     canvas.setFillColor(NAVY)
@@ -399,7 +426,7 @@ def disclaimer_block(canvas, x, y, w):
             cursor -= 8
 
 
-def detail_page(canvas, data, photos, with_terms=True):
+def detail_page(canvas, data, photos, with_terms=True, closing=True):
     """Words on the left, pictures and contact on the right."""
     half = (PW - MARGIN * 2 - GUTTER) / 2
     left_x = 0
@@ -422,13 +449,12 @@ def detail_page(canvas, data, photos, with_terms=True):
     # of empty colour. With no terms, the navy block takes the whole column.
     col_w = MARGIN + half
     if terms:
-        wanted = measure_blocks(canvas, words, col_w)
-        navy_h = max(PH * 0.30, min(wanted, PH * 0.66))
+        navy_h, grey_h = _share_column(canvas, words, terms, col_w, PH - 16)
     else:
-        navy_h = PH - 8
+        navy_h, grey_h = PH - 8, 0
     _navy_panel(canvas, left_x, PH - navy_h, col_w, navy_h, words)
     if terms:
-        _grey_panel(canvas, left_x, 8, col_w, PH - navy_h - 16, terms)
+        _grey_panel(canvas, left_x, 8, col_w, grey_h, terms)
 
     # Right: the big picture, then a pair beneath it.
     top_h = 250
@@ -446,9 +472,11 @@ def detail_page(canvas, data, photos, with_terms=True):
         for i, photo in enumerate(rest):
             draw_image(canvas, photo, right_x + i * (each + gap), cursor, each, pair_h)
 
-    contact_y = 128
-    contact_block(canvas, right_x, contact_y, right_w, data)
-    disclaimer_block(canvas, right_x, 30, right_w)
+    if closing:
+        # Only where this is the last page. The four-page layout ends on its
+        # own closing page, and the notice belongs there once, not twice.
+        contact_block(canvas, right_x, 128, right_w, data)
+        disclaimer_block(canvas, right_x, 30, right_w)
 
 
 def gallery_page(canvas, data, photos, title='Accommodation'):
@@ -470,13 +498,12 @@ def gallery_page(canvas, data, photos, title='Accommodation'):
         panel_w = (MARGIN + half) if photos else (PW - MARGIN)
         upper, lower = blocks[:2], blocks[2:]
         if lower:
-            wanted = measure_blocks(canvas, upper, panel_w)
-            navy_h = max(PH * 0.30, min(wanted, PH * 0.66))
+            navy_h, grey_h = _share_column(canvas, upper, lower, panel_w, PH - 16)
         else:
-            navy_h = PH - 8
+            navy_h, grey_h = PH - 8, 0
         _navy_panel(canvas, 0, PH - navy_h, panel_w, navy_h, upper)
         if lower:
-            _grey_panel(canvas, 0, 8, panel_w, PH - navy_h - 16, lower)
+            _grey_panel(canvas, 0, 8, panel_w, grey_h, lower)
         if not photos:
             return
     elif photos:
@@ -567,7 +594,7 @@ def build(data, photos, pages=2):
     if pages == 2:
         detail_page(canvas, data, rest[:3])
     else:
-        detail_page(canvas, data, rest[:3], with_terms=False)
+        detail_page(canvas, data, rest[:3], with_terms=False, closing=False)
         canvas.showPage()
         gallery_page(canvas, data, rest[3:9])
         canvas.showPage()

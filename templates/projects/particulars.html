@@ -77,21 +77,19 @@
                  &middot; {{ rates.multiplier.type or 'Other' }}
                  {%- if rates.multiplier.overridden %} <span class="pt-flag">entered by hand</span>{% endif %}
                  {% else %}—{% endif %}</dd></div>
-        <div><dt>Estimated rates payable</dt>
-             <dd>{{ rates.estimated_display or 'Not calculated' }}</dd></div>
-        <div><dt>Council-confirmed</dt>
-             <dd>{% if rates.confirmed %}{{ rates.confirmed_display }}
-                 on {{ rates.confirmed_on.strftime('%d %b %Y') }}
-                 {% else %}None recorded{% endif %}</dd></div>
+        <div><dt>Estimated business rates payable</dt>
+             <dd>{{ rates.brochure_amount or 'Not calculated' }}</dd></div>
+        <div><dt>Calculated</dt>
+             <dd>{{ rates.calculated_on.strftime('%d %b %Y') if rates.calculated_on else '—' }}</dd></div>
       </dl>
       <p class="pt-rates-para">{{ data.rates }}</p>
       <p class="pt-rates-note">
-        {% if data.rates_basis == 'confirmed' %}
-        This is the council&rsquo;s own figure and is attributed to them.
-        {% elif data.rates_basis == 'estimated' %}
-        This is the CRM&rsquo;s estimate and is described as one.
+        {% if data.rates_amount %}
+        This is the CRM&rsquo;s own estimate and the brochure describes it as one.
+        It is never attributed to the council.
         {% else %}
-        No figure will be quoted.
+        No figure will be quoted &mdash; the note sends the reader to the council
+        rather than showing a nought.
         {% endif %}
         <a href="{{ url_for('property_edit', id=project.property_id) }}">
           Change it on Property Details</a> if anything here is wrong.
