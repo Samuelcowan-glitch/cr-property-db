@@ -6082,6 +6082,89 @@ def match_properties_to_contact(contact, limit=12):
 
 # ── Property particulars ─────────────────────────────────────────────────────
 
+def has_letting_terms(listing):
+    """Whether a rent has actually been put on this listing."""
+    if not listing or not listing.set_as_to_let:
+        return False
+    if listing.rent_on_application:
+        return True
+    if listing.listing_price_unit == 'sale':
+        return False
+    return bool(listing.listing_price or clean_strapline(listing.price_display))
+
+
+def has_sale_terms(listing):
+    """Whether a sale price has actually been put on this listing."""
+    if not listing or not listing.set_as_for_sale:
+        return False
+    if listing.sale_price or clean_strapline(listing.sale_price_display):
+        return True
+    return listing.listing_price_unit == 'sale' and bool(
+        listing.listing_price or clean_strapline(listing.price_display))
+
+
+def marketing_instruction(project, listing=None):
+    """How the property is being marketed: FOR SALE, TO LET, or both.
+
+    Read from what is saved — the instruction type, and the listing's own
+    for-sale and to-let switches — never from the words in the strapline. A
+    brochure that inferred "to let" from a strapline would put the wrong thing
+    on a sale.
+
+    Returns None for an instruction that is not being marketed at all, such as
+    a market appraisal, so nothing is claimed on its behalf.
+    """
+    kind = (project.instruction_type or '') if project else ''
+    if kind == INSTRUCTION_FOR_SALE:
+        # The instruction settles it. A property is only also advertised the
+        # other way where a figure has actually been entered for it — the
+        # to-let switch is on by default on every listing, so on its own it
+        # would put TO LET on the cover of every sale.
+        for_sale, to_let = True, has_letting_terms(listing)
+    elif kind == INSTRUCTION_TO_LET:
+        for_sale, to_let = has_sale_terms(listing), True
+    else:
+        for_sale = bool(listing and listing.set_as_for_sale and has_sale_terms(listing))
+        to_let = bool(listing and listing.set_as_to_let and has_letting_terms(listing))
+        if not (for_sale or to_let):
+            return None
+    if for_sale and to_let:
+        return 'FOR SALE | TO LET'
+    if for_sale:
+        return 'FOR SALE'
+    if to_let:
+        return 'TO LET'
+    return None
+
+
+def cover_wording(strapline, instruction):
+    """The line as it will appear on the brochure cover.
+
+    A strapline that already says FOR SALE or TO LET is used exactly as it was
+    written — the wording is never added twice. One that does not carries the
+    instruction inserted for the brochure only; the saved strapline is left
+    alone, so what was typed is what stays on the record.
+    """
+    line = clean_strapline(strapline)
+    if not instruction:
+        return line
+    already = line.upper()
+    wanted = [w.strip() for w in instruction.split('|')]
+    if all(w in already for w in wanted):
+        return line                       # it says it already
+    if not line:
+        return instruction
+    # Any part it does say is not repeated, so FOR SALE | TO LET on a strapline
+    # that already says TO LET adds only FOR SALE.
+    missing = ' | '.join(w for w in wanted if w not in already)
+    if not missing:
+        return line
+    parts = [p.strip() for p in line.split('|') if p.strip()]
+    if len(parts) >= 2:
+        return ' | '.join([parts[0], missing] + parts[1:])
+    return f'{line} | {missing}'
+
+
 def clean_strapline(value):
     """A strapline as it will be used: one line, spacing tidied, nothing else.
 
@@ -6090,6 +6173,27 @@ def clean_strapline(value):
     otherwise break a single-line field.
     """
     return ' '.join(str(value or '').split())
+
+
+def property_address_line(prop):
+    """The address as it should read on a brochure.
+
+    The postcode is added only when the address does not already end with it —
+    plenty of records have it typed into the address line, and repeating it
+    reads as carelessness on a marketing document.
+    """
+    if not prop:
+        return ''
+    address = (prop.address or '').strip().rstrip(',').strip()
+    postcode = (prop.postcode or '').strip()
+    if not postcode:
+        return address
+    if not address:
+        return postcode
+    squash = lambda v: v.replace(' ', '').replace(',', '').upper()
+    if squash(address).endswith(squash(postcode)):
+        return address
+    return f'{address}, {postcode}'
 
 
 def particulars_data(project):
@@ -6110,16 +6214,39 @@ def particulars_data(project):
                 return v
         return None
 
-    # Whatever the listing shows everywhere else. A custom wording — "Offers in
-    # excess of…", "£25 per sq ft" — is the office's own and must reach the
-    # brochure rather than being recomputed into something plainer.
-    price = listing.display_price if listing else None
-    if price == 'Price on application':
-        price = None if not listing.listing_price else price
-    # A unit offered both ways carries both figures.
-    if listing and listing.set_as_for_sale and listing.set_as_to_let \
-            and listing.sale_price and not listing.price_display:
-        price = f'{price} to let, or {money_gbp(listing.sale_price)} to buy'
+    # Rent and price are different things and are never merged into one line.
+    # A custom wording — "Offers in excess of…", "£25 per sq ft" — is the
+    # office's own and is used as written.
+    instruction = marketing_instruction(project, listing)
+    for_sale = bool(instruction and 'FOR SALE' in instruction)
+    to_let = bool(instruction and 'TO LET' in instruction)
+
+    def money_or_application(value, custom, on_application):
+        if custom:
+            return clean_strapline(custom)
+        if value:
+            return f'£{float(value):,.0f}'
+        return 'Upon application' if on_application else None
+
+    rent = price_to_buy = None
+    if listing:
+        if to_let:
+            rent = money_or_application(
+                listing.listing_price if listing.listing_price_unit != 'sale' else None,
+                listing.price_display if listing.listing_price_unit != 'sale' else None,
+                listing.rent_on_application)
+            if rent and listing.listing_price and listing.listing_price_unit == 'pa' \
+                    and not listing.price_display:
+                rent = f'{rent} per annum'
+            elif rent and listing.listing_price_unit == 'pcm' and not listing.price_display:
+                rent = f'{rent} per calendar month'
+        if for_sale:
+            price_to_buy = money_or_application(
+                listing.sale_price or (listing.listing_price
+                                       if listing.listing_price_unit == 'sale' else None),
+                listing.sale_price_display or (
+                    listing.price_display if listing.listing_price_unit == 'sale' else None),
+                False)
 
     size = first(getattr(listing, 'total_size', None),
                  getattr(listing, 'size', None),
@@ -6150,18 +6277,22 @@ def particulars_data(project):
          if p])
 
     return {
-        'headline': headline or 'Property',
-        'address': ', '.join([p for p in [
-            (prop.address if prop else None),
-            (prop.postcode if prop else None)] if p]),
-        'price': price,
+        'headline': cover_wording(
+            getattr(listing, 'strapline', None) or headline, instruction
+        ) or headline or 'Property',
+        'address': property_address_line(prop),
         'size_line': size_line,
         'description': first(getattr(listing, 'blurb', None),
                              getattr(prop, 'description', None)),
         'location': first(getattr(listing, 'location_description', None),
                           getattr(project, 'location_description', None)),
         'terms': getattr(listing, 'key_terms', None),
-        'rent': first(price, getattr(listing, 'rent_comment', None)),
+        'instruction': instruction,
+        'cover_line': cover_wording(getattr(listing, 'strapline', None), instruction),
+        'rent': rent,
+        'price_to_buy': price_to_buy,
+        'for_sale': for_sale,
+        'to_let': to_let,
         'rates': (
             'Included' if getattr(listing, 'rateable_value_na', False) else
             (f"Rateable value {money_gbp(listing.rateable_value)}"
@@ -6169,7 +6300,7 @@ def particulars_data(project):
         'service_charge': first(
             getattr(listing, 'service_charge_comment', None),
             ('Included' if getattr(listing, 'service_charge_na', False) else
-             (f"{money_gbp(listing.service_charge)} per annum"
+             (f"{money_gbp(listing.service_charge)} per sq ft"
               if listing and listing.service_charge else None))),
         'epc': getattr(listing, 'epc_band', None),
         'accommodation': size_line,
@@ -6189,7 +6320,7 @@ def particulars_data(project):
 PARTICULARS_ESSENTIALS = [
     ('address', 'Property address'), ('description', 'Description'),
     ('location', 'Location'), ('size_line', 'Floor area'),
-    ('price', 'Rent or price'), ('fee_earner', 'Fee earner'),
+    ('fee_earner', 'Fee earner'),
 ]
 
 
@@ -6200,6 +6331,15 @@ def particulars_gaps(data, photo_count):
     with an invented figure on it would be worse than one with a gap.
     """
     missing = [label for key, label in PARTICULARS_ESSENTIALS if not data.get(key)]
+    # What a brochure needs depends on how the property is being marketed. A
+    # letting wants a rent; a sale wants a price; a unit offered both ways
+    # wants both, and neither figure ever stands in for the other.
+    if not data.get('instruction'):
+        missing.append('Marketing instruction (For Sale or To Let)')
+    if data.get('to_let') and not data.get('rent'):
+        missing.append('Rent')
+    if data.get('for_sale') and not data.get('price_to_buy'):
+        missing.append('Sale price')
     if photo_count == 0:
         missing.append('Photographs')
     return missing

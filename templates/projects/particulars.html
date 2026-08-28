@@ -46,6 +46,24 @@
       </label>
     </div>
 
+    <!-- ── What the cover will say ── -->
+    <div class="fin-band"><h3>Cover wording</h3></div>
+    <div class="pt-cover">
+      <span class="pt-cover-line">{{ data.cover_line or data.headline or '—' }}</span>
+      <span class="pt-cover-sub">
+        {{ data.address or 'No address recorded' }}
+        {%- if data.size_line %} &middot; {{ data.size_line }}{% endif -%}
+      </span>
+      {% if data.instruction %}
+      <span class="pt-cover-note">
+        Marketed as <strong>{{ data.instruction }}</strong>, from the instruction type.
+        {% if data.strapline and data.cover_line != data.strapline %}
+        The instruction is added for the brochure only &mdash; the saved strapline is unchanged.
+        {% endif %}
+      </span>
+      {% endif %}
+    </div>
+
     <!-- ── What is missing ── -->
     {% if gaps %}
     <div class="dup-warning">

@@ -214,7 +214,29 @@ def draw_logo(canvas, x, y, height=58):
 
 def cover_page(canvas, data):
     """A full-bleed photograph above a band carrying the mark and the headline."""
-    band = 118
+    # The band is measured before it is drawn, so a headline that needs two
+    # lines gets the depth for them instead of running over the rule beneath.
+    headline = (clean(data.get('cover_line')) or clean(data.get('headline'))
+                or clean(data.get('address')) or 'Property').upper()
+    logo_w = 76 * 1.45
+    text_w = PW - MARGIN - (MARGIN + logo_w + 40) - MARGIN
+
+    size_pt = 21
+    lines = wrap(canvas, headline, face('regular'), size_pt, text_w)
+    if len(lines) > 2:
+        size_pt = 17
+        lines = wrap(canvas, headline, face('regular'), size_pt, text_w)[:2]
+    # A break must not leave a separator stranded at the start of a line.
+    tidy = []
+    for line in lines:
+        if line.startswith('|') and tidy:
+            tidy[-1] = f'{tidy[-1]} |'
+            line = line[1:].strip()
+        tidy.append(line)
+    lines = [l for l in tidy if l]
+    leading = size_pt + 5
+
+    band = 118 + (leading if len(lines) > 1 else 0)
     photo_h = PH - band
 
     if not draw_image(canvas, data.get('cover'), 0, band, PW, photo_h):
@@ -229,40 +251,48 @@ def cover_page(canvas, data):
     canvas.setLineWidth(2.5)
     canvas.line(0, band, PW, band)
 
-    logo_w = draw_logo(canvas, MARGIN, band - 92, height=76)
+    logo_w = draw_logo(canvas, MARGIN, band - 92 - (leading if len(lines) > 1 else 0),
+                       height=76)
 
     left = MARGIN + logo_w + 40
     right = PW - MARGIN
     centre = (left + right) / 2
 
-    headline = clean(data.get('headline')) or clean(data.get('address'))
-    canvas.setFont(face('regular'), 21)
+    # No price on the cover: the headline has the whole width between the mark
+    # and the size, and wraps rather than being cut when it is long.
+    canvas.setFont(face('regular'), size_pt)
     canvas.setFillColor(NAVY)
-    while canvas.stringWidth(headline, face('regular'), 21) > (right - left) and len(headline) > 12:
-        headline = headline[:-2]
-    canvas.drawCentredString(centre, band - 44, headline.upper())
+    top = band - 44
+    for line in lines:
+        canvas.drawCentredString(centre, top, line)
+        top -= leading
 
+    baseline = top + leading          # the last line written
     canvas.setStrokeColor(RULE)
     canvas.setLineWidth(0.8)
     rule = min(230, (right - left) * 0.55)
-    canvas.line(centre - rule / 2, band - 56, centre + rule / 2, band - 56)
+    canvas.line(centre - rule / 2, baseline - 12, centre + rule / 2, baseline - 12)
 
-    address = clean(data.get('address'))
-    canvas.setFont(face('regular'), 10.5)
-    canvas.setFillColor(MUTED)
-    canvas.drawCentredString(centre, band - 74, address)
+    foot = baseline - 30
 
+    # The size sits at the right edge, and the address is centred in whatever
+    # is left, so the two can never overlap.
     size_line = clean(data.get('size_line'))
+    size_w = 0
     if size_line:
         canvas.setFont(face('regular'), 10.5)
         canvas.setFillColor(INK)
-        canvas.drawRightString(right, band - 74, size_line)
+        canvas.drawRightString(right, foot, size_line)
+        size_w = canvas.stringWidth(size_line, face('regular'), 10.5) + 24
 
-    price = clean(data.get('price'))
-    if price:
-        canvas.setFont(face('medium'), 11)
-        canvas.setFillColor(NAVY)
-        canvas.drawString(left, band - 74, price)
+    address = clean(data.get('address'))
+    if address:
+        room = right - size_w - left
+        canvas.setFont(face('regular'), 10.5)
+        canvas.setFillColor(MUTED)
+        while canvas.stringWidth(address, face('regular'), 10.5) > room and len(address) > 8:
+            address = address[:-2]
+        canvas.drawCentredString(left + room / 2, foot, address)
 
 
 def measure_blocks(canvas, blocks, width, size=9.5, leading=12.6,
@@ -378,10 +408,14 @@ def detail_page(canvas, data, photos, with_terms=True):
 
     words = [('Location', data.get('location')),
              ('Description', data.get('description'))]
-    terms = [('Terms', data.get('terms')), ('Rent', data.get('rent')),
-             ('Rates', data.get('rates')),
-             ('Service Charge', data.get('service_charge')),
-             ('EPC', data.get('epc'))] if with_terms else []
+    # A letting shows Rent, a sale shows Price, and a unit offered both ways
+    # shows each under its own heading. The two figures are never merged.
+    terms = ([('Terms', data.get('terms'))]
+             + ([('Rent', data.get('rent'))] if data.get('to_let') else [])
+             + ([('Price', data.get('price_to_buy'))] if data.get('for_sale') else [])
+             + [('Rates', data.get('rates')),
+                ('Service Charge', data.get('service_charge')),
+                ('EPC', data.get('epc'))]) if with_terms else []
     terms = [(t, b) for t, b in terms if clean(b)]
 
     # Each panel is the height of what it holds, so nothing is left as a band
@@ -423,14 +457,28 @@ def gallery_page(canvas, data, photos, title='Accommodation'):
     right_x = MARGIN + half + GUTTER
     right_w = PW - MARGIN - right_x
 
-    blocks = [(title, data.get('accommodation')),
-              ('Specification', data.get('specification')),
-              ('Key Terms', data.get('terms'))]
+    blocks = ([(title, data.get('accommodation')),
+               ('Specification', data.get('specification')),
+               ('Key Terms', data.get('terms'))]
+              + ([('Rent', data.get('rent'))] if data.get('to_let') else [])
+              + ([('Price', data.get('price_to_buy'))] if data.get('for_sale') else []))
     blocks = [(t, b) for t, b in blocks if clean(b)]
+    photos = [p for p in (photos or []) if p]
     if blocks:
-        _navy_panel(canvas, 0, PH * 0.42, MARGIN + half, PH * 0.58, blocks[:2])
-        if len(blocks) > 2:
-            _grey_panel(canvas, 0, 8, MARGIN + half, PH * 0.42 - 16, blocks[2:])
+        # With no photographs left for this page the panels take the width,
+        # rather than leaving half the sheet blank beside them.
+        panel_w = (MARGIN + half) if photos else (PW - MARGIN)
+        upper, lower = blocks[:2], blocks[2:]
+        if lower:
+            wanted = measure_blocks(canvas, upper, panel_w)
+            navy_h = max(PH * 0.30, min(wanted, PH * 0.66))
+        else:
+            navy_h = PH - 8
+        _navy_panel(canvas, 0, PH - navy_h, panel_w, navy_h, upper)
+        if lower:
+            _grey_panel(canvas, 0, 8, panel_w, PH - navy_h - 16, lower)
+        if not photos:
+            return
     elif photos:
         # Nothing to say, so the photographs take the width rather than sitting
         # beside an empty panel.
