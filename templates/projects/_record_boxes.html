@@ -154,9 +154,71 @@
 
 
 {# ── Client contact details ───────────────────────────────────────────────#}
+{# ── Client contact details ───────────────────────────────────────────────
+   The one place a client's contact details appear on the instruction.
+
+   With a client linked, everything here is read from their own contact record
+   as the page is drawn — so choosing a client fills this in, and changing
+   their details anywhere changes it here. Nothing is re-typed and nothing is
+   copied onto the project.
+
+   With nobody linked, the fields the project has always carried stay editable,
+   so an instruction recorded before clients were linked keeps its details.
+#}
 {% macro client_box(v, form_id, errors={}, heading='Client Contact Details') %}
+{% set who = v.get('client_contact') %}
 <div class="box box--grid">
-  <div class="box-head">{{ heading }}</div>
+  <div class="box-head">
+    {{ heading }}
+    {% if who %}
+    <span class="box-actions">
+      <a href="{{ url_for('contact_detail', id=who.id) }}">Open the client record</a>
+    </span>
+    {% endif %}
+  </div>
+
+  {% if who %}
+  <div class="frow frow--full">
+    <div class="fcell fcell--label">Client</div>
+    <div class="fcell">
+      <a href="{{ url_for('contact_detail', id=who.id) }}"
+         title="{{ contact_label(who) }}">{{ contact_label(who) }}</a>
+    </div>
+  </div>
+  {% if who.job_title %}
+  <div class="frow frow--full">
+    <div class="fcell fcell--label">Job title</div>
+    <div class="fcell">{{ who.job_title }}</div>
+  </div>
+  {% endif %}
+  <div class="frow">
+    <div class="fcell fcell--label">Phone</div>
+    <div class="fcell {{ 'is-empty' if not who.phone }}">
+      {% if who.phone %}<a href="tel:{{ who.phone|replace(' ', '') }}">{{ who.phone }}</a>
+      {% else %}Not set{% endif %}
+    </div>
+    <div class="fcell fcell--label">Mobile</div>
+    <div class="fcell {{ 'is-empty' if not who.mobile }}">
+      {% if who.mobile %}<a href="tel:{{ who.mobile|replace(' ', '') }}">{{ who.mobile }}</a>
+      {% else %}Not set{% endif %}
+    </div>
+  </div>
+  <div class="frow frow--full">
+    <div class="fcell fcell--label">Email</div>
+    <div class="fcell {{ 'is-empty' if not who.email }}">
+      {% if who.email %}<a href="mailto:{{ who.email }}">{{ who.email }}</a>
+      {% else %}Not set{% endif %}
+    </div>
+  </div>
+  <div class="frow frow--full">
+    <div class="fcell fcell--label fcell--top">Kept where</div>
+    <div class="fcell" style="line-height:1.5">
+      Read from the client's own record, so a change made there shows here.
+      Choose a different client in Instruction Details.
+    </div>
+  </div>
+
+  {% else %}
   <div class="frow">
     <div class="fcell fcell--label">Phone</div>
     <div class="fcell fcell--edit">
@@ -177,6 +239,14 @@
       {{ _err(errors, 'client_email') }}
     </div>
   </div>
+  <div class="frow frow--full">
+    <div class="fcell fcell--label fcell--top">Linking a client</div>
+    <div class="fcell" style="line-height:1.5">
+      Choose one in Instruction Details and these details are read from their
+      own record instead.
+    </div>
+  </div>
+  {% endif %}
 </div>
 {% endmacro %}
 

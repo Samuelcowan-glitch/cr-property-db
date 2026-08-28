@@ -1,6 +1,5 @@
 {% extends "base.html" %}
 {% import "_photo_gallery.html" as pg %}
-{% import "crm/_client_picker.html" as cp %}
 {% import "projects/_record_boxes.html" as rb %}
 {% import "projects/_doc_box.html" as db %}
 {% set pv = project_form_values(project) %}
@@ -336,9 +335,6 @@
     {# Client contact details, the same fields as the New Project page. #}
     {{ rb.client_box(pv, 'project-form') }}
 
-    {# Read live from the linked client record, never copied onto the
-       instruction, so a change made on their own page shows here. #}
-    {{ cp.client_details(project.client_contact) }}
 
     {# What the instruction is worth. Kept out of Instruction Details. #}
     {{ rb.fee_box(pv, 'project-form') }}
