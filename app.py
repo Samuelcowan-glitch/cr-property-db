@@ -1364,6 +1364,7 @@ class Listing(db.Model):
         n = chr(163) + '{:,.0f}'.format(self.listing_price)
         if self.listing_price_unit == 'pa':  return n + ' per annum'
         if self.listing_price_unit == 'pcm': return n + ' pcm'
+        if self.listing_price_unit == 'sale': return n
         return n
 
 
@@ -6109,15 +6110,16 @@ def particulars_data(project):
                 return v
         return None
 
-    price = None
-    if listing and listing.listing_price:
-        unit = (listing.listing_price_unit or '').lower()
-        if unit == 'sale':
-            price = f'{money_gbp(listing.listing_price)}'
-        elif unit == 'pcm':
-            price = f'{money_gbp(listing.listing_price)} per calendar month'
-        elif unit != 'poa':
-            price = f'{money_gbp(listing.listing_price)} per annum'
+    # Whatever the listing shows everywhere else. A custom wording — "Offers in
+    # excess of…", "£25 per sq ft" — is the office's own and must reach the
+    # brochure rather than being recomputed into something plainer.
+    price = listing.display_price if listing else None
+    if price == 'Price on application':
+        price = None if not listing.listing_price else price
+    # A unit offered both ways carries both figures.
+    if listing and listing.set_as_for_sale and listing.set_as_to_let \
+            and listing.sale_price and not listing.price_display:
+        price = f'{price} to let, or {money_gbp(listing.sale_price)} to buy'
 
     size = first(getattr(listing, 'total_size', None),
                  getattr(listing, 'size', None),
@@ -7279,14 +7281,29 @@ def _save_listing_from_form(form, l):
             setf('sale_price', 'sale_price', pf)
             l.set_as_for_sale = bool(form.get('set_as_for_sale'))
             l.set_as_to_let   = bool(form.get('set_as_to_let'))
-            if l.set_as_for_sale and l.sale_price:
+            # A commercial unit is often offered both ways. The rent lives in
+            # listing_price and the sale price in sale_price; mirroring the
+            # sale price over the top used to destroy the rent, which was
+            # recorded nowhere else. It is only mirrored when the unit is for
+            # sale alone.
+            sale_only = l.set_as_for_sale and not l.set_as_to_let
+            if sale_only and l.sale_price:
                 l.listing_price      = l.sale_price
                 l.listing_price_unit = 'sale'
-                l.price_display      = form.get('sale_price_display') or l.price_display
             elif l.listing_price:
                 l.listing_price_unit = 'pa'    # commercial rent quoted per annum
+            elif l.set_as_for_sale and l.sale_price:
+                # To let as well, but with no rent quoted yet.
+                l.listing_price      = l.sale_price
+                l.listing_price_unit = 'sale'
             else:
                 l.listing_price_unit = 'poa'
+
+            # The custom wording is the user's to set and to clear. It was
+            # falling back to whatever was there before, so an emptied box
+            # quietly restored the old string.
+            if 'sale_price_display' in form and sale_only:
+                l.price_display = _ftext(form.get('sale_price_display'))
     # ── Commercial lease detail (INTERNAL — for records/brochure, NOT on /api/listings) ──
     setf('lease_type', 'lease_type')
     setf('rent_qualifier', 'rent_qualifier')
