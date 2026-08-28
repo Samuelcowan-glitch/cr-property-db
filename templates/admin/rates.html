@@ -1,0 +1,232 @@
+{% extends "base.html" %}
+
+{% block title %}Business Rates Reference{% endblock %}
+{% block topbar_title %}Business Rates Reference{% endblock %}
+
+{% block content %}
+{#
+   Where the councils and the multipliers are kept.
+
+   Both are reference data, not property data. A council's telephone number
+   appears on every set of particulars for every property in that borough, and
+   a multiplier is behind every estimate for a tax year — so both are edited
+   here, once, rather than being typed onto records or written into a template.
+#}
+
+<div class="rec-page">
+  <p class="rec-note">
+    Adding a council here makes it available on every property immediately. No
+    change to the property record or to the particulars is needed.
+  </p>
+
+  <!-- ── Councils ── -->
+  <div class="box">
+    <div class="box-head">Councils</div>
+    <table class="br-history">
+      <thead>
+        <tr><th>Council</th><th>Telephone</th><th>Email</th>
+            <th>Verified</th><th>Properties</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for c in council_list %}
+        <tr>
+          <td>
+            {{ c.name }}
+            {% if not c.active %}<span class="br-flag">not in use</span>{% endif %}
+          </td>
+          <td>{{ c.phone or '—' }}</td>
+          <td>{{ c.email or '—' }}</td>
+          <td>
+            {% if c.verified_on %}{{ c.verified_on.strftime('%d %b %Y') }}
+            {% else %}<span class="br-flag">never</span>{% endif %}
+          </td>
+          <td>{{ c.properties|length }}</td>
+          <td><button type="button" class="btn btn-outline btn-sm"
+                      data-fill="council-form" data-values='{{ {
+                        "id": c.id, "name": c.name, "short_name": c.short_name or "",
+                        "phone": c.phone or "", "email": c.email or "",
+                        "website": c.website or "", "address": c.address or "",
+                        "verified_on": c.verified_on.isoformat() if c.verified_on else "",
+                        "active": "1" if c.active else ""
+                      }|tojson }}'>Edit</button></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <form method="post" action="{{ url_for('rates_council_save') }}" id="council-form"
+          class="box box--grid" style="border:0;margin:0">
+      <div class="box-head">Add or correct a council</div>
+      <input type="hidden" name="id">
+      <div class="frow">
+        <div class="fcell fcell--label">Official name <span class="req">*</span></div>
+        <div class="fcell fcell--edit">
+          <input type="text" name="name" required
+                 placeholder="e.g. London Borough of Hounslow"></div>
+        <div class="fcell fcell--label">Short name</div>
+        <div class="fcell fcell--edit">
+          <input type="text" name="short_name" placeholder="e.g. Hounslow"></div>
+      </div>
+      <div class="frow">
+        <div class="fcell fcell--label">Business rates telephone</div>
+        <div class="fcell fcell--edit"><input type="text" name="phone"></div>
+        <div class="fcell fcell--label">Business rates email</div>
+        <div class="fcell fcell--edit"><input type="email" name="email"></div>
+      </div>
+      <div class="frow">
+        <div class="fcell fcell--label">Business rates webpage</div>
+        <div class="fcell fcell--edit"><input type="url" name="website"></div>
+        <div class="fcell fcell--label">Contact details verified</div>
+        <div class="fcell fcell--edit"><input type="date" name="verified_on"></div>
+      </div>
+      <div class="frow frow--full">
+        <div class="fcell fcell--label fcell--top">Address</div>
+        <div class="fcell fcell--edit"><textarea name="address" rows="2"></textarea></div>
+      </div>
+      <div class="br-actions">
+        <label class="br-check">
+          <input type="checkbox" name="active" value="1" checked>
+          Available to choose on a property
+        </label>
+        <span class="sp" style="flex:1"></span>
+        <button type="submit" class="btn btn-primary">Save council</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- ── Multipliers ── -->
+  <div class="box">
+    <div class="box-head">Multipliers</div>
+    <p class="rec-note">
+      Seeded from the published figures and left <strong>unverified</strong> on
+      purpose. A multiplier counts as verified only once somebody here has
+      checked it against gov.uk and recorded that they did. Until then, the
+      calculator says so on every estimate that uses it.
+    </p>
+    <table class="br-history">
+      <thead>
+        <tr><th>Tax year</th><th>Name</th><th>Type</th><th class="num">Multiplier</th>
+            <th>Rateable value</th><th>Verified</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for m in multipliers %}
+        <tr>
+          <td>{{ m.tax_year }}</td>
+          <td>{{ m.name }}{% if not m.active %} <span class="br-flag">not in use</span>{% endif %}</td>
+          <td>{{ m.multiplier_type or '—' }}</td>
+          <td class="num">{{ m.display_value }}</td>
+          <td>
+            {% if m.rv_min and m.rv_max %}{{ br.money(m.rv_min) }} to under {{ br.money(m.rv_max) }}
+            {% elif m.rv_max %}Under {{ br.money(m.rv_max) }}
+            {% elif m.rv_min %}{{ br.money(m.rv_min) }} and over
+            {% else %}Any{% endif %}
+          </td>
+          <td>
+            {% if m.verified_on %}{{ m.verified_on.strftime('%d %b %Y') }}
+            {% else %}<span class="br-flag">not verified</span>{% endif %}
+          </td>
+          <td><button type="button" class="btn btn-outline btn-sm"
+                      data-fill="multiplier-form" data-values='{{ {
+                        "id": m.id, "tax_year": m.tax_year, "name": m.name,
+                        "multiplier_type": m.multiplier_type or "",
+                        "value": m.display_value, "category": m.category or "",
+                        "rv_min": (br.from_pence(m.rv_min)|string) if m.rv_min else "",
+                        "rv_max": (br.from_pence(m.rv_max)|string) if m.rv_max else "",
+                        "source": m.source or "",
+                        "verified": "1" if m.verified_on else "",
+                        "verified_on": m.verified_on.isoformat() if m.verified_on else "",
+                        "active": "1" if m.active else ""
+                      }|tojson }}'>Edit</button></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <form method="post" action="{{ url_for('rates_multiplier_save') }}" id="multiplier-form"
+          class="box box--grid" style="border:0;margin:0">
+      <div class="box-head">Add or correct a multiplier</div>
+      <input type="hidden" name="id">
+      <div class="frow">
+        <div class="fcell fcell--label">Tax year <span class="req">*</span></div>
+        <div class="fcell fcell--edit">
+          <input type="text" name="tax_year" required placeholder="2026/27"
+                 pattern="\d{4}/\d{2}" list="known-years">
+          <datalist id="known-years">
+            {% for y in tax_years %}<option value="{{ y }}">{% endfor %}
+          </datalist>
+        </div>
+        <div class="fcell fcell--label">Name <span class="req">*</span></div>
+        <div class="fcell fcell--edit">
+          <input type="text" name="name" required placeholder="Standard multiplier"></div>
+      </div>
+      <div class="frow">
+        <div class="fcell fcell--label">Multiplier <span class="req">*</span></div>
+        <div class="fcell fcell--edit">
+          <input type="text" name="value" required placeholder="0.555 or 55.5p"></div>
+        <div class="fcell fcell--label">Type</div>
+        <div class="fcell fcell--edit">
+          <select name="multiplier_type">
+            <option value="">—</option>
+            {% for t in MULTIPLIER_TYPES %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="frow">
+        <div class="fcell fcell--label">Rateable value from</div>
+        <div class="fcell fcell--edit">
+          <input type="text" name="rv_min" placeholder="£, blank for no floor"></div>
+        <div class="fcell fcell--label">Up to (excluding)</div>
+        <div class="fcell fcell--edit">
+          <input type="text" name="rv_max" placeholder="£, blank for no ceiling"></div>
+      </div>
+      <div class="frow">
+        <div class="fcell fcell--label">Property category</div>
+        <div class="fcell fcell--edit">
+          <input type="text" name="category" placeholder="Blank for any"></div>
+        <div class="fcell fcell--label">Official source</div>
+        <div class="fcell fcell--edit">
+          <input type="url" name="source" placeholder="https://www.gov.uk/…"></div>
+      </div>
+      <div class="frow">
+        <div class="fcell fcell--label">Verified on</div>
+        <div class="fcell fcell--edit"><input type="date" name="verified_on"></div>
+        <div class="fcell fcell--label">Available</div>
+        <div class="fcell fcell--edit">
+          <label class="br-check">
+            <input type="checkbox" name="active" value="1" checked> In use
+          </label>
+        </div>
+      </div>
+      <div class="br-actions">
+        <label class="br-check">
+          <input type="checkbox" name="verified" value="1">
+          I have checked this figure against its official source
+        </label>
+        <span class="sp" style="flex:1"></span>
+        <button type="submit" class="btn btn-primary">Save multiplier</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+/* Edit fills the form below rather than opening another page, so the list and
+   the thing being edited stay on screen together. */
+(function () {
+  document.querySelectorAll('[data-fill]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var form = document.getElementById(btn.getAttribute('data-fill'));
+      if (!form) { return; }
+      var values = JSON.parse(btn.getAttribute('data-values'));
+      Object.keys(values).forEach(function (key) {
+        var el = form.elements[key];
+        if (!el) { return; }
+        if (el.type === 'checkbox') { el.checked = Boolean(values[key]); }
+        else { el.value = values[key]; }
+      });
+      form.scrollIntoView({behavior: 'smooth', block: 'center'});
+    });
+  });
+}());
+</script>
+{% endblock %}

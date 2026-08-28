@@ -1,5 +1,7 @@
 {% extends "base.html" %}
+{% import "properties/_rates.html" as rates %}
 {% set editing = prop is not none %}
+{% set errors = errors|default({}) %}
 
 {% block title %}{{ 'Property Details' if editing else 'New Property' }}{% endblock %}
 {% block topbar_title %}{{ 'Property Details' if editing else 'New Property' }}{% endblock %}
@@ -71,6 +73,7 @@
                    value="{{ prop.area or '' if editing else '' }}" placeholder="e.g. Chelsea">
           </div>
         </div>
+        {{ rates.local_authority_field(prop, 'property-form', errors) }}
       </div>
 
       <div class="box box--grid">
@@ -156,6 +159,19 @@
       </div>
     </div>
   </div>
+
+  {% if editing %}
+  <div class="rec-cols rec-cols--one">
+    <div class="rec-col">
+      {{ rates.rates_calculator(prop, tax_years, multipliers, rates_summary(prop)) }}
+    </div>
+  </div>
+  {% else %}
+  <p class="rec-note">
+    The business rates calculator opens once the property has been created, so
+    each calculation is kept against a property that exists.
+  </p>
+  {% endif %}
 
   <p class="rec-note">
     Asking price, photographs, brochures and floor plans belong to an instruction,

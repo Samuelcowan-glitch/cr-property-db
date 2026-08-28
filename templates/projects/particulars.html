@@ -64,6 +64,40 @@
       {% endif %}
     </div>
 
+    <!-- ── Business rates ── -->
+    <div class="fin-band"><h3>Business rates</h3></div>
+    <div class="pt-rates">
+      <dl class="pt-rates-facts">
+        <div><dt>Local authority</dt>
+             <dd>{{ data.rates_council or 'Not set — no council will be named' }}</dd></div>
+        <div><dt>Tax year</dt><dd>{{ rates.tax_year or '—' }}</dd></div>
+        <div><dt>Rateable value</dt><dd>{{ rates.rateable_value_display or '—' }}</dd></div>
+        <div><dt>Multiplier</dt>
+             <dd>{% if rates.multiplier %}{{ rates.multiplier.value }}
+                 &middot; {{ rates.multiplier.type or 'Other' }}
+                 {%- if rates.multiplier.overridden %} <span class="pt-flag">entered by hand</span>{% endif %}
+                 {% else %}—{% endif %}</dd></div>
+        <div><dt>Estimated rates payable</dt>
+             <dd>{{ rates.estimated_display or 'Not calculated' }}</dd></div>
+        <div><dt>Council-confirmed</dt>
+             <dd>{% if rates.confirmed %}{{ rates.confirmed_display }}
+                 on {{ rates.confirmed_on.strftime('%d %b %Y') }}
+                 {% else %}None recorded{% endif %}</dd></div>
+      </dl>
+      <p class="pt-rates-para">{{ data.rates }}</p>
+      <p class="pt-rates-note">
+        {% if data.rates_basis == 'confirmed' %}
+        This is the council&rsquo;s own figure and is attributed to them.
+        {% elif data.rates_basis == 'estimated' %}
+        This is the CRM&rsquo;s estimate and is described as one.
+        {% else %}
+        No figure will be quoted.
+        {% endif %}
+        <a href="{{ url_for('property_edit', id=project.property_id) }}">
+          Change it on Property Details</a> if anything here is wrong.
+      </p>
+    </div>
+
     <!-- ── What is missing ── -->
     {% if gaps %}
     <div class="dup-warning">

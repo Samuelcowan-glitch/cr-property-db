@@ -413,7 +413,7 @@ def detail_page(canvas, data, photos, with_terms=True):
     terms = ([('Terms', data.get('terms'))]
              + ([('Rent', data.get('rent'))] if data.get('to_let') else [])
              + ([('Price', data.get('price_to_buy'))] if data.get('for_sale') else [])
-             + [('Rates', data.get('rates')),
+             + [('Business Rates', data.get('rates')),
                 ('Service Charge', data.get('service_charge')),
                 ('EPC', data.get('epc'))]) if with_terms else []
     terms = [(t, b) for t, b in terms if clean(b)]
@@ -513,6 +513,7 @@ def closing_page(canvas, data, photos):
 
     blocks = [('Location', data.get('location')),
               ('Transport & Local Area', data.get('transport')),
+              ('Business Rates', data.get('rates')),
               ('EPC', data.get('epc')),
               ('Planning & Use', data.get('use_class'))]
     blocks = [(t, b) for t, b in blocks if clean(b)]

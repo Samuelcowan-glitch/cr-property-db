@@ -1555,3 +1555,116 @@ body.pg-open { overflow: hidden; }
 .pt-cover-sub { font-size: 12px; color: var(--grey-600); }
 .pt-cover-note { font-size: 11.5px; color: var(--grey-600); margin-top: 3px; }
 .pt-cover-note strong { color: var(--navy); }
+
+/* ── Business rates ────────────────────────────────────────────────────────
+   The calculator, its breakdown, and the council's own figure. An estimate is
+   styled so it cannot be mistaken for a confirmed figure. */
+.br-box { margin-top: 12px; }
+.rec-cols--one { grid-template-columns: 1fr; }
+
+.br-est-tag, .br-conf-tag {
+  float: right; font-size: 10.5px; font-weight: var(--w-heading);
+  letter-spacing: .04em; text-transform: uppercase;
+  padding: 2px 7px; border-radius: 3px;
+}
+.br-est-tag { background: #fdf3e3; color: #8a5a12; border: 1px solid #e8d5a3; }
+.br-conf-tag { background: #e8f4ec; color: #1d6b3c; border: 1px solid #bcdfc7; }
+
+.br-pair { display: flex; align-items: center; gap: 8px; }
+.br-pair input[type="text"] { min-width: 0; }
+.br-or { font-size: 12px; color: var(--grey-600); flex: none; }
+.br-check { display: flex; align-items: center; gap: 6px; font-size: 13px;
+            white-space: nowrap; flex: none; }
+
+.br-more { border-top: 1px solid var(--grey-200); margin-top: 4px; }
+.br-more > summary {
+  cursor: pointer; padding: 9px 12px; font-size: 13px;
+  font-weight: var(--w-heading); color: var(--navy); user-select: none;
+}
+.br-more > summary:hover { background: var(--grey-050); }
+.br-more[open] > summary { border-bottom: 1px solid var(--grey-200); }
+
+.br-result {
+  border-top: 1px solid var(--grey-200); background: var(--grey-050);
+  padding: 12px 14px; display: flex; flex-direction: column; gap: 10px;
+}
+.br-lines { display: flex; flex-direction: column; gap: 3px; }
+.br-line {
+  display: flex; justify-content: space-between; gap: 16px;
+  font-size: 13px; color: var(--grey-700);
+}
+.br-line-value { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.br-line--total {
+  border-top: 1px solid var(--grey-300); margin-top: 5px; padding-top: 6px;
+  font-weight: var(--w-heading); color: var(--navy);
+}
+.br-totals { display: flex; flex-wrap: wrap; gap: 10px; }
+.br-total {
+  flex: 1 1 190px; background: var(--white); border: 1px solid var(--grey-200);
+  border-radius: 3px; padding: 9px 12px;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.br-total-label { font-size: 11px; color: var(--grey-600);
+                  text-transform: uppercase; letter-spacing: .04em; }
+.br-total-value { font-size: 20px; font-weight: var(--w-heading);
+                  color: var(--navy); font-variant-numeric: tabular-nums; }
+.br-total--sub .br-total-value { font-size: 15px; color: var(--grey-700); }
+
+.br-assumptions {
+  background: #fdf9f0; border: 1px solid #e8d5a3; border-radius: 3px;
+  padding: 9px 12px; font-size: 12px; color: #6b4d16;
+}
+.br-assume-head { font-weight: var(--w-heading); margin-bottom: 4px; }
+.br-assumptions ul { margin: 0; padding-left: 17px; }
+.br-assumptions li { margin: 2px 0; }
+
+.br-error {
+  margin: 0; padding: 9px 14px; font-size: 12.5px;
+  background: #fdf0ef; color: #8c2f26; border-top: 1px solid #e3b7b7;
+}
+
+.br-actions {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 11px 14px; border-top: 1px solid var(--grey-200);
+}
+.br-saved { flex: 1 1 200px; font-size: 12px; color: var(--grey-600); }
+.br-para {
+  margin: 0; padding: 12px 14px; font-size: 13px; line-height: 1.55;
+  color: var(--grey-700);
+}
+
+.br-history { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.br-history th, .br-history td {
+  padding: 6px 14px; text-align: left; border-bottom: 1px solid var(--grey-200);
+}
+.br-history th { font-size: 11px; text-transform: uppercase;
+                 letter-spacing: .04em; color: var(--grey-600); }
+.br-history .num { text-align: right; font-variant-numeric: tabular-nums; }
+.br-flag { font-size: 10.5px; color: #8a5a12; }
+
+/* The rates figures and the exact paragraph, before a brochure is made. */
+.pt-rates {
+  background: var(--white); border: 1px solid var(--grey-200);
+  border-radius: 3px; padding: 12px 14px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.pt-rates-facts {
+  margin: 0; display: grid; gap: 8px 18px;
+  grid-template-columns: repeat(auto-fit, minmax(185px, 1fr));
+}
+.pt-rates-facts > div { display: flex; flex-direction: column; gap: 1px; }
+.pt-rates-facts dt {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--grey-600);
+}
+.pt-rates-facts dd {
+  margin: 0; font-size: 13px; color: var(--navy);
+  font-weight: var(--w-heading); font-variant-numeric: tabular-nums;
+}
+.pt-rates-para {
+  margin: 0; padding: 10px 12px; font-size: 12.5px; line-height: 1.55;
+  background: var(--grey-050); border-left: 3px solid var(--navy);
+  color: var(--grey-700);
+}
+.pt-rates-note { margin: 0; font-size: 11.5px; color: var(--grey-600); }
+.pt-flag { font-size: 10.5px; color: #8a5a12; font-weight: 400; }

@@ -52,6 +52,9 @@
       <a href="{{ url_for('property_new') }}" class="nav-more">Add property</a>
       <a href="{{ url_for('project_new') }}" class="nav-more">New project</a>
       <a href="{{ url_for('transaction_new') }}" class="nav-more">Record transaction</a>
+      {% if current_user.is_authenticated and current_user.can('admin') %}
+      <a href="{{ url_for('rates_reference') }}" class="nav-more {{ 'active' if request.endpoint and 'rates_' in request.endpoint else '' }}">Business rates</a>
+      {% endif %}
       <a href="{{ url_for('admin_microsoft') }}" class="nav-more {{ 'active' if request.endpoint and 'microsoft' in request.endpoint else '' }}">Microsoft 365</a>
     </div>
 
@@ -140,5 +143,6 @@ document.querySelectorAll('form.confirm-delete').forEach(form => {
 <script src="{{ url_for('static', filename='js/strapline.js') }}"></script>
 <script src="{{ url_for('static', filename='js/inline-edit.js') }}"></script>
 <script src="{{ url_for('static', filename='js/photo-manager.js') }}"></script>
+<script src="{{ url_for('static', filename='js/business-rates.js') }}"></script>
 </body>
 </html>

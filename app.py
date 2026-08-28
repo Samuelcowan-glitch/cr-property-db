@@ -205,6 +205,143 @@ def _login_succeeded():
 
 # ── Models ─────────────────────────────────────────────────────────────────
 
+class Council(db.Model):
+    """A billing authority, and how to reach its business rates team.
+
+    Held once, centrally, rather than typed onto each property or written into
+    a brochure template. When a council changes its number, it is corrected
+    here and every property and every set of particulars follows.
+    """
+    __tablename__ = 'councils'
+    id           = db.Column(db.Integer, primary_key=True)
+    name         = db.Column(db.String(160), nullable=False, unique=True)
+    short_name   = db.Column(db.String(80))       # for a list, where the full name is long
+    phone        = db.Column(db.String(40))
+    email        = db.Column(db.String(160))
+    website      = db.Column(db.String(255))
+    address      = db.Column(db.Text)
+    verified_on  = db.Column(db.Date)             # when the office last checked these
+    active       = db.Column(db.Boolean, default=True, nullable=False)
+    notes        = db.Column(db.Text)
+    created_at   = db.Column(db.DateTime, default=datetime.utcnow)
+
+    properties = db.relationship('Property', backref='council', lazy=True)
+
+    @property
+    def label(self):
+        return self.short_name or self.name
+
+    @property
+    def contact_line(self):
+        """The council's number, for a brochure. Nothing else goes on one."""
+        return (self.phone or '').strip()
+
+    def __repr__(self):
+        return f'<Council {self.name}>'
+
+
+class RatesMultiplier(db.Model):
+    """A published multiplier, for one tax year.
+
+    Effective-dated rather than written into the code, because the government
+    sets a new one every year and changes who may use which. Adding next
+    year's figures is a row, not a release.
+    """
+    __tablename__ = 'rates_multipliers'
+    id           = db.Column(db.Integer, primary_key=True)
+    tax_year     = db.Column(db.String(10), nullable=False, index=True)   # 2025/26
+    name         = db.Column(db.String(120), nullable=False)             # Standard multiplier
+    multiplier_type = db.Column(db.String(40))                           # Standard / Small business
+    value        = db.Column(db.Integer, nullable=False)                 # scaled: 0.499 -> 49900
+    category     = db.Column(db.String(60))       # a property category, or blank for any
+    rv_min       = db.Column(db.BigInteger)       # pence, inclusive; blank for no floor
+    rv_max       = db.Column(db.BigInteger)       # pence, exclusive; blank for no ceiling
+    starts_on    = db.Column(db.Date)
+    ends_on      = db.Column(db.Date)
+    source       = db.Column(db.String(255))      # where the figure came from
+    verified_on  = db.Column(db.Date)             # when the office last checked it
+    active       = db.Column(db.Boolean, default=True, nullable=False)
+    created_at   = db.Column(db.DateTime, default=datetime.utcnow)
+
+    @property
+    def display_value(self):
+        import business_rates as br
+        return br.multiplier_str(self.value)
+
+    @property
+    def is_verified(self):
+        return self.verified_on is not None
+
+    def as_row(self):
+        """The plain dictionary the calculation module works in."""
+        return {'id': self.id, 'tax_year': self.tax_year, 'name': self.name,
+                'multiplier_type': self.multiplier_type, 'value': self.value,
+                'category': self.category, 'rv_min': self.rv_min,
+                'rv_max': self.rv_max, 'starts_on': self.starts_on,
+                'source': self.source, 'verified_on': self.verified_on}
+
+    def __repr__(self):
+        return f'<RatesMultiplier {self.tax_year} {self.name}>'
+
+
+class RatesCalculation(db.Model):
+    """One saved estimate, with every input that produced it.
+
+    Kept rather than overwritten. A brochure issued last year quoted a figure,
+    and the record of how that figure was reached has to survive the next tax
+    year's recalculation. Only one row per property is current; the rest are
+    history and are never edited.
+    """
+    __tablename__ = 'rates_calculations'
+    id            = db.Column(db.Integer, primary_key=True)
+    property_id   = db.Column(db.Integer, db.ForeignKey('properties.id'),
+                              nullable=False, index=True)
+    is_current    = db.Column(db.Boolean, default=True, nullable=False, index=True)
+
+    tax_year      = db.Column(db.String(10), nullable=False)
+    rateable_value = db.Column(db.BigInteger)     # pence
+
+    multiplier_id    = db.Column(db.Integer, db.ForeignKey('rates_multipliers.id'))
+    multiplier_value = db.Column(db.Integer)      # scaled, as used
+    multiplier_name  = db.Column(db.String(120))  # as it read at the time
+    multiplier_type  = db.Column(db.String(40))
+    multiplier_overridden = db.Column(db.Boolean, default=False, nullable=False)
+    override_reason  = db.Column(db.Text)
+
+    base_payable  = db.Column(db.BigInteger)      # pence
+    relief_type   = db.Column(db.String(80))
+    relief_percent = db.Column(db.Numeric(6, 3))
+    relief_amount = db.Column(db.BigInteger)      # pence
+    transitional  = db.Column(db.BigInteger)      # pence, may be negative
+    supplement    = db.Column(db.BigInteger)      # pence
+    supplement_label = db.Column(db.String(120))
+    other_adjustment = db.Column(db.BigInteger)   # pence, may be negative
+    estimated_payable = db.Column(db.BigInteger)  # pence
+
+    notes         = db.Column(db.Text)            # internal; never on a brochure
+    calculated_on = db.Column(db.Date)
+    calculated_by = db.Column(db.String(80))
+    created_at    = db.Column(db.DateTime, default=datetime.utcnow)
+
+    multiplier = db.relationship('RatesMultiplier', lazy=True)
+
+    @property
+    def estimated(self):
+        import business_rates as br
+        return br.money(self.estimated_payable)
+
+    @property
+    def monthly_payable(self):
+        from decimal import Decimal, ROUND_HALF_UP
+        if self.estimated_payable is None:
+            return None
+        return int((Decimal(self.estimated_payable) / 12)
+                   .quantize(Decimal('1'), rounding=ROUND_HALF_UP))
+
+    def __repr__(self):
+        return f'<RatesCalculation property={self.property_id} {self.tax_year}>'
+
+
 class Property(db.Model):
     __tablename__ = 'properties'
     id = db.Column(db.Integer, primary_key=True)
@@ -245,6 +382,24 @@ class Property(db.Model):
     floor_plan_filename = db.Column(db.String(255))
     floor_plan_size   = db.Column(db.Integer)
 
+    # ── Business rates ──
+    # The billing authority is a fact about the property, so it is held here
+    # and every instruction on the property inherits it.
+    council_id        = db.Column(db.Integer, db.ForeignKey('councils.id'), index=True)
+
+    # A council's own figure, kept apart from anything the CRM worked out. One
+    # is evidence; the other is an estimate, and a brochure must not blur them.
+    rates_confirmed        = db.Column(db.Boolean, default=False)
+    rates_confirmed_amount = db.Column(db.BigInteger)     # pence
+    rates_confirmed_on     = db.Column(db.Date)
+    rates_confirmed_ref    = db.Column(db.Text)
+    rates_confirmed_by     = db.Column(db.String(80))
+
+    rates_calculations = db.relationship(
+        'RatesCalculation', backref='prop', lazy=True,
+        cascade='all, delete-orphan',
+        order_by='RatesCalculation.created_at.desc()')
+
     # Who the property is held for. Their details are read from their own
     # record and never copied here.
     client_contact_id = db.Column(db.Integer, db.ForeignKey('contacts.id'), index=True)
@@ -265,6 +420,63 @@ class Property(db.Model):
         if self.size and self.measurement_type:
             return f"{self.size:,.0f} sq ft ({self.measurement_type})"
         return '—'
+
+    # ── Business rates ──
+
+    @property
+    def current_rates(self):
+        """The saved estimate in force, or nothing. History is not returned."""
+        return next((c for c in self.rates_calculations if c.is_current), None)
+
+    @property
+    def rateable_value(self):
+        """The rateable value the current estimate was worked from, in pence."""
+        current = self.current_rates
+        return current.rateable_value if current else None
+
+    @property
+    def listing_rateable_value(self):
+        """A rateable value typed on one of this property's listings, in pence.
+
+        That field predates the calculator. It is not used for anything on a
+        brochure any more, but somebody may have typed a figure into it, so the
+        calculator offers it rather than letting the two quietly disagree.
+        """
+        row = (Listing.query
+               .filter(Listing.property_id == self.id,
+                       Listing.rateable_value.isnot(None),
+                       Listing.rateable_value > 0)
+               .order_by(Listing.id.desc()).first())
+        if not row:
+            return None
+        import business_rates as _br
+        return _br.to_pence(row.rateable_value)
+
+    @property
+    def has_confirmed_rates(self):
+        """A council's own figure, complete enough to quote.
+
+        Both the amount and the date are required: a figure with no date is not
+        evidence of anything, so it is not treated as confirmed.
+        """
+        return bool(self.rates_confirmed
+                    and self.rates_confirmed_amount is not None
+                    and self.rates_confirmed_on)
+
+    @property
+    def rates_for_brochure(self):
+        """What a brochure should quote, and on whose authority.
+
+        Returns (pence, basis) where basis is 'confirmed' or 'estimated', or
+        (None, None) where there is nothing to quote. The council's own figure
+        always wins; the estimate is never promoted to take its place.
+        """
+        if self.has_confirmed_rates:
+            return self.rates_confirmed_amount, 'confirmed'
+        current = self.current_rates
+        if current and current.estimated_payable is not None:
+            return current.estimated_payable, 'estimated'
+        return None, None
 
 
 # ── Property types ───────────────────────────────────────────────────────────
@@ -2366,6 +2578,7 @@ def properties_list():
 
 
 @app.route('/properties/new', methods=['GET', 'POST'])
+@requires('create')
 def property_new():
     if request.method == 'POST':
         size_raw = request.form.get('size', '').strip()
@@ -2377,12 +2590,21 @@ def property_new():
             measurement_type=request.form.get('measurement_type'),
             description=request.form.get('description'),
             residential_use=request.form.get('residential_use') or None,
+            council_id=_fcouncil(request.form.get('council_id')),
         )
+        if not prop.council_id:
+            flash('Choose the local authority. It decides which council’s '
+                  'details go on the particulars, so it is not guessed.', 'error')
+            return render_template('properties/form.html', prop=None,
+                                   errors={'council_id': 'Choose the local authority.'},
+                                   **rates_form_context())
         db.session.add(prop)
         db.session.commit()
+        audit('create', entity='Property', entity_id=prop.id)
         flash('Property added successfully.', 'success')
         return redirect(url_for('property_detail', id=prop.id))
-    return render_template('properties/form.html', prop=None)
+    return render_template('properties/form.html', prop=None,
+                           **rates_form_context())
 
 
 @app.route('/properties/<int:id>')
@@ -2393,6 +2615,7 @@ def property_detail(id):
 
 
 @app.route('/properties/<int:id>/edit', methods=['GET', 'POST'])
+@requires('edit')
 def property_edit(id):
     prop = Property.query.get_or_404(id)
     if request.method == 'POST':
@@ -2400,18 +2623,28 @@ def property_edit(id):
         # record, cannot blank what it does not display.
         # Website listing details (category/price/photos/brochure) are managed per
         # instruction on the project's Website Listing tab — not on the Property.
+        if 'council_id' in request.form and not _fcouncil(request.form.get('council_id')):
+            flash('Choose the local authority. It decides which council’s '
+                  'details go on the particulars, so it is not guessed.', 'error')
+            return render_template('properties/form.html', prop=prop,
+                                   errors={'council_id': 'Choose the local authority.'},
+                                   **rates_form_context())
+        was_council = prop.council_id
         apply_form_fields(prop, request.form, PROPERTY_FIELDS)
         if 'postcode' in request.form:
             prop.postcode = (request.form.get('postcode') or '').upper()
         db.session.commit()
+        if prop.council_id != was_council:
+            audit('council-changed', entity='Property', entity_id=prop.id,
+                  detail=f'local authority set to {prop.council.name if prop.council else "none"}')
         audit('edit', entity='Property', entity_id=prop.id)
         flash('Property updated.', 'success')
         return _back_to('property_detail', id=prop.id)
-    return render_template('properties/form.html', prop=prop)
+    return render_template('properties/form.html', prop=prop,
+                           **rates_form_context())
 
 
 @app.route('/properties/<int:id>/delete', methods=['POST'])
-@requires('delete')
 @requires('delete')
 def property_delete(id):
     prop = Property.query.get_or_404(id)
@@ -2426,6 +2659,428 @@ def property_delete(id):
     # Listings tied to the property by property_id go with it via the
     # relationship's cascade.
     return delete_record(prop, 'Property', 'properties_list')
+
+
+# ── Business rates reference data ───────────────────────────────────────────
+# Councils and multipliers are maintained here rather than in the code, so a
+# new borough or next year's figures are a few minutes' typing and not a
+# deploy. Nothing on these screens changes a property.
+
+@app.route('/admin/rates')
+@requires('admin')
+def rates_reference():
+    """The councils on record and the multipliers for each tax year."""
+    return render_template(
+        'admin/rates.html',
+        council_list=Council.query.order_by(Council.name).all(),
+        multipliers=(RatesMultiplier.query
+                     .order_by(RatesMultiplier.tax_year.desc(),
+                               RatesMultiplier.name).all()),
+        tax_years=br.tax_year_options(date.today()),
+        today=date.today())
+
+
+@app.route('/admin/rates/council', methods=['POST'])
+@requires('admin')
+def rates_council_save():
+    """Add a council, or correct one. Its telephone number reaches every set of
+    particulars for every property in that borough, so a change is audited."""
+    form = request.form
+    raw_id = (form.get('id') or '').strip()
+    council = Council.query.get(int(raw_id)) if raw_id.isdigit() else None
+    name = (form.get('name') or '').strip()
+    if not name:
+        flash('A council needs its official name.', 'error')
+        return redirect(url_for('rates_reference'))
+
+    clash = Council.query.filter(Council.name == name).first()
+    if clash and (not council or clash.id != council.id):
+        flash(f'{name} is already on record.', 'error')
+        return redirect(url_for('rates_reference'))
+
+    creating = council is None
+    if creating:
+        council = Council(name=name)
+        db.session.add(council)
+    was_phone = council.phone
+    council.name = name
+    council.short_name = (form.get('short_name') or '').strip() or None
+    council.phone = (form.get('phone') or '').strip() or None
+    council.email = (form.get('email') or '').strip() or None
+    council.website = (form.get('website') or '').strip() or None
+    council.address = (form.get('address') or '').strip() or None
+    council.verified_on = _parse_date(form.get('verified_on'))
+    council.active = bool(form.get('active'))
+    db.session.commit()
+
+    detail = f'{name}'
+    if not creating and was_phone != council.phone:
+        detail += f' telephone changed from {was_phone or "none"} to {council.phone or "none"}'
+    audit('council-added' if creating else 'council-edited',
+          entity='Council', entity_id=council.id, detail=detail)
+    flash(f'{name} saved.', 'success')
+    return redirect(url_for('rates_reference'))
+
+
+@app.route('/admin/rates/multiplier', methods=['POST'])
+@requires('admin')
+def rates_multiplier_save():
+    """Add or correct a multiplier for a tax year.
+
+    Verifying one is a deliberate act: ticking the box records who checked it
+    against the official source and when, which is the whole point of holding a
+    verification date at all.
+    """
+    form = request.form
+    raw_id = (form.get('id') or '').strip()
+    row = RatesMultiplier.query.get(int(raw_id)) if raw_id.isdigit() else None
+
+    tax_year = (form.get('tax_year') or '').strip()
+    name = (form.get('name') or '').strip()
+    value = br.to_multiplier(form.get('value'))
+    problems = []
+    if not re.fullmatch(r'\d{4}/\d{2}', tax_year):
+        problems.append('a tax year written like 2025/26')
+    if not name:
+        problems.append('a name')
+    if value is None or value <= 0:
+        problems.append('a multiplier such as 0.555')
+    if problems:
+        flash('A multiplier needs ' + ', '.join(problems) + '.', 'error')
+        return redirect(url_for('rates_reference'))
+
+    creating = row is None
+    if creating:
+        row = RatesMultiplier(tax_year=tax_year, name=name, value=value)
+        db.session.add(row)
+    starts, ends = br.tax_year_bounds(tax_year)
+    row.tax_year, row.name, row.value = tax_year, name, value
+    row.multiplier_type = (form.get('multiplier_type') or '').strip() or None
+    row.category = (form.get('category') or '').strip() or None
+    row.rv_min = br.to_pence(form.get('rv_min'))
+    row.rv_max = br.to_pence(form.get('rv_max'))
+    row.starts_on, row.ends_on = starts, ends
+    row.source = (form.get('source') or '').strip() or None
+    row.active = bool(form.get('active'))
+    if form.get('verified'):
+        row.verified_on = _parse_date(form.get('verified_on')) or date.today()
+    else:
+        row.verified_on = None
+    db.session.commit()
+
+    audit('multiplier-added' if creating else 'multiplier-edited',
+          entity='RatesMultiplier', entity_id=row.id,
+          detail=f'{tax_year} {name} at {br.multiplier_str(value)}'
+                 + (' (verified)' if row.verified_on else ' (not verified)'))
+    flash(f'{name} for {tax_year} saved.', 'success')
+    return redirect(url_for('rates_reference'))
+
+
+# ── Business rates: calculating, saving and confirming ──────────────────────
+
+def _rates_inputs(form, prop=None):
+    """Read a rates form into checked values, and say what is wrong with it.
+
+    Everything is parsed here, on the server, from the posted request. The
+    browser's own arithmetic is only there to keep the screen responsive; it is
+    never trusted, never read back, and never saved.
+    """
+    errors = {}
+    today = date.today()
+
+    tax_year = (form.get('tax_year') or '').strip() or br.tax_year_of(today)
+    if not re.fullmatch(r'\d{4}/\d{2}', tax_year):
+        errors['tax_year'] = 'Choose a tax year.'
+        tax_year = br.tax_year_of(today)
+
+    rv = br.to_pence(form.get('rateable_value'))
+    if form.get('rateable_value', '').strip() and rv is None:
+        errors['rateable_value'] = 'That is not an amount.'
+    elif rv is not None and rv < 0:
+        errors['rateable_value'] = 'A rateable value cannot be negative.'
+        rv = None
+    elif rv is None:
+        errors['rateable_value'] = 'Enter the rateable value.'
+
+    # The multiplier. An id must belong to the chosen year — a request that
+    # names one from another year is refused rather than quietly used.
+    overridden = bool(form.get('multiplier_override'))
+    row = None
+    value = None
+    if overridden:
+        value = br.to_multiplier(form.get('multiplier_value'))
+        if value is None:
+            errors['multiplier_value'] = 'Enter the multiplier to use.'
+        elif value > br.MULTIPLIER_SCALE:
+            errors['multiplier_value'] = 'A multiplier is a rate in the pound, such as 0.555.'
+            value = None
+    else:
+        raw = (form.get('multiplier_id') or '').strip()
+        if raw.isdigit():
+            row = RatesMultiplier.query.get(int(raw))
+        if row and (row.tax_year != tax_year or not row.active):
+            row = None
+        if not row:
+            errors['multiplier_id'] = 'Choose a multiplier for this tax year.'
+        else:
+            value = row.value
+
+    relief_type = (form.get('relief_type') or '').strip() or None
+    relief_percent = None
+    raw_pct = (form.get('relief_percent') or '').strip()
+    if raw_pct:
+        try:
+            from decimal import Decimal as _D
+            relief_percent = _D(raw_pct.replace('%', '').strip())
+            if relief_percent < 0 or relief_percent > 100:
+                errors['relief_percent'] = 'A relief is between 0 and 100 per cent.'
+                relief_percent = None
+        except Exception:
+            errors['relief_percent'] = 'That is not a percentage.'
+
+    def amount(key, allow_negative=False):
+        raw = (form.get(key) or '').strip()
+        if not raw:
+            return None
+        parsed = br.to_pence(raw)
+        if parsed is None:
+            errors[key] = 'That is not an amount.'
+            return None
+        if parsed < 0 and not allow_negative:
+            errors[key] = 'That cannot be negative.'
+            return None
+        return parsed
+
+    return {
+        'tax_year': tax_year,
+        'rateable_value': rv,
+        'multiplier_row': row,
+        'multiplier_value': value,
+        'multiplier_overridden': overridden,
+        'override_reason': (form.get('override_reason') or '').strip() or None,
+        'relief_type': relief_type,
+        'relief_percent': relief_percent,
+        'relief_amount': amount('relief_amount'),
+        'transitional': amount('transitional', allow_negative=True),
+        'supplement': amount('supplement'),
+        'supplement_label': (form.get('supplement_label') or '').strip() or None,
+        'other_adjustment': amount('other_adjustment', allow_negative=True),
+        'notes': (form.get('notes') or '').strip() or None,
+    }, errors
+
+
+def _rates_result(inputs):
+    """The calculation, from checked inputs."""
+    return br.calculate(
+        inputs['rateable_value'], inputs['multiplier_value'],
+        relief_percent=inputs['relief_percent'],
+        relief_amount_pence=inputs['relief_amount'],
+        transitional_pence=inputs['transitional'],
+        supplement_pence=inputs['supplement'],
+        other_pence=inputs['other_adjustment'])
+
+
+def _rates_payload(prop, inputs, errors, result):
+    """What the calculator screen shows: the breakdown, and the assumptions.
+
+    The assumptions are listed before anything is saved, because a figure this
+    is going to put on a brochure should not rest on anything the reader has
+    not been shown.
+    """
+    assumptions = []
+    if inputs['relief_percent'] or inputs['relief_amount']:
+        assumptions.append(
+            f"A {inputs['relief_type'] or 'relief'} has been applied because it was "
+            'entered on this form. The CRM has not checked eligibility, which '
+            'depends on the occupier and on how many properties they hold.')
+    if inputs['supplement']:
+        assumptions.append(
+            f"A supplement of {br.money(inputs['supplement'])} "
+            f"({inputs['supplement_label'] or 'unlabelled'}) has been added because "
+            'it was entered on this form. No supplement is applied on its own.')
+    if inputs['transitional']:
+        assumptions.append(
+            f"A transitional adjustment of {br.money(inputs['transitional'])} has "
+            'been applied because it was entered on this form. Transitional '
+            'arrangements are never applied silently.')
+    if inputs['multiplier_overridden']:
+        assumptions.append(
+            'The multiplier was entered by hand rather than taken from the table '
+            'for this tax year.')
+    row = inputs['multiplier_row']
+    if row and not row.verified_on:
+        assumptions.append(
+            f'The {row.name} for {row.tax_year} has not been verified against '
+            'its official source by anyone in the office.')
+    assumptions.append(
+        'This is an estimate. It assumes nothing about the occupier’s other '
+        'properties or circumstances, and is not a figure from the council.')
+    if result and result.get('floored'):
+        assumptions.append(
+            'The deductions came to more than the liability, so the estimate has '
+            'been held at zero rather than shown as a negative bill.')
+
+    return {
+        'ok': not errors and result is not None,
+        'errors': errors,
+        'result': None if not result else {
+            'rateable_value': br.money(result['rateable_value']),
+            'multiplier': br.multiplier_str(result['multiplier']),
+            'multiplier_name': (inputs['multiplier_row'].name
+                                if inputs['multiplier_row'] else 'Entered by hand'),
+            'multiplier_type': (inputs['multiplier_row'].multiplier_type
+                                if inputs['multiplier_row'] else 'Other'),
+            'overridden': inputs['multiplier_overridden'],
+            'base': br.money(result['base']),
+            'relief': br.money(result['relief']) if result['relief'] else None,
+            'adjustments': (br.money(result['adjustments'])
+                            if result['adjustments'] else None),
+            'total': br.money(result['total']),
+            'monthly': br.money(result['monthly']),
+            'tax_year': inputs['tax_year'],
+            'calculated_on': date.today().strftime('%d %b %Y'),
+            'lines': [(label, br.money(value)) for label, value in result['lines']],
+        },
+        'assumptions': assumptions,
+    }
+
+
+@app.route('/properties/<int:id>/rates/calculate', methods=['POST'])
+@requires('edit')
+def property_rates_calculate(id):
+    """Work the figure out, and save nothing.
+
+    The screen calls this on every change so the breakdown always matches the
+    inputs. Saving is a separate, deliberate act.
+    """
+    prop = Property.query.get_or_404(id)
+    inputs, errors = _rates_inputs(request.form, prop)
+    result = None if errors else _rates_result(inputs)
+    return jsonify(_rates_payload(prop, inputs, errors, result))
+
+
+@app.route('/properties/<int:id>/rates/save', methods=['POST'])
+@requires('edit')
+def property_rates_save(id):
+    """Keep the estimate, having worked it out again here.
+
+    The posted total is ignored entirely. Whatever the browser calculated, the
+    figure that is stored is the one this server produced from the inputs.
+    """
+    prop = Property.query.get_or_404(id)
+    inputs, errors = _rates_inputs(request.form, prop)
+    result = None if errors else _rates_result(inputs)
+    if errors or not result:
+        flash('The rates calculation could not be saved: '
+              + '; '.join(errors.values()), 'error')
+        return _back_to('property_edit', id=prop.id)
+
+    # The previous estimate becomes history rather than being overwritten.
+    for old in prop.rates_calculations:
+        old.is_current = False
+
+    row = inputs['multiplier_row']
+    calc = RatesCalculation(
+        property_id=prop.id, is_current=True,
+        tax_year=inputs['tax_year'],
+        rateable_value=inputs['rateable_value'],
+        multiplier_id=row.id if row else None,
+        multiplier_value=inputs['multiplier_value'],
+        multiplier_name=row.name if row else 'Entered by hand',
+        multiplier_type=row.multiplier_type if row else 'Other',
+        multiplier_overridden=inputs['multiplier_overridden'],
+        override_reason=inputs['override_reason'],
+        base_payable=result['base'],
+        relief_type=inputs['relief_type'],
+        relief_percent=inputs['relief_percent'],
+        relief_amount=inputs['relief_amount'],
+        transitional=inputs['transitional'],
+        supplement=inputs['supplement'],
+        supplement_label=inputs['supplement_label'],
+        other_adjustment=inputs['other_adjustment'],
+        estimated_payable=result['total'],
+        notes=inputs['notes'],
+        calculated_on=date.today(),
+        calculated_by=getattr(current_user, 'username', None))
+    db.session.add(calc)
+    db.session.commit()
+
+    detail = (f"{inputs['tax_year']} estimate {br.money(result['total'])} "
+              f"at {br.multiplier_str(inputs['multiplier_value'])}")
+    if inputs['multiplier_overridden']:
+        detail += ' (multiplier overridden by hand)'
+    audit('rates-calculated', entity='Property', entity_id=prop.id, detail=detail)
+    flash(f"Estimated business rates saved: {br.money(result['total'])} "
+          f"for {inputs['tax_year']}.", 'success')
+    return _back_to('property_edit', id=prop.id)
+
+
+@app.route('/properties/<int:id>/rates/confirm', methods=['POST'])
+@requires('edit')
+def property_rates_confirm(id):
+    """Record what the council itself has said.
+
+    Kept apart from the estimate: neither figure overwrites the other, and the
+    calculator's inputs are not touched.
+    """
+    prop = Property.query.get_or_404(id)
+    confirmed = bool(request.form.get('rates_confirmed'))
+
+    if not confirmed:
+        was = prop.rates_confirmed
+        prop.rates_confirmed = False
+        db.session.commit()
+        if was:
+            audit('rates-unconfirmed', entity='Property', entity_id=prop.id,
+                  detail='council confirmation switched off; the figure is kept')
+        flash('The council-confirmed figure is no longer being used. '
+              'It has been kept on the record.', 'success')
+        return _back_to('property_edit', id=prop.id)
+
+    amount = br.to_pence(request.form.get('rates_confirmed_amount'))
+    when = _parse_date(request.form.get('rates_confirmed_on'))
+    problems = []
+    if amount is None:
+        problems.append('the amount the council gave')
+    elif amount < 0:
+        problems.append('an amount that is not negative')
+    if not when:
+        problems.append('the date it was confirmed')
+    if problems:
+        flash('A council-confirmed figure needs ' + ' and '.join(problems) + '.',
+              'error')
+        return _back_to('property_edit', id=prop.id)
+
+    prop.rates_confirmed = True
+    prop.rates_confirmed_amount = amount
+    prop.rates_confirmed_on = when
+    prop.rates_confirmed_ref = (request.form.get('rates_confirmed_ref') or '').strip() or None
+    prop.rates_confirmed_by = getattr(current_user, 'username', None)
+    db.session.commit()
+    audit('rates-confirmed', entity='Property', entity_id=prop.id,
+          detail=f'council figure {br.money(amount)} on {when:%d %b %Y}')
+    flash(f'Council-confirmed rates of {br.money(amount)} recorded.', 'success')
+    return _back_to('property_edit', id=prop.id)
+
+
+@app.route('/properties/<int:id>/rates/suggest')
+@requires('view')
+def property_rates_suggest(id):
+    """What the CRM would propose for a tax year and rateable value."""
+    prop = Property.query.get_or_404(id)
+    tax_year = (request.args.get('tax_year') or br.tax_year_of(date.today())).strip()
+    rv = br.to_pence(request.args.get('rateable_value'))
+    pick = suggest_multiplier_for(tax_year, rv, prop.property_type)
+    rows = multiplier_rows(tax_year)
+    return jsonify({
+        'suggested_id': pick['id'] if pick else None,
+        'why': pick['why'] if pick else None,
+        'verified': bool(pick and pick.get('verified_on')) if pick else False,
+        'options': [{'id': r['id'], 'name': r['name'],
+                     'type': r['multiplier_type'],
+                     'value': br.multiplier_str(r['value']),
+                     'verified': bool(r['verified_on'])} for r in rows],
+    })
 
 
 @app.route('/properties/<int:id>/brochure/upload', methods=['POST'])
@@ -5052,6 +5707,16 @@ def _fid(v):
     return chosen if any(p.id == chosen for p in fee_earners()) else None
 
 
+def _fcouncil(v):
+    """A council's id, or nothing. An id that is not a council on record is
+    refused rather than stored, so one cannot be invented by editing the
+    request."""
+    raw = str(v or '').strip()
+    if not raw.isdigit():
+        return None
+    return int(raw) if Council.query.get(int(raw)) else None
+
+
 def _ftext(v):
     v = (v or '').strip()
     return v or None
@@ -5205,6 +5870,7 @@ PROJECT_FIELDS = [
 
 PROPERTY_FIELDS = [
     ('client_contact_id',  'client_contact_id',  _fcontact),
+    ('council_id',       'council_id',       _fcouncil),
     ('address',          'address',          None),
     ('property_type',    'property_type',    _ftext),
     ('area',             'area',             _ftext),
@@ -6175,6 +6841,249 @@ def clean_strapline(value):
     return ' '.join(str(value or '').split())
 
 
+# ── Business rates ──────────────────────────────────────────────────────────
+# The arithmetic is in business_rates.py, which knows nothing about the CRM.
+# What follows is the part that does: which councils exist, which multipliers
+# are on record, and the exact words that go on a set of particulars.
+
+import business_rates as br
+
+app.jinja_env.globals['br'] = br
+app.jinja_env.globals['RELIEF_TYPES'] = br.RELIEF_TYPES
+app.jinja_env.globals['MULTIPLIER_TYPES'] = br.MULTIPLIER_TYPES
+
+
+# The councils the office deals with today. Seeded once; from then on they are
+# edited in the CRM, so correcting a telephone number is not a code change.
+# Anything added here later appears everywhere without a change to the
+# property table or to the particulars template.
+COUNCIL_SEED = [
+    {'name': 'London Borough of Hammersmith & Fulham',
+     'short_name': 'Hammersmith & Fulham',
+     'phone': '020 8753 6681',
+     'website': 'https://www.lbhf.gov.uk/business/business-rates'},
+    {'name': 'Royal Borough of Kensington and Chelsea',
+     'short_name': 'Kensington and Chelsea',
+     'phone': '020 7361 2828',
+     'website': 'https://www.rbkc.gov.uk/business/business-rates'},
+]
+
+
+# England's published multipliers. Seeded so the calculator works out of the
+# box, and left UNVERIFIED on purpose: `verified_on` stays empty until somebody
+# in the office has checked the figure against gov.uk and said so. The screen
+# says plainly when a multiplier has not been verified.
+#
+# rv_min / rv_max are in pence and rv_max is exclusive, so the small business
+# multiplier covers rateable values below £51,000.
+MULTIPLIER_SEED = [
+    ('2023/24', 'Standard multiplier',       'Standard',       51200, 5_100_000, None),
+    ('2023/24', 'Small business multiplier', 'Small business', 49900, None, 5_100_000),
+    ('2024/25', 'Standard multiplier',       'Standard',       54600, 5_100_000, None),
+    ('2024/25', 'Small business multiplier', 'Small business', 49900, None, 5_100_000),
+    ('2025/26', 'Standard multiplier',       'Standard',       55500, 5_100_000, None),
+    ('2025/26', 'Small business multiplier', 'Small business', 49900, None, 5_100_000),
+]
+MULTIPLIER_SOURCE = 'https://www.gov.uk/calculate-your-business-rates'
+
+
+def seed_rates_reference():
+    """Put the councils and multipliers on record if they are not already.
+
+    Idempotent and non-destructive: a row that already exists is left exactly
+    as it is, so an office correction is never overwritten by a later deploy.
+    """
+    added = {'councils': 0, 'multipliers': 0}
+    for row in COUNCIL_SEED:
+        if not Council.query.filter_by(name=row['name']).first():
+            db.session.add(Council(**row))
+            added['councils'] += 1
+    for tax_year, name, kind, value, rv_min, rv_max in MULTIPLIER_SEED:
+        exists = RatesMultiplier.query.filter_by(tax_year=tax_year, name=name).first()
+        if exists:
+            continue
+        starts, ends = br.tax_year_bounds(tax_year)
+        db.session.add(RatesMultiplier(
+            tax_year=tax_year, name=name, multiplier_type=kind, value=value,
+            rv_min=rv_min, rv_max=rv_max, starts_on=starts, ends_on=ends,
+            source=MULTIPLIER_SOURCE, verified_on=None))
+        added['multipliers'] += 1
+    if added['councils'] or added['multipliers']:
+        db.session.commit()
+        app.logger.info('Rates reference seeded: %s', added)
+    return added
+
+
+def councils(include=None):
+    """Every council that may be chosen, plus one that is no longer active if
+    a property still points at it — so an old record still reads correctly."""
+    rows = Council.query.filter_by(active=True).order_by(Council.name).all()
+    if include and include not in rows:
+        kept = Council.query.get(include) if isinstance(include, int) else include
+        if kept:
+            rows = sorted(rows + [kept], key=lambda c: c.name)
+    return rows
+
+
+def multiplier_rows(tax_year):
+    """The multipliers on record for a tax year, as plain dictionaries."""
+    rows = (RatesMultiplier.query
+            .filter_by(tax_year=tax_year, active=True)
+            .order_by(RatesMultiplier.name).all())
+    return [r.as_row() for r in rows]
+
+
+def suggest_multiplier_for(tax_year, rateable_value_pence, property_type=None):
+    """What the CRM would propose for this property, or nothing.
+
+    A proposal, shown with its reasoning and always overridable. It uses the
+    rateable value and the property type only — never anything about the
+    occupier, which the CRM does not know and must not assume.
+    """
+    return br.suggest_multiplier(multiplier_rows(tax_year),
+                                 rateable_value_pence, property_type)
+
+
+# ── What goes on a brochure ─────────────────────────────────────────────────
+
+def rates_audience(instruction):
+    """Who a rates note addresses, from how the property is being marketed.
+
+    Sale particulars must not talk only to tenants.
+    """
+    if instruction and 'FOR SALE' in instruction and 'TO LET' in instruction:
+        return 'Prospective purchasers and tenants'
+    if instruction and 'FOR SALE' in instruction:
+        return 'Prospective purchasers and occupiers'
+    return 'Prospective tenants'
+
+
+def council_the(name):
+    """A council's name with its article, so a sentence reads properly.
+
+    "the London Borough of Hammersmith & Fulham" is right; "the Hounslow
+    Council" is not. Rather than write "the" into each sentence and get it
+    wrong for the next council added, the article belongs to the name.
+    """
+    text = (name or '').strip()
+    if not text:
+        return text
+    lower = text.lower()
+    if lower.startswith('the '):
+        return text
+    for prefix in ('london borough', 'royal borough', 'borough of', 'city of',
+                   'city and', 'council of', 'corporation of', 'county of',
+                   'district of', 'isles of'):
+        if lower.startswith(prefix):
+            return f'the {text}'
+    return text
+
+
+def rates_paragraph(prop, instruction=None):
+    """The business rates note, exactly as it will be printed.
+
+    Four cases, and the difference between them matters:
+      - the council has confirmed a figure, so it is attributed to the council;
+      - the CRM has an estimate, so it is called an estimate and qualified;
+      - the council is known but there is no figure, so the reader is sent to
+        the council;
+      - the council is not known, so nothing is claimed and no council's
+        details are printed.
+
+    Internal calculation notes never appear here.
+    """
+    audience = rates_audience(instruction)
+    council = prop.council if prop else None
+
+    if not council:
+        # Guessing a council from a postcode would put another borough's
+        # telephone number on a brochure. Nothing is guessed.
+        return ('Business rates are payable and will depend on the occupier’s '
+                'circumstances. ' + audience + ' are advised to make their own '
+                'enquiries of the local billing authority to confirm the '
+                'business rates payable.')
+
+    name = council.name
+    phone = (council.phone or '').strip()
+    amount, basis = prop.rates_for_brochure
+
+    if basis == 'confirmed':
+        line = (f'We have been advised by {council_the(name)} that the rates payable for '
+                f'the current year are {br.money(amount)}. {audience} are advised '
+                f'to confirm this information by telephoning the local council')
+        return f'{line} on {phone}.' if phone else f'{line}.'
+
+    if basis == 'estimated':
+        line = (f'The estimated rates payable for the current year are '
+                f'{br.money(amount)}, subject to the occupier’s circumstances '
+                f'and any applicable reliefs or adjustments. {audience} are '
+                f'advised to confirm this information with {council_the(name)}')
+        return f'{line} by telephoning {phone}.' if phone else f'{line}.'
+
+    line = (f'Interested parties are advised to contact {council_the(name)} to '
+            f'confirm the '
+            f'business rates payable.')
+    return f'{line} Their business rates team can be reached on {phone}.' if phone else line
+
+
+def rates_summary(prop):
+    """Everything the rates screens and the particulars preview need to show.
+
+    Read only. It reports what is on record, including that nothing is.
+    """
+    current = prop.current_rates if prop else None
+    amount, basis = prop.rates_for_brochure if prop else (None, None)
+    multiplier = None
+    if current and current.multiplier_value is not None:
+        multiplier = {
+            'value': br.multiplier_str(current.multiplier_value),
+            'name': current.multiplier_name,
+            'type': current.multiplier_type,
+            'overridden': bool(current.multiplier_overridden),
+            'reason': current.override_reason,
+        }
+    return {
+        'council': prop.council if prop else None,
+        'council_name': prop.council.name if prop and prop.council else None,
+        'council_phone': (prop.council.phone if prop and prop.council else None),
+        'tax_year': current.tax_year if current else None,
+        'rateable_value': current.rateable_value if current else None,
+        'rateable_value_display': br.money(current.rateable_value) if current else None,
+        'multiplier': multiplier,
+        'base': current.base_payable if current else None,
+        'estimated': current.estimated_payable if current else None,
+        'estimated_display': (br.money(current.estimated_payable)
+                              if current and current.estimated_payable is not None else None),
+        'monthly_display': (br.money(current.monthly_payable)
+                            if current and current.estimated_payable is not None else None),
+        'calculated_on': current.calculated_on if current else None,
+        'calculated_by': current.calculated_by if current else None,
+        'confirmed': prop.has_confirmed_rates if prop else False,
+        'confirmed_display': (br.money(prop.rates_confirmed_amount)
+                              if prop and prop.has_confirmed_rates else None),
+        'confirmed_on': prop.rates_confirmed_on if prop else None,
+        'confirmed_ref': prop.rates_confirmed_ref if prop else None,
+        'basis': basis,
+        'brochure_amount': br.money(amount) if amount is not None else None,
+        'history': [c for c in (prop.rates_calculations if prop else []) if not c.is_current],
+    }
+
+
+def rates_form_context():
+    """The years and multipliers the calculator may offer."""
+    return {
+        'tax_years': br.tax_year_options(date.today()),
+        'multipliers': (RatesMultiplier.query.filter_by(active=True)
+                        .order_by(RatesMultiplier.tax_year.desc(),
+                                  RatesMultiplier.name).all()),
+    }
+
+
+app.jinja_env.globals['rates_summary'] = rates_summary
+app.jinja_env.globals['rates_paragraph'] = rates_paragraph
+app.jinja_env.globals['councils'] = councils
+
+
 def property_address_line(prop):
     """The address as it should read on a brochure.
 
@@ -6293,7 +7202,13 @@ def particulars_data(project):
         'price_to_buy': price_to_buy,
         'for_sale': for_sale,
         'to_let': to_let,
-        'rates': (
+        'rates': rates_paragraph(prop, instruction) if prop else None,
+        'rates_basis': (prop.rates_for_brochure[1] if prop else None),
+        'rates_council': (prop.council.name if prop and prop.council else None),
+        'rates_phone': (prop.council.phone if prop and prop.council else None),
+        'rates_amount': (br.money(prop.rates_for_brochure[0])
+                         if prop and prop.rates_for_brochure[0] is not None else None),
+        'rateable_value_note': (
             'Included' if getattr(listing, 'rateable_value_na', False) else
             (f"Rateable value {money_gbp(listing.rateable_value)}"
              if listing and listing.rateable_value else None)),
@@ -6340,6 +7255,11 @@ def particulars_gaps(data, photo_count):
         missing.append('Rent')
     if data.get('for_sale') and not data.get('price_to_buy'):
         missing.append('Sale price')
+    # Without a billing authority the brochure cannot name a council or print a
+    # number, so it falls back to a general disclaimer. That is a decision for
+    # somebody to make knowingly, not something to discover afterwards.
+    if not data.get('rates_council'):
+        missing.append('Local authority (the rates note will name no council)')
     if photo_count == 0:
         missing.append('Photographs')
     return missing
@@ -6358,6 +7278,7 @@ def particulars_start(id):
     return render_template(
         'projects/particulars.html', project=project, listing=listing,
         photos=photos, data=data,
+        rates=rates_summary(project.property),
         gaps=particulars_gaps(data, len(photos)),
         have_font=__import__('particulars').HAVE_MUSTICA)
 
@@ -8427,6 +9348,31 @@ def _link_fee_earners():
             'ambiguous': sorted(ambiguous)}
 
 
+def _migrate_rates_tables():
+    """Business rates: the property's council and its confirmed figure.
+
+    The three new tables come from db.create_all(). Only the columns added to
+    the existing properties table need this. Booleans are given TRUE/FALSE
+    rather than 1/0 — Postgres rejects an integer as a boolean default, and
+    SQLite accepts it, so the wrong one passes every test and takes the live
+    site down on deploy.
+    """
+    with app.app_context():
+        _add_columns('properties', [
+            ('council_id',             'INTEGER'),
+            ('rates_confirmed',        'BOOLEAN DEFAULT FALSE'),
+            ('rates_confirmed_amount', 'BIGINT'),
+            ('rates_confirmed_on',     'DATE'),
+            ('rates_confirmed_ref',    'TEXT'),
+            ('rates_confirmed_by',     'TEXT'),
+        ])
+        try:
+            seed_rates_reference()
+        except Exception:
+            db.session.rollback()
+            app.logger.exception('Could not seed the councils and multipliers')
+
+
 def _migrate_crm_columns():
     """Add CRM lifecycle-status + follow-up columns to contacts & organisations.
     Idempotent (only adds missing columns). contact_activities table is created
@@ -8459,6 +9405,7 @@ if __name__ == '__main__':
         _migrate_enquiry_columns()
         _migrate_email_columns()
         _migrate_crm_columns()
+        _migrate_rates_tables()
         _ensure_default_user()
         if Property.query.count() == 0:
             import import_listings  # seeds the 32 website properties
