@@ -50,11 +50,11 @@
   </span>
 </div>
 
-<div class="rec-cols-proj">
+{# One grid for the whole record, sized to the width actually available.
+   Ordinary boxes take a column; the detailed sections span both. #}
+<div class="prop-grid">
 
-  <!-- ════ LEFT ════ -->
-  <div class="rec-col">
-    <div class="box">
+  <div class="box">
       <div class="box-head">Instructions</div>
       <div style="padding:12px 14px;font-size:12.5px;color:var(--grey-600);line-height:1.5">
         {% if prop.projects %}
@@ -73,7 +73,6 @@
         </div>
         {% endif %}
       </div>
-    </div>
   </div>
 
   {% set shots = property_photographs(prop) %}
@@ -101,9 +100,8 @@
     {% endif %}
   </div>
 
-  <!-- ════ RIGHT ════ -->
-  <div class="rec-col">
-    <div class="box box--grid">
+  <!-- The record itself, across the full width. -->
+  <div class="box box--grid prop-span">
       <div class="box-head">Property Details</div>
       <div class="frow">
         <div class="fcell fcell--label">Address</div>
@@ -170,7 +168,6 @@
         <div class="fcell fcell--label fcell--top">Description</div>
         <div class="fcell fcell--edit"><textarea name="description" placeholder="Not set">{{ prop.description or '' }}</textarea></div>
       </div>
-    </div>
   </div>
 </div>
 
@@ -180,16 +177,12 @@
 
 {# Their own forms, so they cannot nest inside the property form above and so
    saving the property never saves a rates calculation by accident. #}
-<div class="rec-cols-proj rec-cols--one" style="margin-top:8px">
-  <div class="rec-col">
+<div class="prop-grid" style="margin-top:8px">
+  <div class="prop-span">
     {{ rates.rates_calculator(prop, tax_years, multipliers, rates_summary(prop),
                               default_tax_year, years_with_multipliers) }}
   </div>
-</div>
-
-<div class="rec-cols-narrow" style="margin-top:8px">
-  <div>{{ cp.client_details(prop.client_contact) }}</div>
-  <div></div>
+  <div class="prop-span">{{ cp.client_details(prop.client_contact) }}</div>
 </div>
 
 <!-- ── Tabs: Tenures / Projects ── -->

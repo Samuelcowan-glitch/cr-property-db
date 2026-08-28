@@ -265,31 +265,103 @@ def draw_logo(canvas, x, y, height=58):
 
 # ── The pages ────────────────────────────────────────────────────────────────
 
+def cover_heading(canvas, address, strapline, left, right, top,
+                  size=20, min_size=14, measure=False):
+    """The cover heading: address, rule, strapline — one centred group.
+
+    All three share one centre point and one maximum width, and every wrapped
+    line is centred on it. The group is measured before it is drawn so the rule
+    always sits between the two with matching space above and below, whatever
+    either of them wraps to.
+
+    Nothing else belongs in this group. There is no price, and no space is left
+    where one used to be.
+
+    Returns the height it needs. With measure=True nothing is drawn.
+    """
+    width = right - left
+    centre = (left + right) / 2
+    addr = clean(address)
+    strap = clean(strapline)
+
+    # A long strapline steps down a size rather than being cut, so it still
+    # reads. Its | separators are never touched: they are the office's own
+    # punctuation and they mean something.
+    strap_size = size
+    strap_lines = wrap(canvas, strap, face('regular'), strap_size, width) if strap else []
+    while len(strap_lines) > 2 and strap_size > min_size:
+        strap_size -= 1.5
+        strap_lines = wrap(canvas, strap, face('regular'), strap_size, width)
+    strap_lines = strap_lines[:3]
+
+    addr_size = 10.5
+    addr_lines = (wrap(canvas, addr, face('regular'), addr_size, width)[:2]
+                  if addr else [])
+
+    addr_leading = addr_size + 4
+    strap_leading = strap_size + 4
+    rule_gap = 10                      # the same above the rule as below it
+    both = bool(addr_lines and strap_lines)
+
+    height = (len(addr_lines) * addr_leading
+              + (rule_gap * 2 if both else 0)
+              + len(strap_lines) * strap_leading)
+    if measure:
+        return height
+
+    y = top
+    canvas.setFillColor(MUTED)
+    canvas.setFont(face('regular'), addr_size)
+    for line in addr_lines:
+        y -= addr_size
+        canvas.drawCentredString(centre, y, line)
+        y -= addr_leading - addr_size
+
+    if both:
+        y -= rule_gap
+        # Centred on the same point, and never wider than the group it divides.
+        rule = min(230, width)
+        canvas.setStrokeColor(RULE)
+        canvas.setLineWidth(0.8)
+        canvas.line(centre - rule / 2, y, centre + rule / 2, y)
+        y -= rule_gap
+
+    canvas.setFillColor(NAVY)
+    canvas.setFont(face('regular'), strap_size)
+    for line in strap_lines:
+        y -= strap_size
+        canvas.drawCentredString(centre, y, line)
+        y -= strap_leading - strap_size
+    return height
+
+
 def cover_page(canvas, data):
-    """A full-bleed photograph above a band carrying the mark and the headline."""
-    # The band is measured before it is drawn, so a headline that needs two
-    # lines gets the depth for them instead of running over the rule beneath.
-    headline = (clean(data.get('cover_line')) or clean(data.get('headline'))
-                or clean(data.get('address')) or 'Property').upper()
-    logo_w = 76 * 1.45
-    text_w = PW - MARGIN - (MARGIN + logo_w + 40) - MARGIN
+    """A full-bleed photograph above a band carrying the mark and the heading.
 
-    size_pt = 21
-    lines = wrap(canvas, headline, face('regular'), size_pt, text_w)
-    if len(lines) > 2:
-        size_pt = 17
-        lines = wrap(canvas, headline, face('regular'), size_pt, text_w)[:2]
-    # A break must not leave a separator stranded at the start of a line.
-    tidy = []
-    for line in lines:
-        if line.startswith('|') and tidy:
-            tidy[-1] = f'{tidy[-1]} |'
-            line = line[1:].strip()
-        tidy.append(line)
-    lines = [l for l in tidy if l]
-    leading = size_pt + 5
+    One implementation, used by the two-page particulars, page one of the
+    four-page particulars, the preview and the download alike. They are the
+    same call, so what is previewed is what is downloaded.
+    """
+    address = clean(data.get('address'))
+    strapline = (clean(data.get('cover_line')) or clean(data.get('headline'))
+                 or address or 'Property').upper()
+    size_line = clean(data.get('size_line'))
 
-    band = 118 + (leading if len(lines) > 1 else 0)
+    # Centred on the PAGE, not on the space left beside the mark, so the group
+    # does not shift as the logo or the floor area changes.
+    centre = PW / 2
+    logo_w = 52 * 1.45
+    size_w = (canvas.stringWidth(size_line, face('regular'), 10.5)
+              if size_line else 0)
+    # Clear of the mark on one side and the floor area on the other, by the
+    # same amount, so the group stays centred on the page.
+    reserved = MARGIN + max(logo_w, size_w) + 28
+    group_w = min(PW - reserved * 2, 620)
+    left, right = centre - group_w / 2, centre + group_w / 2
+
+    height = cover_heading(canvas, address, strapline, left, right, 0,
+                           measure=True)
+    band = max(118, height + 44)
     photo_h = PH - band
 
     if not draw_image(canvas, data.get('cover'), 0, band, PW, photo_h):
@@ -304,48 +376,15 @@ def cover_page(canvas, data):
     canvas.setLineWidth(2.5)
     canvas.line(0, band, PW, band)
 
-    logo_w = draw_logo(canvas, MARGIN, band - 92 - (leading if len(lines) > 1 else 0),
-                       height=76)
+    top = band - (band - height) / 2
+    middle = top - height / 2
+    draw_logo(canvas, MARGIN, middle - 26, height=52)
+    cover_heading(canvas, address, strapline, left, right, top)
 
-    left = MARGIN + logo_w + 40
-    right = PW - MARGIN
-    centre = (left + right) / 2
-
-    # No price on the cover: the headline has the whole width between the mark
-    # and the size, and wraps rather than being cut when it is long.
-    canvas.setFont(face('regular'), size_pt)
-    canvas.setFillColor(NAVY)
-    top = band - 44
-    for line in lines:
-        canvas.drawCentredString(centre, top, line)
-        top -= leading
-
-    baseline = top + leading          # the last line written
-    canvas.setStrokeColor(RULE)
-    canvas.setLineWidth(0.8)
-    rule = min(230, (right - left) * 0.55)
-    canvas.line(centre - rule / 2, baseline - 12, centre + rule / 2, baseline - 12)
-
-    foot = baseline - 30
-
-    # The size sits at the right edge, and the address is centred in whatever
-    # is left, so the two can never overlap.
-    size_line = clean(data.get('size_line'))
-    size_w = 0
     if size_line:
         canvas.setFont(face('regular'), 10.5)
         canvas.setFillColor(INK)
-        canvas.drawRightString(right, foot, size_line)
-        size_w = canvas.stringWidth(size_line, face('regular'), 10.5) + 24
-
-    address = clean(data.get('address'))
-    if address:
-        room = right - size_w - left
-        canvas.setFont(face('regular'), 10.5)
-        canvas.setFillColor(MUTED)
-        while canvas.stringWidth(address, face('regular'), 10.5) > room and len(address) > 8:
-            address = address[:-2]
-        canvas.drawCentredString(left + room / 2, foot, address)
+        canvas.drawRightString(PW - MARGIN, middle - 4, size_line)
 
 
 def measure_blocks(canvas, blocks, width, size=9.5, leading=12.6,

@@ -83,7 +83,7 @@
   display: grid; grid-template-columns: 320px minmax(0, 1fr);
   gap: 8px; align-items: start;
   /* Past this the columns only get emptier, so the record stops widening. */
-  max-width: 1560px;
+  width: 100%; max-width: 1560px; margin-inline: auto; box-sizing: border-box;
 }
 .rec-cols-proj > * { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
 
@@ -581,7 +581,13 @@ table.rec-table td.actions { white-space: nowrap; text-align: right; }
 /* ── Record pages and lists ────────────────────────────────────────────────
    Projects and Properties share these, so the two read the same way. A record
    page is capped in width: past about 1500px the columns only get emptier. */
-.rec-page { max-width: 1560px; }
+.rec-page {
+  /* Was capped at 1560px and then left-aligned, so on a wide screen every
+     pixel past the cap became empty space on the right and the record looked
+     shoved into the corner. The cap stays — past this the columns only get
+     emptier — but the leftover space is now shared evenly. */
+  width: 100%; max-width: 1560px; margin-inline: auto; box-sizing: border-box;
+}
 
 .list-bar {
   display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
@@ -1743,3 +1749,60 @@ body.pg-open { overflow: hidden; }
 }
 .pt-confirm { display: flex; align-items: flex-start; gap: 7px; margin-top: 8px;
               font-size: 12.5px; }
+
+/* ── Property Overview ─────────────────────────────────────────────────────
+   Its own grid, rather than borrowing the Project record's 320px rail. That
+   rail is right for a project — a narrow column of short boxes beside the
+   detail — and wrong for a property, where it wedged every box into the
+   left-hand third of the page.
+
+   Two balanced columns that fall to one when there is not room for two, with
+   detailed sections spanning both. Sizing is by container query, so it follows
+   the width actually available beside the navigation rather than the width of
+   the window. */
+.prop-grid {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px; align-items: start;          /* tops line up; each grows its own way */
+  width: 100%; box-sizing: border-box;
+}
+.prop-grid > * { min-width: 0; }         /* or a long word forces the column wide */
+
+/* Sections that need the room: the calculator, the pictures, the schedules. */
+.prop-span { grid-column: 1 / -1; }
+
+/* One column once two would be cramped rather than balanced. */
+@container (max-width: 900px) {
+  .prop-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 900px) {
+  .prop-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Nothing on the page may scroll sideways. */
+.rec-page, .prop-grid, .prop-grid > * { overflow-wrap: anywhere; }
+
+/* Fields inside a box: label above its input, and as many across as fit.
+   Three on a wide screen, two on a laptop, one when narrow — decided by the
+   box's own width, not the window's, so a box in a narrow column behaves. */
+.pf-grid {
+  display: grid; gap: 8px 12px; padding: 10px 14px;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+.pf-grid--wide { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+.pf-field { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.pf-field--full { grid-column: 1 / -1; }
+.pf-label {
+  font-size: 11px; color: var(--grey-600); text-transform: uppercase;
+  letter-spacing: .04em; overflow-wrap: anywhere;
+}
+.pf-field > input, .pf-field > select, .pf-field > textarea {
+  width: 100%; box-sizing: border-box; min-width: 0;
+}
+.pf-field > input, .pf-field > select { height: 32px; }
+.pf-hint, .pf-error { font-size: 11.5px; line-height: 1.4; }
+.pf-hint { color: var(--grey-600); }
+.pf-error { color: #8c2f26; }
+.pf-static {
+  font-size: 13px; color: var(--navy); min-height: 32px;
+  display: flex; align-items: center; overflow-wrap: anywhere;
+}
