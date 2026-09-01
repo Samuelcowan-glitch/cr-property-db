@@ -1827,3 +1827,32 @@ body.pg-open { overflow: hidden; }
 .pt-dialog-actions {
   display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px;
 }
+
+/* ── Enquiry summary strip ─────────────────────────────────────────────────
+   What an agent needs at a glance, on one line, above everything else:
+   inquiry type, who, their company, how to reach them, where it came from
+   and which instruction it is about. */
+.enq-strip {
+  display: grid; gap: 1px; margin: 0 0 8px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  background: var(--grey-200);
+  border: 1px solid var(--grey-200); border-radius: 3px; overflow: hidden;
+}
+.enq-strip > div {
+  background: var(--white); padding: 9px 12px;
+  display: flex; flex-direction: column; gap: 2px; min-width: 0;
+}
+.enq-strip dt {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--grey-600);
+}
+.enq-strip dd {
+  margin: 0; font-size: 13px; color: var(--navy);
+  font-weight: var(--w-heading); overflow-wrap: anywhere;
+}
+.enq-strip dd a { color: inherit; }
+.enq-strip dd a:hover { color: var(--primary, #1c3160); text-decoration: underline; }
+
+@media (max-width: 560px) {
+  .enq-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

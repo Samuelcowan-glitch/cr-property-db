@@ -176,16 +176,24 @@ def _ingest_portal_lead(db, Contact, Enquiry, EnquiryNote, parsed, subject,
         if contact.contact_type in (None, 'Enquiry', 'Prospect', 'Other'):
             contact.contact_type = contact_type
 
+    # The enquirer's own organisation, where they are already on record with
+    # one. Never the agency's, and never the project's.
+    org_id = getattr(contact, 'organisation_id', None)
+
     # ── The enquiry ──────────────────────────────────────────────────────────
     where = parsed['property_text'] or (prop.address if prop else None)
     enq_subject = f"{portal} — {where[:80]}" if where else f"{portal} — {subject[:80]}"
 
     enquiry = Enquiry(
         subject=enq_subject,
-        enquiry_type='Agency — Sale' if is_sale else 'Agency — Letting',
+        # Filed under the same headings as a manually entered enquiry, so the
+        # register reads consistently whichever way the lead arrived.
+        enquiry_type=('Buyer — Looking to Buy' if is_sale
+                      else 'Tenant — Looking to Rent'),
         status='Open',
         source=portal,
         contact_id=contact.id,
+        organisation_id=org_id,
         property_id=prop.id if prop else None,
         project_id=project.id if project else None,
         notes=parsed['message'] or None,

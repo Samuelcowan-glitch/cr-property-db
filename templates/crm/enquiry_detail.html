@@ -54,11 +54,27 @@
 </div>
 
 <div class="rec-title">
-  <h2>{{ e.subject }}
-    <span class="sub">&nbsp;{{ e.enquiry_type or 'Enquiry' }}{% if e.received_date %} &middot; received {{ e.received_date.strftime('%d/%m/%Y') }}{% endif %}</span>
+  <h2>{{ e.enquiry_type or 'Enquiry' }}
+    <span class="sub">&nbsp;{% if e.contact %}{{ contact_label(e.contact) }}{% else %}No contact linked{% endif %}{% if e.received_date %} &middot; received {{ e.received_date.strftime('%d/%m/%Y') }}{% endif %}</span>
   </h2>
   <span class="enq-pill {{ bucket }}">{{ enquiry_state_label(bucket) }}</span>
 </div>
+
+{# What an agent needs at a glance, on one line, before anything else. #}
+<dl class="enq-strip">
+  <div><dt>Inquiry type</dt><dd>{{ e.enquiry_type or '—' }}</dd></div>
+  <div><dt>Contact</dt>
+    <dd>{% if e.contact %}<a href="{{ url_for('contact_detail', id=e.contact.id) }}">{{ e.contact.first_name }} {{ e.contact.last_name }}</a>{% else %}—{% endif %}</dd></div>
+  <div><dt>Organisation</dt>
+    <dd>{% if e.organisation %}<a href="{{ url_for('organisation_detail', id=e.organisation.id) }}">{{ e.organisation.name }}</a>{% else %}—{% endif %}</dd></div>
+  <div><dt>Email</dt>
+    <dd>{% if e.contact and e.contact.email %}<a href="mailto:{{ e.contact.email }}">{{ e.contact.email }}</a>{% else %}—{% endif %}</dd></div>
+  <div><dt>Mobile</dt>
+    <dd>{% if e.contact and e.contact.mobile %}<a href="tel:{{ e.contact.mobile|replace(' ','') }}">{{ e.contact.mobile }}</a>{% else %}—{% endif %}</dd></div>
+  <div><dt>Source</dt><dd>{{ e.source or 'Manual' }}</dd></div>
+  <div><dt>Linked project</dt>
+    <dd>{% if e.linked_project %}<a href="{{ url_for('project_detail', id=e.linked_project.id) }}">{{ e.linked_project.name }}</a>{% else %}—{% endif %}</dd></div>
+</dl>
 
 <div class="rec-cols">
 
@@ -66,135 +82,110 @@
   <div class="rec-col">
 
     <!-- ── Contact details ── -->
-    <div class="box" id="contact-box">
+    {# Name, organisation, email, mobile. One email field, and no Call or
+       Write buttons: the details themselves are already links. #}
+    <div class="box box--grid" id="contact-box">
       <div class="box-head"><span class="box-title">Contact details</span></div>
       <div class="frow">
-        <div class="fcell fcell--label">Applicant</div>
+        <div class="fcell fcell--label">Name</div>
         <div class="fcell fcell--edit">
-          <select name="contact_id" data-search>
+          <select name="contact_id" data-search data-placeholder="Search contacts…">
             <option value="">— None —</option>
             {% for c in all_contacts %}
             <option value="{{ c.id }}" {{ 'selected' if e.contact_id == c.id }}>{{ contact_label(c) }}</option>
             {% endfor %}
           </select>
         </div>
-        <div class="fcell fcell--label">Record</div>
-        <div class="fcell">
-          {% if e.contact %}<a href="{{ url_for('contact_detail', id=e.contact.id) }}">{{ contact_label(e.contact) }}</a>
-          {% else %}<span style="color:var(--grey-400)">Not linked</span>{% endif %}
-        </div>
-      </div>
-      <div class="frow">
-        <div class="fcell fcell--label">Company</div>
+        <div class="fcell fcell--label">Organisation</div>
         <div class="fcell fcell--edit">
-          <select name="organisation_id" data-search>
+          <select name="organisation_id" data-search data-placeholder="Search organisations…">
             <option value="">— None —</option>
             {% for o in all_organisations %}
             <option value="{{ o.id }}" {{ 'selected' if e.organisation_id == o.id }}>{{ o.name }}</option>
             {% endfor %}
           </select>
         </div>
-        <div class="fcell fcell--label">Prefers</div>
-        <div class="fcell fcell--edit">
-          <select name="preferred_contact">
-            {% for opt in ['', 'Mobile', 'Email', 'Landline', 'Post'] %}
-            <option value="{{ opt }}" {{ 'selected' if (e.preferred_contact or '') == opt }}>{{ opt or 'Not stated' }}</option>
-            {% endfor %}
-          </select>
-        </div>
       </div>
       {% if e.contact %}
       <div class="frow">
+        <div class="fcell fcell--label">Email</div>
+        <div class="fcell fcell--edit">
+          <input type="email" name="contact_email" value="{{ e.contact.email or '' }}" placeholder="Not added">
+        </div>
         <div class="fcell fcell--label">Mobile</div>
-        <div class="fcell fcell--edit"><input type="tel" name="contact_mobile" value="{{ e.contact.mobile or '' }}" placeholder="Not added"></div>
-        <div class="fcell fcell--label">Call</div>
-        <div class="fcell">
-          {% if e.contact.mobile %}<a href="tel:{{ e.contact.mobile|replace(' ','') }}">{{ e.contact.mobile }}</a>
-          {% else %}<span style="color:var(--grey-400)">—</span>{% endif %}
+        <div class="fcell fcell--edit">
+          <input type="tel" name="contact_mobile" value="{{ e.contact.mobile or '' }}" placeholder="Not added">
         </div>
       </div>
-      <div class="frow">
-        <div class="fcell fcell--label">Email</div>
-        <div class="fcell fcell--edit"><input type="email" name="contact_email" value="{{ e.contact.email or '' }}" placeholder="Not added"></div>
-        <div class="fcell fcell--label">Write</div>
+      <div class="frow frow--full">
+        <div class="fcell fcell--label">Their record</div>
         <div class="fcell">
-          {% if e.contact.email %}<a href="mailto:{{ e.contact.email }}">{{ e.contact.email }}</a>
-          {% else %}<span style="color:var(--grey-400)">—</span>{% endif %}
+          <a href="{{ url_for('contact_detail', id=e.contact.id) }}">{{ contact_label(e.contact) }}</a>
+          <span class="fcell-hint">Read from their own record, so a change there shows here.</span>
         </div>
+      </div>
+      {% else %}
+      <div class="frow frow--full">
+        <div class="fcell fcell--label">Their details</div>
+        <div class="fcell is-empty">Link a contact above and their email and mobile appear here.</div>
       </div>
       {% endif %}
     </div>
 
-    <!-- ── Enquiry information ── -->
-    <div class="box" id="enquiry-box">
-      <div class="box-head"><span class="box-title">Enquiry information</span></div>
+    <!-- ── Filing ── -->
+    {# What the enquiry is filed as. No Subject: it is built from the type and
+       the property. No Property: the project carries it. #}
+    <div class="box box--grid" id="enquiry-box">
+      <div class="box-head"><span class="box-title">Filing</span></div>
       <div class="frow">
-        <div class="fcell fcell--label">Subject</div>
-        <div class="fcell fcell--edit" style="grid-column:span 3">
-          <input type="text" id="enq-subject" name="subject" value="{{ e.subject }}" placeholder="Leave blank to build from the type and property">
-        </div>
-      </div>
-      <div class="frow">
-        <div class="fcell fcell--label">Type</div>
+        <div class="fcell fcell--label">Inquiry type</div>
         <div class="fcell fcell--edit">
-          <input type="text" id="enq-type" name="enquiry_type" value="{{ e.enquiry_type or '' }}" placeholder="e.g. Agency — Letting">
-        </div>
-        <div class="fcell fcell--label">Source</div>
-        <div class="fcell fcell--edit"><input type="text" name="source" value="{{ e.source or '' }}" placeholder="Website, Zoopla…"></div>
-      </div>
-      <div class="frow">
-        <div class="fcell fcell--label">Property</div>
-        <div class="fcell fcell--edit">
-          <select id="enq-property" name="property_id" data-search>
-            <option value="">— None: general requirement —</option>
-            {% for p in all_properties %}
-            <option value="{{ p.id }}" {{ 'selected' if e.property_id == p.id }}>{{ p.address }}{% if p.postcode %}, {{ p.postcode }}{% endif %}</option>
+          <select name="enquiry_type">
+            <option value="">— Not set —</option>
+            {% for t in inquiry_type_options(e.enquiry_type) %}
+            <option value="{{ t }}" {{ 'selected' if e.enquiry_type == t }}>{{ t }}</option>
             {% endfor %}
           </select>
         </div>
-        <div class="fcell fcell--label">Record</div>
-        <div class="fcell">
-          {% if e.linked_property %}<a href="{{ url_for('property_detail', id=e.linked_property.id) }}">{{ e.linked_property.address }}</a>
-          {% else %}<span style="color:var(--grey-400)">Not linked</span>{% endif %}
+        <div class="fcell fcell--label">Source</div>
+        <div class="fcell fcell--edit">
+          <input type="text" name="source" value="{{ e.source or '' }}" placeholder="Website, Zoopla, Manual…">
         </div>
       </div>
       <div class="frow">
-        <div class="fcell fcell--label">Project</div>
+        <div class="fcell fcell--label">Link project</div>
         <div class="fcell fcell--edit">
-          <select name="project_id" data-search>
-            <option value="">— None —</option>
+          <select name="project_id" data-search data-placeholder="Search instructions…">
+            <option value="">— Not about a specific instruction —</option>
             {% for p in all_projects %}
-            <option value="{{ p.id }}" {{ 'selected' if e.project_id == p.id }}>{{ p.name }}</option>
+            <option value="{{ p.id }}" {{ 'selected' if e.project_id == p.id }}>
+              {{ p.name }}{% if p.property %} — {{ p.property.address }}{% endif %}
+            </option>
             {% endfor %}
           </select>
         </div>
         <div class="fcell fcell--label">Negotiator</div>
         <div class="fcell fcell--edit">{% set _people = fee_earners() %}
-      <select name="fee_earner_id">
-        {% if not (_people|length == 1 and not e.fee_earner_id) %}
-        <option value="">Not assigned</option>
-        {% endif %}
-        {% for _p in _people %}
-        <option value="{{ _p.id }}"
-                {{ 'selected' if (e.fee_earner_id and e.fee_earner_id|string == _p.id|string)
-                               or (not e.fee_earner_id and _people|length == 1) }}>
-          {{ _p.display_name }}
-        </option>
-        {% endfor %}
-      </select></div>
-      </div>
-      <div class="frow">
-        <div class="fcell fcell--label">Received</div>
-        <div class="fcell fcell--edit"><input type="date" name="received_date" value="{{ e.received_date.isoformat() if e.received_date else '' }}"></div>
-        <div class="fcell fcell--label">Logged</div>
-        <div class="fcell">{{ e.created_at.strftime('%d %b %Y, %H:%M') if e.created_at else '—' }}</div>
+          <select name="fee_earner_id">
+            {% if not (_people|length == 1 and not e.fee_earner_id) %}
+            <option value="">Not assigned</option>
+            {% endif %}
+            {% for _p in _people %}
+            <option value="{{ _p.id }}"
+                    {{ 'selected' if (e.fee_earner_id and e.fee_earner_id|string == _p.id|string)
+                                   or (not e.fee_earner_id and _people|length == 1) }}>
+              {{ _p.display_name }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
       </div>
       <div class="frow">
         <div class="fcell fcell--label">Status</div>
         <div class="fcell fcell--edit">
           <select name="status">
-            {% for s in ['Open', 'Won', 'Lost', 'On Hold'] %}
-            <option value="{{ s }}" {{ 'selected' if e.status == s }}>{{ s }}</option>
+            {% for st in ['Open', 'Won', 'Lost', 'On Hold'] %}
+            <option value="{{ st }}" {{ 'selected' if e.status == st }}>{{ st }}</option>
             {% endfor %}
           </select>
         </div>
@@ -207,6 +198,23 @@
           </select>
         </div>
       </div>
+      <div class="frow">
+        <div class="fcell fcell--label">Received</div>
+        <div class="fcell fcell--edit">
+          <input type="date" name="received_date" value="{{ e.received_date.isoformat() if e.received_date else '' }}">
+        </div>
+        <div class="fcell fcell--label">Logged</div>
+        <div class="fcell is-empty">{{ e.created_at.strftime('%d %b %Y, %H:%M') if e.created_at else '—' }}</div>
+      </div>
+      {% if e.linked_property %}
+      <div class="frow frow--full">
+        <div class="fcell fcell--label">Property</div>
+        <div class="fcell">
+          <a href="{{ url_for('property_detail', id=e.linked_property.id) }}">{{ e.linked_property.address }}</a>
+          <span class="fcell-hint">Taken from the linked instruction.</span>
+        </div>
+      </div>
+      {% endif %}
     </div>
 
     <!-- ── Property requirement ── -->
@@ -523,27 +531,4 @@
 <form id="del-note-{{ loop.index }}" method="post" action="{{ a.delete }}"></form>
 {% endif %}{% endfor %}
 
-<script>
-/* The subject follows the enquiry type and property until somebody writes
-   their own, matching how the new-enquiry form behaves. */
-(function () {
-  var subject = document.getElementById('enq-subject');
-  var type    = document.getElementById('enq-type');
-  var prop    = document.getElementById('enq-property');
-  if (!subject || !type || !prop) return;
-
-  function suggestion() {
-    var t = (type.value || '').trim() || 'Enquiry';
-    var p = prop.options[prop.selectedIndex];
-    var where = (p && p.value) ? p.textContent.trim() : '';
-    return where ? t + ' — ' + where : t;
-  }
-
-  var auto = subject.value.trim() === '' || subject.value.trim() === suggestion();
-  subject.addEventListener('input', function () { auto = subject.value.trim() === ''; });
-  function refresh() { if (auto) subject.value = suggestion(); }
-  type.addEventListener('input', refresh);
-  prop.addEventListener('change', refresh);
-})();
-</script>
 {% endblock %}

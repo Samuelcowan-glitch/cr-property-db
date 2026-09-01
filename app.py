@@ -5913,6 +5913,51 @@ ENQUIRY_FIELDS = [
 ENQUIRY_LINKS = ['property_id', 'contact_id', 'organisation_id', 'project_id']
 
 
+# What kind of enquiry this is — the field the register is organised around.
+# It covers both sides of the agency: people looking for space, and people
+# with space to let or sell.
+INQUIRY_TYPES = [
+    'Tenant — Looking to Rent',
+    'Buyer — Looking to Buy',
+    'Landlord — Looking to Let',
+    'Owner/Vendor — Looking to Sell',
+    'Existing Client',
+    'General Inquiry',
+    'Other',
+]
+
+# What the CRM used to offer. Nothing is rewritten — an old enquiry keeps the
+# type it was filed under, and that value is still offered on its own record so
+# saving it does not silently change it.
+INQUIRY_TYPES_LEGACY = [
+    'Valuation', 'Lease Advisory', 'Agency — Letting', 'Agency — Sale',
+    'Building Consultancy', 'Business Rates', 'Rent Review', 'Lease Renewal',
+]
+
+# Portal leads arrive as one of these two; they map onto the new list so a
+# Zoopla or Rightmove enquiry files itself under the right heading.
+PORTAL_TYPE_MAP = {
+    'Agency — Letting': 'Tenant — Looking to Rent',
+    'Agency — Sale': 'Buyer — Looking to Buy',
+}
+
+
+def inquiry_type_options(current=None):
+    """The types to offer, plus whatever this record already holds.
+
+    An enquiry filed years ago under "Rent Review" still shows Rent Review,
+    so opening and saving it cannot quietly reclassify it.
+    """
+    options = list(INQUIRY_TYPES)
+    if current and current not in options:
+        options.append(current)
+    return options
+
+
+app.jinja_env.globals['INQUIRY_TYPES'] = INQUIRY_TYPES
+app.jinja_env.globals['inquiry_type_options'] = inquiry_type_options
+
+
 def enquiry_subject(enquiry_type, prop):
     """The subject line an enquiry gets when nobody has written one.
 
@@ -5930,6 +5975,19 @@ def _save_enquiry_from_form(e, form):
     for key in ENQUIRY_LINKS:
         if key in form:
             setattr(e, key, _fint(form.get(key)))
+
+    # A project carries its own property, so linking one is enough.
+    if 'project_id' in form and e.project_id:
+        project = Project.query.get(e.project_id)
+        if project is not None:
+            e.property_id = project.property_id
+
+    # The organisation on an enquiry is the ENQUIRER's. If they are on record
+    # with a company and none was given, use theirs.
+    if e.contact_id and not e.organisation_id:
+        who = Contact.query.get(e.contact_id)
+        if who is not None:
+            e.organisation_id = getattr(who, 'organisation_id', None)
     # An empty subject is filled in from the type and property, the same way
     # the new-enquiry form does it as you type.
     if not (e.subject or '').strip():
@@ -6257,14 +6315,36 @@ def _parse_enquiry_form(form, e=None):
     def pd(v): return datetime.strptime(v, '%Y-%m-%d').date() if v else None
     def pf(v): return float(v.replace(',','')) if v and v.strip() else None
     def pi(v): return int(v) if v else None
+
+    # The enquiry is filed against a project. Its property comes from that
+    # project rather than being asked for a second time — the same
+    # relationship typed twice is how the two drift apart.
+    project_id = pi(form.get('project_id'))
+    project = Project.query.get(project_id) if project_id else None
+    property_id = project.property_id if project else pi(form.get('property_id'))
+
+    contact_id = pi(form.get('contact_id'))
+    organisation_id = pi(form.get('organisation_id'))
+    # Where the enquirer is already on record with a company, use theirs.
+    # This field is the enquirer's organisation — never Cowan & Rutter's, and
+    # never the organisation on the project being asked about.
+    if contact_id and not organisation_id:
+        who = Contact.query.get(contact_id)
+        if who is not None:
+            organisation_id = getattr(who, 'organisation_id', None)
+
     fields = dict(
-        subject=form['subject'],
+        # Never typed. Built from the type and the property so the list still
+        # reads as one line per enquiry, and kept on the record for the older
+        # enquiries and the reports that still refer to it.
+        subject=enquiry_subject(form.get('enquiry_type'),
+                                Property.query.get(property_id) if property_id else None),
         enquiry_type=form.get('enquiry_type'),
         status=form.get('status', 'Open'),
-        property_id=pi(form.get('property_id')),
-        contact_id=pi(form.get('contact_id')),
-        organisation_id=pi(form.get('organisation_id')),
-        project_id=pi(form.get('project_id')),
+        property_id=property_id,
+        contact_id=contact_id,
+        organisation_id=organisation_id,
+        project_id=project_id,
         fee_earner_id=_fid(form.get('fee_earner_id')),
         received_date=pd(form.get('received_date')),
         last_contact_date=pd(form.get('last_contact_date')),
@@ -6284,6 +6364,7 @@ def _parse_enquiry_form(form, e=None):
 
 
 @app.route('/enquiries/new', methods=['GET', 'POST'])
+@requires('create')
 def enquiry_new():
     properties = Property.query.order_by(Property.address).all()
     contacts = Contact.query.order_by(Contact.last_name).all()
@@ -6374,6 +6455,7 @@ def enquiry_detail(id):
 
 
 @app.route('/enquiries/<int:id>/edit', methods=['GET', 'POST'])
+@requires('edit')
 def enquiry_edit(id):
     e = Enquiry.query.get_or_404(id)
     properties = Property.query.order_by(Property.address).all()
@@ -6392,6 +6474,7 @@ def enquiry_edit(id):
 
 
 @app.route('/enquiries/<int:id>/log-contact', methods=['POST'])
+@requires('edit')
 def enquiry_log_contact(id):
     e = Enquiry.query.get_or_404(id)
     e.last_contact_date = date.today()
@@ -6405,6 +6488,7 @@ def enquiry_log_contact(id):
 
 
 @app.route('/enquiries/<int:id>/archive', methods=['POST'])
+@requires('edit')
 def enquiry_archive(id):
     """Put an enquiry away, or bring it back. Nothing is deleted."""
     e = Enquiry.query.get_or_404(id)

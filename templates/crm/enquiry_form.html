@@ -20,25 +20,14 @@
   <form method="post">
     <div class="form-grid" style="margin-bottom:16px">
 
+      {# The field the register turns on. There is no Subject: it is built from
+         this and the property, so nobody types a line of prose to file an
+         enquiry. #}
       <div class="form-group span-2">
-        <label for="subject" style="display:flex;align-items:center;gap:8px">
-          Subject *
-          <span id="subject-auto-hint" style="font-weight:400;font-size:11.5px;color:#9aa0a6" hidden>
-            filled in from Enquiry Type and Property — edit freely
-          </span>
-          <button type="button" id="subject-regen" class="btn btn-sm btn-outline"
-                  style="margin-left:auto" hidden>Regenerate</button>
-        </label>
-        <input type="text" id="subject" name="subject" required
-               value="{{ enquiry.subject if enquiry else '' }}"
-               placeholder="e.g. Rent Review enquiry — Unit 4 Industrial Estate">
-      </div>
-
-      <div class="form-group">
-        <label for="enquiry_type">Enquiry Type</label>
-        <select id="enquiry_type" name="enquiry_type">
+        <label for="enquiry_type">Inquiry Type *</label>
+        <select id="enquiry_type" name="enquiry_type" required>
           <option value="">— Select —</option>
-          {% for t in ['Valuation','Lease Advisory','Agency — Letting','Agency — Sale','Building Consultancy','Business Rates','Rent Review','Lease Renewal','Other'] %}
+          {% for t in inquiry_type_options(enquiry.enquiry_type if enquiry else none) %}
           <option value="{{ t }}" {{ 'selected' if enquiry and enquiry.enquiry_type == t else '' }}>{{ t }}</option>
           {% endfor %}
         </select>
@@ -79,23 +68,30 @@
 
       <hr class="divider" style="grid-column:span 2;margin:8px 0">
 
-      <div class="form-section">Link to Records</div>
+      <div class="form-section">Who and what it is about</div>
 
+      {# One relationship, not three. The project carries its own property, so
+         asking for that again is how the two end up disagreeing. #}
       <div class="form-group span-2">
-        <label for="property_id">Property</label>
-        <select id="property_id" name="property_id">
-          <option value="">— No property linked —</option>
-          {% for p in properties %}
-          <option value="{{ p.id }}" {{ 'selected' if enquiry and enquiry.property_id == p.id else '' }}>
-            {{ p.address }}, {{ p.postcode }}
+        <label for="project_id">Link Project</label>
+        <select id="project_id" name="project_id" data-search
+                data-placeholder="Search instructions…">
+          <option value="">— Not about a specific instruction —</option>
+          {% for p in projects %}
+          <option value="{{ p.id }}" {{ 'selected' if enquiry and enquiry.project_id == p.id else '' }}>
+            {{ p.name }}{% if p.property %} — {{ p.property.address }}{% endif %}
           </option>
           {% endfor %}
         </select>
+        <span class="form-hint">
+          The property and client are taken from the instruction. You do not
+          need to link them separately.
+        </span>
       </div>
 
       <div class="form-group">
-        <label for="contact_id">Contact</label>
-        <select id="contact_id" name="contact_id">
+        <label for="contact_id">Who is enquiring</label>
+        <select id="contact_id" name="contact_id" data-search data-placeholder="Search contacts…">
           <option value="">— No contact —</option>
           {% for c in contacts %}
           <option value="{{ c.id }}" {{ 'selected' if enquiry and enquiry.contact_id == c.id else '' }}>
@@ -106,23 +102,18 @@
       </div>
 
       <div class="form-group">
-        <label for="organisation_id">Organisation</label>
+        <label for="organisation_id">Their organisation</label>
         <select id="organisation_id" name="organisation_id">
           <option value="">— No organisation —</option>
           {% for o in organisations %}
           <option value="{{ o.id }}" {{ 'selected' if enquiry and enquiry.organisation_id == o.id else '' }}>{{ o.name }}</option>
           {% endfor %}
         </select>
-      </div>
-
-      <div class="form-group span-2">
-        <label for="project_id">Linked Project (if converted to instruction)</label>
-        <select id="project_id" name="project_id">
-          <option value="">— No project —</option>
-          {% for p in projects %}
-          <option value="{{ p.id }}" {{ 'selected' if enquiry and enquiry.project_id == p.id else '' }}>{{ p.name }}</option>
-          {% endfor %}
-        </select>
+        <span class="form-hint">
+          The company the enquirer works for &mdash; not ours, and not the
+          instruction&rsquo;s. Filled in automatically if they are already on
+          record with one.
+        </span>
       </div>
 
       <hr class="divider" style="grid-column:span 2;margin:8px 0">
@@ -236,70 +227,5 @@
   <form id="enquiry-delete-form" method="post" action="{{ url_for('enquiry_delete', id=enquiry.id) }}" class="confirm-delete"></form>
   {% endif %}
 </div>
-<script>
-/* Subject auto-fill — "Enquiry Type – Property".
-   Only fills once both values exist, and never overwrites something the user
-   has typed: editing the field marks it manual, clearing it hands control back,
-   and Regenerate forces a rebuild. */
-(function () {
-  var subject = document.getElementById('subject');
-  var typeSel = document.getElementById('enquiry_type');
-  var propSel = document.getElementById('property_id');
-  var hint    = document.getElementById('subject-auto-hint');
-  var regen   = document.getElementById('subject-regen');
-  if (!subject || !typeSel || !propSel) return;
-
-  // A subject saved earlier belongs to the user until they clear it.
-  var manual = subject.value.trim() !== '';
-  var lastAuto = null;
-
-  function propertyLabel() {
-    var opt = propSel.options[propSel.selectedIndex];
-    if (!propSel.value || !opt) return '';
-    // Option text is "address, postcode" — tidy up a missing half rather than
-    // producing "Subject – , SW6 4SE" or a trailing comma.
-    var parts = opt.text.split(',').map(function (p) { return p.trim(); })
-                   .filter(function (p) { return p.length; });
-    return parts.join(', ');
-  }
-
-  function build() {
-    var type = typeSel.value.trim();
-    var prop = propertyLabel();
-    if (!type || !prop) return null;
-    return type + ' \u2013 ' + prop;
-  }
-
-  function apply(force) {
-    var next = build();
-    regen.hidden = !next;
-    if (!next) { hint.hidden = true; return; }
-    if (!force && manual) { hint.hidden = true; return; }
-    subject.value = next;
-    lastAuto = next;
-    manual = false;
-    hint.hidden = false;
-  }
-
-  typeSel.addEventListener('change', function () { apply(false); });
-  propSel.addEventListener('change', function () { apply(false); });
-
-  subject.addEventListener('input', function () {
-    var v = subject.value.trim();
-    if (v === '') {          // cleared — let the auto-fill take over again
-      manual = false;
-      apply(false);
-    } else if (v !== lastAuto) {
-      manual = true;
-      hint.hidden = true;
-    }
-  });
-
-  regen.addEventListener('click', function () { apply(true); });
-
-  // Show Regenerate straight away when an edit already has both values.
-  regen.hidden = !build();
-})();
-</script>
 
 {% endblock %}
