@@ -8584,6 +8584,21 @@ def api_enquiry():
     transaction  = (data.get('transaction') or '').strip().lower()  # 'sale' or 'let'
     category     = (data.get('category')    or '').strip().lower()  # 'commercial' or 'residential'
 
+    # An enquiry from nobody, about nothing, is not an enquiry. Without this
+    # an empty POST created a blank record with no contact attached, which is
+    # both useless and a way for anyone to fill the register with noise.
+    # The rejection is deliberately quiet about what was wrong, so it cannot be
+    # used to probe the shape of the API.
+    if not raw_name and not email:
+        app.logger.info('Enquiry rejected: no name and no email from %s',
+                        _login_key())
+        return jsonify({'ok': False,
+                        'error': 'Please give your name and email address.'}), 400
+    if not (message or property_ref or interest.lower() != 'general enquiry'):
+        app.logger.info('Enquiry rejected: nothing asked from %s', _login_key())
+        return jsonify({'ok': False,
+                        'error': 'Please tell us what you are enquiring about.'}), 400
+
     # Determine the right contact type
     # "Arrange a viewing" from property listing → use transaction type
     # General enquiry from contact page → use interest field

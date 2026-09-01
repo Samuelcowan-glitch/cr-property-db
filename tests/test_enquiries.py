@@ -159,9 +159,9 @@ print("7. the instruction's own client is never used as the enquirer's company")
 with A.app.app_context():
     before = A.Enquiry.query.count()
 r = cl.post('/api/enquiry', json={
-    'name': 'Website Visitor', 'email': 'visitor@example.com',
+    'from_name': 'Website Visitor', 'from_email': 'visitor@example.com',
     'phone': '07700 900999', 'message': 'Interested in this unit.',
-    'property_id': IDS['prop']})
+    'interest': 'Arrange a viewing'})
 with A.app.app_context():
     after = A.Enquiry.query.count()
     web = A.Enquiry.query.order_by(A.Enquiry.id.desc()).first()
