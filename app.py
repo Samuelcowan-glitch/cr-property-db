@@ -1972,7 +1972,8 @@ def load_user(user_id):
 # listing_photo_image must be public so the website can display gallery photos
 # (the <img> requests are unauthenticated, just like /api/listings).
 _PUBLIC_ENDPOINTS = {'login', 'login_verify', 'logout', 'static', 'api_enquiry', 'api_listings', 'listing_photo_image',
-                     'listing_brochure_download', 'listing_floorplan_download'}
+                     'listing_brochure_download', 'listing_floorplan_download',
+                     'health'}
 
 
 
@@ -8826,7 +8827,10 @@ def listing_new(prop_id):
 
 @app.route('/health')
 def health():
-    return 'ok', 200
+    """Railway polls this after every deploy. It must answer 200 without a
+    session and without touching the database: anything else fails the
+    deployment even though the application itself is fine."""
+    return jsonify(status='ok'), 200
 
 
 @app.route('/api/listings')
