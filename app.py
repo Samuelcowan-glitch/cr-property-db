@@ -5643,12 +5643,92 @@ def contact_new():
     return render_template('crm/contact_form.html', contact=None, organisations=organisations)
 
 
+# What a contact may be recorded as. Deliberately two: this field says who
+# somebody is to us, not what they are currently doing. Whether they are a
+# buyer, a seller, a landlord or an applicant is answered by their actual
+# records — the properties they are the client for, and the applicant
+# requirements registered against them — not by a label typed here.
+CONTACT_TYPES = ['Client', 'Tenant']
+
+
+def contact_type_options(current=None):
+    """The two types, plus whatever this record already holds.
+
+    Contacts filed years ago as "Prospect" or "Enquiry" keep that, and it is
+    offered on their own record, so opening and saving cannot silently
+    reclassify somebody.
+    """
+    options = list(CONTACT_TYPES)
+    if current and current not in options:
+        options.append(current)
+    return options
+
+
+app.jinja_env.globals['CONTACT_TYPES'] = CONTACT_TYPES
+app.jinja_env.globals['contact_type_options'] = contact_type_options
+
+
+def linked_properties(contact):
+    """Properties this contact genuinely has a relationship with.
+
+    Read from the relationships the CRM already holds, so nothing is linked
+    twice and nothing has to be re-entered:
+
+      - the property records where they are the client, and
+      - the properties behind the instructions where they are the client.
+
+    This is NOT property matching. Nothing is suggested, scored or inferred
+    from what somebody might be looking for — an applicant's requirements are
+    a separate thing entirely and belong to the applicant, not to the contact.
+    Only a recorded relationship puts a property in this list.
+    """
+    if not contact:
+        return []
+
+    found = {}
+
+    def remember(prop, how, project=None):
+        if not prop:
+            return
+        entry = found.setdefault(prop.id, {
+            'property': prop, 'roles': [], 'projects': [],
+        })
+        if how not in entry['roles']:
+            entry['roles'].append(how)
+        if project is not None and project not in entry['projects']:
+            entry['projects'].append(project)
+
+    # Client on the property record itself.
+    for prop in Property.query.filter_by(client_contact_id=contact.id).all():
+        remember(prop, 'Client')
+
+    # Client on an instruction, which carries its own property.
+    for project in Project.query.filter_by(client_contact_id=contact.id).all():
+        if project.property:
+            remember(project.property, 'Client', project)
+
+    rows = sorted(found.values(),
+                  key=lambda r: (r['property'].address or '').lower())
+    for row in rows:
+        live = [p for p in row['projects'] if p.instruction_type]
+        row['instruction'] = live[0].instruction_type if live else None
+        row['project'] = live[0] if live else (row['projects'][0] if row['projects'] else None)
+        row['status'] = (row['project'].status if row['project'] else None)
+    return rows
+
+
+app.jinja_env.globals['linked_properties'] = linked_properties
+
+
 @app.route('/contacts/<int:id>')
 def contact_detail(id):
     contact = Contact.query.get_or_404(id)
+    # No property matching here. A contact is a person, not a requirement:
+    # matching belongs to an applicant, where the budget, size, area and
+    # tenure are actually known.
     return render_template('crm/contact_detail.html',
                            all_organisations=Organisation.query.order_by(Organisation.name).all(),
-                           matched_properties=match_properties_to_contact(contact),
+                           linked=linked_properties(contact),
                            contact=contact)
 
 

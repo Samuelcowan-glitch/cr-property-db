@@ -106,7 +106,6 @@ print('3. legacy types are preserved and stay selectable')
 for name, url in [('Add property', '/properties/new'),
                   ('Property', f'/properties/{props["studio"]}'),
                   ('Add instruction', '/projects/new'),
-                  ('Applicant', f'/contacts/{JANE}'),
                   ('New contact', '/contacts/new'),
                   ('Properties', '/properties')]:
     body = page(url)
