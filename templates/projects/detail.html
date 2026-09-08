@@ -158,7 +158,7 @@
   
     <!-- ══ Photos — bottom-left, collapsed until clicked ══ -->
     {% if lst %}
-    <div class="box photo-box" data-photo-manager data-listing="{{ lst.id }}"
+    <div class="box photo-box" data-keep-scroll data-photo-manager data-listing="{{ lst.id }}"
          {% if lst.photos %}{{ pg.opens_gallery(lst.photos, project.name) }}{% endif %}>
       <div class="box-head">
         <button type="button" data-photo-toggle aria-expanded="false">
@@ -718,23 +718,23 @@
             {% if loop.first %}
             <span style="position:absolute;top:4px;left:4px;background:#e0303f;color:#fff;font-size:9px;font-weight:700;letter-spacing:.06em;padding:2px 6px;border-radius:3px;text-transform:uppercase">Cover</span>
             {% endif %}
-            <form method="post" action="{{ url_for('listing_photo_delete', id=ph.id) }}" style="position:absolute;top:4px;right:4px">
+            <form method="post" data-keep-scroll action="{{ url_for('listing_photo_delete', id=ph.id) }}" style="position:absolute;top:4px;right:4px">
               <button type="submit" title="Delete photo" style="background:rgba(0,0,0,.6);border:none;color:#fff;border-radius:4px;width:22px;height:22px;cursor:pointer;font-size:12px">&times;</button>
             </form>
             <div style="position:absolute;bottom:0;left:0;right:0;display:flex;gap:1px;background:rgba(0,0,0,.35)">
-              <form method="post" action="{{ url_for('listing_photo_reorder', id=ph.id) }}" style="flex:0 0 auto">
+              <form method="post" data-keep-scroll action="{{ url_for('listing_photo_reorder', id=ph.id) }}" style="flex:0 0 auto">
                 <input type="hidden" name="action" value="left">
                 <button type="submit" title="Move left" {{ 'disabled' if loop.first }} style="background:none;border:none;color:{{ '#6b7280' if loop.first else '#fff' }};cursor:pointer;padding:3px 7px;font-size:12px">&#9664;</button>
               </form>
               {% if not loop.first %}
-              <form method="post" action="{{ url_for('listing_photo_reorder', id=ph.id) }}" style="flex:1 1 auto">
+              <form method="post" data-keep-scroll action="{{ url_for('listing_photo_reorder', id=ph.id) }}" style="flex:1 1 auto">
                 <input type="hidden" name="action" value="cover">
                 <button type="submit" title="Make this the cover photo" style="width:100%;background:none;border:none;color:#fff;cursor:pointer;padding:3px 4px;font-size:10px;font-weight:600">Make cover</button>
               </form>
               {% else %}
               <span style="flex:1 1 auto"></span>
               {% endif %}
-              <form method="post" action="{{ url_for('listing_photo_reorder', id=ph.id) }}" style="flex:0 0 auto">
+              <form method="post" data-keep-scroll action="{{ url_for('listing_photo_reorder', id=ph.id) }}" style="flex:0 0 auto">
                 <input type="hidden" name="action" value="right">
                 <button type="submit" title="Move right" {{ 'disabled' if loop.last }} style="background:none;border:none;color:{{ '#6b7280' if loop.last else '#fff' }};cursor:pointer;padding:3px 7px;font-size:12px">&#9654;</button>
               </form>
@@ -745,7 +745,7 @@
         {% else %}
         <div style="font-size:12.5px;color:#9aa0a6;margin-bottom:14px">No photos yet — upload images below to build the gallery shown on the website.</div>
         {% endif %}
-        <form method="post" action="{{ url_for('listing_photo_upload', id=lst.id) }}" enctype="multipart/form-data" style="border:2px dashed #d1d5db;border-radius:8px;padding:20px;text-align:center;background:#fafafa">
+        <form method="post" data-keep-scroll action="{{ url_for('listing_photo_upload', id=lst.id) }}" enctype="multipart/form-data" style="border:2px dashed #d1d5db;border-radius:8px;padding:20px;text-align:center;background:#fafafa">
           <div style="font-size:22px;margin-bottom:8px">&#128247;</div>
           <div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Add Photos</div>
           <div style="font-size:11.5px;color:#9aa0a6;margin-bottom:10px">JPG, PNG or WEBP — you can select multiple files</div>
@@ -810,11 +810,11 @@
 <form id="task-add-form" method="post" action="{{ url_for('task_add', id=project.id) }}"></form>
 {% if lst %}
 <form id="publish-form" method="post"></form>
-<form id="photo-upload-form" method="post" enctype="multipart/form-data" data-upload-form
+<form id="photo-upload-form" data-keep-scroll method="post" enctype="multipart/form-data" data-upload-form
       action="{{ url_for('listing_photo_upload', id=lst.id) }}">
   <input type="hidden" name="next" value="{{ url_for('project_detail', id=project.id) }}">
 </form>
-<form id="photo-delete-form" method="post" class="confirm-delete">
+<form id="photo-delete-form" data-keep-scroll method="post" class="confirm-delete">
   <input type="hidden" name="next" value="{{ url_for('project_detail', id=project.id) }}">
 </form>
 {% endif %}

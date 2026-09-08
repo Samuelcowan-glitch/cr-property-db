@@ -76,7 +76,7 @@
   </div>
 
   {% set shots = property_photographs(prop) %}
-  <div class="box photo-box is-open"
+  <div class="box photo-box is-open" data-keep-scroll
        {% if shots %}{{ pg.opens_gallery(shots, prop.address) }}{% endif %}>
     <div class="box-head">
       Photos <span style="font-weight:400;color:#5f6368">({{ shots|length }})</span>

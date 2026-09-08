@@ -249,8 +249,14 @@ def draw_image(canvas, source, x, y, w, h, fit=False):
         return False
 
 
-def draw_logo(canvas, x, y, height=58):
-    """The company mark, at its own proportions."""
+# The mark is drawn at one size on every page. It was 52pt on the cover, 72pt
+# beside the contact details and 22pt in the footer, which made four pages of
+# one document look like three different ones.
+LOGO_HEIGHT = 46
+
+
+def draw_logo(canvas, x, y, height=LOGO_HEIGHT):
+    """The company mark, at one size and its own proportions."""
     if not os.path.exists(LOGO):
         return 0
     try:
@@ -350,7 +356,7 @@ def cover_page(canvas, data):
     # Centred on the PAGE, not on the space left beside the mark, so the group
     # does not shift as the logo or the floor area changes.
     centre = PW / 2
-    logo_w = 52 * 1.45
+    logo_w = LOGO_HEIGHT * 1.45
     size_w = (canvas.stringWidth(size_line, face('regular'), 10.5)
               if size_line else 0)
     # Clear of the mark on one side and the floor area on the other, by the
@@ -378,7 +384,7 @@ def cover_page(canvas, data):
 
     top = band - (band - height) / 2
     middle = top - height / 2
-    draw_logo(canvas, MARGIN, middle - 26, height=52)
+    draw_logo(canvas, MARGIN, middle - LOGO_HEIGHT / 2)
     cover_heading(canvas, address, strapline, left, right, top)
 
     if size_line:
@@ -503,7 +509,7 @@ def contact_block(canvas, x, y, w, data):
         canvas.drawRightString(text_right, line, clean(text))
         line -= 13
 
-    draw_logo(canvas, right - logo_w, y - 74, height=72)
+    draw_logo(canvas, right - logo_w, y - 74 + (72 - LOGO_HEIGHT) / 2)
     return line
 
 
@@ -578,6 +584,10 @@ def detail_page(canvas, data, photos):
     disclaimer_block(canvas, right_x, 30, right_w)
 
 
+FOOTER_BASE = 16                      # where the mark sits
+FOOTER_TOP = FOOTER_BASE + LOGO_HEIGHT + 12   # the rule above it
+
+
 def page_footer(canvas, data, page_no):
     """The mark, the address and the page number, along the foot of a page.
 
@@ -586,19 +596,20 @@ def page_footer(canvas, data, page_no):
     """
     canvas.setStrokeColor(RULE)
     canvas.setLineWidth(0.6)
-    canvas.line(MARGIN, 44, PW - MARGIN, 44)
+    canvas.line(MARGIN, FOOTER_TOP, PW - MARGIN, FOOTER_TOP)
 
-    logo_w = draw_logo(canvas, MARGIN, 16, height=22)
+    logo_w = draw_logo(canvas, MARGIN, FOOTER_BASE)
     canvas.setFont(face('regular'), 8)
     canvas.setFillColor(MUTED)
     address = clean(data.get('address'))
+    middle = FOOTER_BASE + LOGO_HEIGHT / 2 - 3
     if address:
         room = PW - MARGIN * 2 - logo_w - 80
         while canvas.stringWidth(address, face('regular'), 8) > room and len(address) > 8:
             address = address[:-2]
-        canvas.drawString(MARGIN + logo_w + 18, 24, address)
+        canvas.drawString(MARGIN + logo_w + 18, middle, address)
     if page_no:
-        canvas.drawRightString(PW - MARGIN, 24, str(page_no))
+        canvas.drawRightString(PW - MARGIN, middle, str(page_no))
 
 
 def page_title(canvas, text):
@@ -645,7 +656,7 @@ def gallery_layout(photos):
         return []
     left, right = MARGIN, PW - MARGIN
     top = PH - MARGIN - 34
-    bottom = 56
+    bottom = FOOTER_TOP + 10
     w, h = right - left, top - bottom
     gap = 12
     shapes = [_orientation(p) for p in photos]
@@ -736,7 +747,7 @@ def floorplan_page(canvas, data, floorplans, page_no=4):
     floorplans = [f for f in (floorplans or []) if f][:2]
     cursor = page_title(canvas, 'Floorplan')
     left, right = MARGIN, PW - MARGIN
-    bottom, top = 56, cursor - 6
+    bottom, top = FOOTER_TOP + 10, cursor - 6
 
     if not floorplans:
         canvas.setFont(face('regular'), 10.5)
