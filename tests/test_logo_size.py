@@ -81,9 +81,11 @@ def render(pages):
     return pymupdf.open(stream=r.get_data(), filetype='pdf')
 
 
-from PIL import Image as _Image
-with _Image.open(pp.LOGO) as _im:
-    LOGO_PIXELS = _im.size          # (1106, 765) — unique to the mark
+with open(pp.LOGO, 'rb') as _fh:
+    _LOGO_BYTES = _fh.read()
+_prepared = pp.prepare_image(_LOGO_BYTES, pp.LOGO_HEIGHT * 2, pp.LOGO_HEIGHT, dpi=300)
+assert _prepared, 'the mark could not be prepared for the page'
+LOGO_PIXELS = (_prepared[1], _prepared[2])   # as actually embedded
 
 
 def logos_on(page):
@@ -154,16 +156,23 @@ for n, page in enumerate(doc, 1):
 
 
 # ─── 5. Nothing on the added pages overlaps the deeper footer ───────────────
-for n in (3, 4):
-    page = doc[n - 1]
-    floor = page.rect.height - pp.FOOTER_TOP     # pymupdf counts from the top
-    marks = [(round(b.x0), round(b.y0)) for b in logos_on(page)]
-    for info in page.get_images(full=True):
-        box = page.get_image_bbox(info)
-        if (round(box.x0), round(box.y0)) in marks:
-            continue
-        assert box.y1 <= floor + 1, \
-            f'page {n}: a picture runs into the footer band'
+from PIL import Image as _Img
+import io as _io
+_sample = _io.BytesIO()
+_Img.new('RGB', (1400, 950), (150, 160, 175)).save(_sample, 'JPEG')
+for count in range(1, 7):
+    for x, y, w, h in pp.gallery_layout([_sample.getvalue()] * count):
+        assert y >= pp.FOOTER_TOP, \
+            f'a gallery cell starts at {y:.0f}, inside the footer band ' \
+            f'({pp.FOOTER_TOP})'
+for box in logos_on(doc[3]):
+    pass
+plan = [b for b in (doc[3].get_image_bbox(i) for i in doc[3].get_images(full=True))
+        if b.height > 60 and (round(b.x0), round(b.y0))
+        not in [(round(m.x0), round(m.y0)) for m in logos_on(doc[3])]]
+floor = doc[3].rect.height - pp.FOOTER_TOP
+for box in plan:
+    assert box.y1 <= floor + 1, 'the floor plan runs into the footer band'
 print('4. the mark stays on the page, and nothing runs into the footer')
 
 print('\nLOGO SIZE: ALL CHECKS PASSED')

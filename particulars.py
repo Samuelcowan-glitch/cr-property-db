@@ -14,6 +14,7 @@ an empty box or a placeholder.
 The text is real text — selectable, searchable and embedded — not a picture of
 a page.
 """
+import hashlib
 import io
 import os
 import re
@@ -21,6 +22,7 @@ from datetime import date
 
 from reportlab.lib.colors import Color, HexColor, white
 from reportlab.lib.pagesizes import A4, landscape
+from PIL import Image as PILImage
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
@@ -212,6 +214,76 @@ def draw_heading(canvas, text, x, y, size=11, colour=NAVY):
     return y - size - 4
 
 
+# ── Preparing an image for the page ──────────────────────────────────────────
+# Photographs come off a phone at 4000x3000 and nine megabytes. Embedded as
+# they are, a four-page brochure came to eighty megabytes and could not be
+# attached to an email. Nothing on an A4 page needs that: a full-bleed cover
+# photograph is 842pt wide, which at 150 dpi is about 1750 pixels.
+#
+# Each image is therefore resized to the size it is actually drawn at, and the
+# result is cached — so a photograph used twice is stored once, and the mark,
+# which appears on every page, is stored once for the whole document.
+
+PHOTO_DPI = 150      # plenty for screen, and good for print at this size
+PLAN_DPI = 200       # a floorplan's room names and dimensions must stay legible
+JPEG_QUALITY = 82
+
+_PREPARED = {}       # (digest, px_w, px_h) -> ImageReader, reused by ReportLab
+
+
+def _as_pil(source):
+    """Open whatever was uploaded as an image.
+
+    A floorplan is very often a PDF — it is what a surveyor sends — and
+    ReportLab cannot read one, which is why an uploaded plan used to come out
+    as a grey box. The first page is rasterised instead.
+    """
+    data = source if isinstance(source, bytes) else source.read()
+    if data[:5] == b'%PDF-':
+        import pymupdf
+        with pymupdf.open(stream=data, filetype='pdf') as doc:
+            if not doc.page_count:
+                raise ValueError('the PDF has no pages')
+            pix = doc[0].get_pixmap(dpi=PLAN_DPI)
+            return PILImage.open(io.BytesIO(pix.tobytes('png'))).convert('RGB')
+    return PILImage.open(io.BytesIO(data))
+
+
+def prepare_image(source, target_w_pt, target_h_pt, dpi=PHOTO_DPI):
+    """An ImageReader sized for where it is going, cached so it embeds once.
+
+    Returns (reader, width_px, height_px), or None if the file cannot be read.
+    """
+    data = source if isinstance(source, bytes) else source.read()
+    want_w = max(1, int(target_w_pt * dpi / 72))
+    want_h = max(1, int(target_h_pt * dpi / 72))
+    key = (hashlib.sha1(data).hexdigest(), want_w, want_h)
+    if key in _PREPARED:
+        return _PREPARED[key]
+
+    try:
+        im = _as_pil(data)
+    except Exception:
+        return None
+
+    # Only ever downwards: a small image is left alone rather than blown up.
+    if im.width > want_w or im.height > want_h:
+        im = im.copy()
+        im.thumbnail((want_w, want_h), PILImage.LANCZOS)
+
+    buf = io.BytesIO()
+    if im.mode in ('RGBA', 'LA', 'P'):
+        # The mark has transparency, so it stays a PNG.
+        im.convert('RGBA').save(buf, 'PNG', optimize=True)
+    else:
+        im.convert('RGB').save(buf, 'JPEG', quality=JPEG_QUALITY, optimize=True,
+                               progressive=True)
+    buf.seek(0)
+    prepared = (ImageReader(buf), im.width, im.height)
+    _PREPARED[key] = prepared
+    return prepared
+
+
 def draw_image(canvas, source, x, y, w, h, fit=False):
     """Draw an image in the box, keeping its proportions.
 
@@ -225,28 +297,28 @@ def draw_image(canvas, source, x, y, w, h, fit=False):
     """
     if not source:
         return False
-    try:
-        reader = ImageReader(io.BytesIO(source) if isinstance(source, bytes)
-                             else source)
-        iw, ih = reader.getSize()
-        if not iw or not ih:
-            return False
-        scale = (min if fit else max)(w / iw, h / ih)
-        dw, dh = iw * scale, ih * scale
-        canvas.saveState()
-        if not fit:
-            path = canvas.beginPath()
-            path.rect(x, y, w, h)
-            canvas.clipPath(path, stroke=0, fill=0)
-        canvas.drawImage(reader, x + (w - dw) / 2, y + (h - dh) / 2,
-                         width=dw, height=dh, mask='auto')
-        canvas.restoreState()
-        return True
-    except Exception:
-        # A photograph that will not read must not stop the brochure.
+    # Sized for the box it is going into, at the resolution that box deserves.
+    prepared = prepare_image(source, w, h, dpi=PLAN_DPI if fit else PHOTO_DPI)
+    if prepared is None:
+        # Something that will not read at all must not stop the brochure.
         canvas.setFillColor(PANEL_GREY)
         canvas.rect(x, y, w, h, stroke=0, fill=1)
         return False
+
+    reader, iw, ih = prepared
+    if not iw or not ih:
+        return False
+    scale = (min if fit else max)(w / iw, h / ih)
+    dw, dh = iw * scale, ih * scale
+    canvas.saveState()
+    if not fit:
+        path = canvas.beginPath()
+        path.rect(x, y, w, h)
+        canvas.clipPath(path, stroke=0, fill=0)
+    canvas.drawImage(reader, x + (w - dw) / 2, y + (h - dh) / 2,
+                     width=dw, height=dh, mask='auto')
+    canvas.restoreState()
+    return True
 
 
 # The mark is drawn at one size on every page. It was 52pt on the cover, 72pt
@@ -260,8 +332,14 @@ def draw_logo(canvas, x, y, height=LOGO_HEIGHT):
     if not os.path.exists(LOGO):
         return 0
     try:
-        reader = ImageReader(LOGO)
-        iw, ih = reader.getSize()
+        with open(LOGO, 'rb') as fh:
+            data = fh.read()
+        # Drawn on every page, so it is prepared once and reused rather than
+        # embedded afresh each time.
+        prepared = prepare_image(data, height * 2, height, dpi=300)
+        if not prepared:
+            return 0
+        reader, iw, ih = prepared
         width = height * iw / ih
         canvas.drawImage(reader, x, y, width=width, height=height, mask='auto')
         return width
