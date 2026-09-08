@@ -284,7 +284,29 @@
          even with scripting off. #}
       <div class="box box--grid" id="solicitors-box"
            {{ 'hidden' if t.agreement_type == 'Licence' }}>
-        <div class="box-head">7. Solicitors</div>
+        <div class="box-head">7. Solicitors and progress</div>
+        {# Between terms agreed and completion a deal is a chasing job. The
+           next call is what puts it on the Organiser. #}
+        <div class="frow">
+          <div class="fcell fcell--label">Next call</div>
+          <div class="fcell fcell--edit">
+            <input type="date" name="next_call" form="trx-form"
+                   value="{{ t.next_call.isoformat() if t.next_call else '' }}">
+          </div>
+          <div class="fcell fcell--label">Target completion</div>
+          <div class="fcell fcell--edit">
+            <input type="date" name="target_completion" form="trx-form"
+                   value="{{ t.target_completion.isoformat() if t.target_completion else '' }}">
+          </div>
+        </div>
+        <div class="frow frow--full">
+          <div class="fcell fcell--label">What to chase</div>
+          <div class="fcell fcell--edit">
+            <input name="next_call_note" form="trx-form"
+                   value="{{ t.next_call_note or '' }}"
+                   placeholder="e.g. chase replies to enquiries">
+          </div>
+        </div>
         <div class="frow">
           <div class="fcell fcell--label">Our client's</div>
           <div class="fcell fcell--edit">

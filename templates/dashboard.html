@@ -41,6 +41,65 @@
   <!-- ════ LEFT: what is on the market ════ -->
   <div class="org-col">
 
+    {# Deals between terms agreed and completion. Before that they are still
+       being negotiated; after it they are a billing matter, which the
+       Transactions page already tracks. #}
+    <section class="org-panel prog-panel">
+      <header>
+        <span>Progressing to completion <span class="count">({{ progression.total }})</span></span>
+        <a href="{{ url_for('transactions_list') }}">All transactions</a>
+      </header>
+
+      {% if progression.total %}
+      <div class="prog-summary">
+        {% for stage in PROGRESSION_STAGES %}
+        <span class="prog-chip">
+          <strong>{{ progression.by_stage[stage] }}</strong> {{ stage }}
+        </span>
+        {% endfor %}
+        {% if progression.overdue %}
+        <span class="prog-chip is-overdue"><strong>{{ progression.overdue }}</strong> call overdue</span>
+        {% endif %}
+        {% if progression.due_today %}
+        <span class="prog-chip is-today"><strong>{{ progression.due_today }}</strong> to call today</span>
+        {% endif %}
+        {% if progression.unscheduled %}
+        <span class="prog-chip is-quiet"><strong>{{ progression.unscheduled }}</strong> with no call booked</span>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      <div class="org-body">
+        {% for t in progression.deals[:8] %}
+        <a class="prog-row" href="{{ url_for('transaction_detail', id=t.id) }}">
+          <span class="prog-main">
+            <span class="prog-addr">
+              {{ t.property.address if t.property else 'Property not linked' }}
+            </span>
+            <span class="prog-meta">
+              {{ t.stage }}
+              {%- if t.transaction_type %} &middot; {{ 'Sale' if t.transaction_type == 'Capital' else 'Letting' }}{% endif %}
+              {%- if t.client_solicitor_firm %} &middot; {{ t.client_solicitor_firm }}{% endif %}
+            </span>
+          </span>
+          <span class="prog-when
+                       {{ 'is-overdue' if t.next_call and t.next_call < today
+                          else ('is-today' if t.next_call == today else '') }}">
+            {% if t.next_call %}
+              {% if t.next_call < today %}Overdue {{ t.next_call.strftime('%d %b') }}
+              {% elif t.next_call == today %}Call today
+              {% else %}{{ t.next_call.strftime('%d %b') }}{% endif %}
+            {% else %}No call booked{% endif %}
+          </span>
+        </a>
+        {% else %}
+        <div class="org-empty">
+          Nothing between terms agreed and completion at the moment.
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+
     <section class="org-panel">
       <header>
         <span>For Sale &ndash; Available <span class="count">({{ for_sale|length }})</span></span>

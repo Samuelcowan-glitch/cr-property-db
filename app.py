@@ -645,6 +645,14 @@ class Transaction(db.Model):
     # These carry the money. Nothing here is derived and stored: the
     # commission, VAT, invoice total and outstanding balance are all worked
     # out from these on the way out, so a figure can never go stale.
+    # ── Progressing the deal ──
+    # A sale or letting between terms agreed and completion is a chasing job.
+    # The solicitors are already recorded below; what was missing is when to
+    # chase next, and what completion is being aimed at.
+    next_call         = db.Column(db.Date, index=True)
+    next_call_note    = db.Column(db.String(255))
+    target_completion = db.Column(db.Date)
+
     reference         = db.Column(db.String(30), index=True)  # TR-0001
     status            = db.Column(db.String(30), default='Draft', index=True)
     fee_earner        = db.Column(db.String(120), index=True)   # kept: what was typed before
@@ -2472,6 +2480,51 @@ def diary_event_delete(id):
     return delete_record(ev, 'Appointment', 'diary')
 
 
+# Where a deal is between agreeing terms and completing. Everything before
+# Terms Agreed is still being negotiated; everything after Completed is a
+# billing matter, which the Transactions page already tracks.
+PROGRESSION_STAGES = ['Terms Agreed', 'Solicitors Instructed']
+
+
+def progression_deals(limit=None):
+    """Sales and lettings in the run-up to completion, most urgent first.
+
+    Ordered by when they next need chasing: anything overdue, then by date,
+    then the ones with no date set at all — because a deal nobody has put a
+    date against is the one that goes quiet.
+    """
+    deals = (Transaction.query
+             .filter(Transaction.status.in_(PROGRESSION_STAGES))
+             .all())
+    today = date.today()
+
+    def urgency(t):
+        if t.next_call is None:
+            return (2, date.max)          # no date set — after the dated ones
+        return (0 if t.next_call <= today else 1, t.next_call)
+
+    deals.sort(key=urgency)
+    return deals[:limit] if limit else deals
+
+
+def progression_summary():
+    """A count per stage, and how many are overdue a call."""
+    today = date.today()
+    deals = progression_deals()
+    return {
+        'deals': deals,
+        'total': len(deals),
+        'by_stage': {stage: sum(1 for d in deals if d.status == stage)
+                     for stage in PROGRESSION_STAGES},
+        'overdue': sum(1 for d in deals if d.next_call and d.next_call < today),
+        'due_today': sum(1 for d in deals if d.next_call == today),
+        'unscheduled': sum(1 for d in deals if not d.next_call),
+    }
+
+
+app.jinja_env.globals['PROGRESSION_STAGES'] = PROGRESSION_STAGES
+
+
 @app.route('/')
 def dashboard():
     prop_count = Property.query.count()
@@ -2479,6 +2532,7 @@ def dashboard():
     proj_count = Project.query.count()
     contacts = Contact.query.order_by(Contact.created_at.desc()).limit(20).all()
     today = date.today()
+    progression = progression_summary()
 
     # Today's diary, in London time. An appointment is shown if any part of it
     # falls today, so something running from yesterday evening still appears.
@@ -2531,6 +2585,7 @@ def dashboard():
     contact_count = Contact.query.count()
 
     return render_template('dashboard.html',
+                           progression=progression,
                            todays_diary=todays_diary,
                            to_let=to_let, for_sale=for_sale, appraisals=appraisals,
                            landlords_to_call=landlords_to_call, diary_items=diary_items,
@@ -5878,6 +5933,9 @@ CONTACT_FIELDS = [
 
 
 TRANSACTION_FIELDS = [
+    ('next_call',          'next_call',          _parse_date),
+    ('next_call_note',     'next_call_note',     _ftext),
+    ('target_completion',  'target_completion',  _parse_date),
     ('fee_earner_id',      'fee_earner_id',      _fid),
     ('reference',          'reference',          _ftext),
     ('status',             'status',             _ftext),
@@ -9805,6 +9863,19 @@ def _link_fee_earners():
             'ambiguous': sorted(ambiguous)}
 
 
+def _migrate_progression_columns():
+    """When to chase a transaction next, and the completion being aimed at.
+
+    TEXT and DATE only, both of which Postgres and SQLite read the same way.
+    """
+    with app.app_context():
+        _add_columns('transactions', [
+            ('next_call',         'DATE'),
+            ('next_call_note',    'TEXT'),
+            ('target_completion', 'DATE'),
+        ])
+
+
 def _migrate_rates_tables():
     """Business rates: the property's council and its confirmed figure.
 
@@ -9863,6 +9934,7 @@ if __name__ == '__main__':
         _migrate_email_columns()
         _migrate_crm_columns()
         _migrate_rates_tables()
+        _migrate_progression_columns()
         _ensure_default_user()
         if Property.query.count() == 0:
             import import_listings  # seeds the 32 website properties

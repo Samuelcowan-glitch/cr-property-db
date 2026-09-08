@@ -1884,3 +1884,41 @@ body.pg-open { overflow: hidden; }
   margin: 0; padding: 9px 14px; font-size: 11.5px; line-height: 1.5;
   color: var(--grey-600); border-top: 1px solid var(--grey-200);
 }
+
+/* ── Progressing to completion ─────────────────────────────────────────────
+   Deals between terms agreed and completion, ordered by what needs chasing. */
+.prog-summary {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  padding: 9px 14px; border-bottom: 1px solid var(--grey-200);
+}
+.prog-chip {
+  font-size: 11.5px; padding: 2px 9px; border-radius: 3px;
+  background: var(--grey-100); color: var(--grey-700);
+}
+.prog-chip strong { color: var(--navy); font-weight: var(--w-heading); }
+.prog-chip.is-overdue { background: #fdf0ef; color: #8c2f26; }
+.prog-chip.is-overdue strong { color: #8c2f26; }
+.prog-chip.is-today   { background: #fdf3e3; color: #8a5a12; }
+.prog-chip.is-today strong { color: #8a5a12; }
+.prog-chip.is-quiet   { background: var(--grey-100); color: var(--grey-600); }
+
+.prog-row {
+  display: flex; align-items: center; gap: 12px; justify-content: space-between;
+  padding: 10px 14px; text-decoration: none; color: inherit;
+  border-bottom: 1px solid var(--grey-200); transition: background .15s;
+}
+.prog-row:last-child { border-bottom: 0; }
+.prog-row:hover { background: var(--grey-050); }
+.prog-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.prog-addr {
+  font-size: 13px; font-weight: var(--w-heading); color: var(--navy);
+  overflow-wrap: anywhere;
+}
+.prog-meta { font-size: 11.5px; color: var(--grey-600); }
+.prog-when {
+  flex: none; font-size: 11.5px; color: var(--grey-600);
+  white-space: nowrap; padding: 2px 8px; border-radius: 3px;
+  background: var(--grey-100);
+}
+.prog-when.is-overdue { background: #fdf0ef; color: #8c2f26; font-weight: var(--w-heading); }
+.prog-when.is-today   { background: #fdf3e3; color: #8a5a12; font-weight: var(--w-heading); }
