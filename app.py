@@ -8982,8 +8982,20 @@ def listing_new(prop_id):
 def health():
     """Railway polls this after every deploy. It must answer 200 without a
     session and without touching the database: anything else fails the
-    deployment even though the application itself is fine."""
-    return jsonify(status='ok'), 200
+    deployment even though the application itself is fine.
+
+    It also reports when this copy of the code was built. Twice now it has
+    been unclear whether a change was actually running, and the guessing cost
+    more than the fix — a deploy that fails leaves the previous one serving
+    perfectly, so the site looks fine either way.
+    """
+    built = None
+    try:
+        built = datetime.utcfromtimestamp(
+            os.path.getmtime(os.path.abspath(__file__))).isoformat(timespec='seconds')
+    except Exception:
+        pass
+    return jsonify(status='ok', built=built), 200
 
 
 @app.route('/api/listings')

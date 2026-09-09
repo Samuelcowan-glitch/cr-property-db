@@ -249,6 +249,22 @@ def _as_pil(source):
     return PILImage.open(io.BytesIO(data))
 
 
+def _has_transparency(im):
+    """Whether anything in the image is actually see-through.
+
+    A photograph exported as a PNG often carries an alpha channel in which
+    every pixel is opaque. Keeping it a PNG for that made the file six times
+    larger than the same picture as a JPEG, for nothing.
+    """
+    if im.mode == 'P':
+        return 'transparency' in im.info
+    if im.mode not in ('RGBA', 'LA'):
+        return False
+    alpha = im.getchannel('A')
+    low, _high = alpha.getextrema()
+    return low < 255
+
+
 def prepare_image(source, target_w_pt, target_h_pt, dpi=PHOTO_DPI):
     """An ImageReader sized for where it is going, cached so it embeds once.
 
@@ -272,8 +288,7 @@ def prepare_image(source, target_w_pt, target_h_pt, dpi=PHOTO_DPI):
         im.thumbnail((want_w, want_h), PILImage.LANCZOS)
 
     buf = io.BytesIO()
-    if im.mode in ('RGBA', 'LA', 'P'):
-        # The mark has transparency, so it stays a PNG.
+    if _has_transparency(im):
         im.convert('RGBA').save(buf, 'PNG', optimize=True)
     else:
         im.convert('RGB').save(buf, 'JPEG', quality=JPEG_QUALITY, optimize=True,
