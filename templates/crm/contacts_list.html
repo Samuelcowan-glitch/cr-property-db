@@ -5,6 +5,7 @@
   <a href="{{ url_for('contact_new') }}" class="btn btn-primary btn-sm">+ Add Contact</a>
 {% endblock %}
 
+{% import "crm/_contact_roles.html" as cr %}
 {% block content %}
 {% set section_titles = {'Tenant': 'Tenants', 'Client': 'Clients'} %}
 <div class="section-header">
@@ -37,52 +38,140 @@
   <span style="font-size:11px;color:#9aa0a6;margin-left:auto">Archived hidden unless selected</span>
 </form>
 
-{% if contacts %}
-<div class="rec-table-wrap">
-  <table class="rec-table">
-    <thead>
-      <tr>
-        <th>Name</th>
-        <th>Status</th>
-        <th>Organisation</th>
-        <th>Type</th>
-        <th>Email</th>
-        <th>Phone</th>
-        <th></th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for c in contacts %}
-      <tr>
-        <td><a href="{{ url_for('contact_detail', id=c.id) }}"><strong title="{{ contact_label(c) }}">{{ contact_label(c) }}</strong></a>
-          {% if c.follow_up_overdue %}<span title="Follow-up overdue" style="color:#c0392b">⚠</span>{% endif %}</td>
-        <td><span style="display:inline-block;padding:2px 9px;border-radius:3px;font-size:11px;font-weight:700;color:#fff;background:{{ status_colors.get(c.status, '#5f6368') }}">{{ c.status or '—' }}</span></td>
-        <td>
-          {% if c.organisation %}
-            <a href="{{ url_for('organisation_detail', id=c.organisation.id) }}" style="font-size:12px">{{ c.organisation.name }}</a>
-          {% else %}—{% endif %}
-        </td>
-        <td>{{ c.contact_type or '—' }}</td>
-        <td>{% if c.email %}<a href="mailto:{{ c.email }}">{{ c.email }}</a>{% else %}—{% endif %}</td>
-        <td>{{ c.phone or c.mobile or '—' }}</td>
-        <td>
-          <div class="td-actions">
-            <a href="{{ url_for('contact_detail', id=c.id) }}" class="btn btn-sm btn-outline">View</a>
-            <a href="{{ url_for('contact_edit', id=c.id) }}" class="btn btn-sm btn-outline">Edit</a>
-          </div>
-        </td>
-      </tr>
+
+{# Roles are records, not a label, so this asks who actually holds one. #}
+<form method="get" class="role-filter">
+  {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
+  {% if ctype %}<input type="hidden" name="type" value="{{ ctype }}">{% endif %}
+  {% for st in statuses %}<input type="hidden" name="status" value="{{ st }}">{% endfor %}
+  <span class="role-filter-label">Role</span>
+  {% for name, hint in CONTACT_ROLES %}
+  <label class="role-chip {{ 'is-on' if name in roles_wanted }}" title="{{ hint }}">
+    <input type="checkbox" name="role" value="{{ name }}"
+           {{ 'checked' if name in roles_wanted }}>
+    {{ name }} <span class="role-chip-count">({{ role_counts.get(name, 0) }})</span>
+  </label>
+  {% endfor %}
+  <label class="role-sort">Sort
+    <select name="sort" onchange="this.form.submit()">
+      {% for value, label in [('name','Name'),('added','Recently added'),('company','Company')] %}
+      <option value="{{ value }}" {{ 'selected' if sort == value }}>{{ label }}</option>
       {% endfor %}
-    </tbody>
-  </table>
-</div>
+    </select>
+  </label>
+  <button class="btn btn-sm btn-primary" type="submit">Apply</button>
+  {% if roles_wanted %}
+  <a href="{{ url_for('contacts_list', type=ctype or None, q=q or None) }}"
+     class="btn btn-sm btn-outline">Clear roles</a>
+  {% endif %}
+</form>
+
+{# Tags are whatever the agency has found worth writing down, so this list is
+   whatever is actually in use rather than a fixed set. #}
+{% if tag_counts %}
+<form method="get" class="role-filter">
+  {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
+  {% if ctype %}<input type="hidden" name="type" value="{{ ctype }}">{% endif %}
+  {% for st in statuses %}<input type="hidden" name="status" value="{{ st }}">{% endfor %}
+  {% for rn in roles_wanted %}<input type="hidden" name="role" value="{{ rn }}">{% endfor %}
+  <span class="role-filter-label">Tag</span>
+  {% for name, n in tag_counts %}
+  <label class="role-chip {{ 'is-on' if name in tags_wanted }}">
+    <input type="checkbox" name="tag" value="{{ name }}"
+           {{ 'checked' if name in tags_wanted }}>
+    {{ name }} <span class="role-chip-count">({{ n }})</span>
+  </label>
+  {% endfor %}
+  <button class="btn btn-sm btn-primary" type="submit">Apply</button>
+  {% if tags_wanted %}
+  <a href="{{ url_for('contacts_list', type=ctype or None, q=q or None) }}"
+     class="btn btn-sm btn-outline">Clear tags</a>
+  {% endif %}
+</form>
+{% endif %}
+
+{% if contacts %}
+{# A card each, rather than a table row: name, company, the roles they hold
+   and how to reach them, with the whole card a link to the record. #}
+<ul class="ct-list">
+  {% for c in contacts %}
+  <li class="ct-card">
+    <label class="ct-pick" title="Select">
+      <input type="checkbox" name="ids" value="{{ c.id }}" form="bulk-form">
+    </label>
+    <a class="ct-main" href="{{ url_for('contact_detail', id=c.id) }}">
+      <span class="ct-initials" aria-hidden="true">{{ (c.first_name or '?')[0] }}{{ (c.last_name or '')[0] }}</span>
+      <span class="ct-who">
+        <span class="ct-name">{{ c.first_name }} {{ c.last_name }}
+          {% if c.follow_up_overdue %}<span class="ct-flag" title="Follow-up overdue">Follow up</span>{% endif %}
+        </span>
+        <span class="ct-sub">
+          {%- if c.organisation %}{{ c.organisation.name }}
+          {%- elif c.job_title %}{{ c.job_title }}
+          {%- else %}No company recorded{% endif -%}
+        </span>
+      </span>
+      <span class="ct-roles">
+        {{ cr.role_tags(c) }}
+        {% for t in contact_tags(c) %}<span class="ct-tag">{{ t }}</span>{% endfor %}
+        {% if c.status %}<span class="ct-status">{{ c.status }}</span>{% endif %}
+      </span>
+      <span class="ct-reach">
+        {% if c.email %}<span class="ct-line">{{ c.email }}</span>{% endif %}
+        {% if c.mobile or c.phone %}<span class="ct-line">{{ c.mobile or c.phone }}</span>{% endif %}
+      </span>
+    </a>
+    <span class="ct-quick">
+      {% if c.mobile or c.phone %}<a href="tel:{{ (c.mobile or c.phone)|replace(' ','') }}" title="Call">&#128222;</a>{% endif %}
+      {% if c.email %}<a href="mailto:{{ c.email }}" title="Email">&#9993;</a>{% endif %}
+      <a href="{{ url_for('contact_detail', id=c.id) }}" title="Open">&rarr;</a>
+    </span>
+  </li>
+  {% endfor %}
+</ul>
+<p class="ct-count">{{ contacts|length }} contact{{ '' if contacts|length == 1 else 's' }}</p>
+
+{#
+   Doing one thing to a lot of people at once. The bar stays out of the way
+   until something is selected, and the checkboxes on the cards above reach it
+   by form="bulk-form" so it can sit here, outside the list.
+#}
+<form id="bulk-form" method="post" action="{{ url_for('contacts_bulk') }}"
+      class="bulk-bar" hidden>
+  <span class="bulk-count"><strong data-bulk-count>0</strong> selected</span>
+  <button type="button" class="btn btn-link btn-sm" data-bulk-all>Select all</button>
+  <button type="button" class="btn btn-link btn-sm" data-bulk-none>Clear</button>
+
+  <label class="bulk-do">Tag
+    <input type="text" name="tag" list="tag-suggestions" placeholder="e.g. Key account">
+  </label>
+  <button type="submit" name="action" value="tag"
+          class="btn btn-outline btn-sm">Add tag</button>
+
+  <label class="bulk-do">Role
+    <select name="role">
+      <option value="">&mdash; Choose &mdash;</option>
+      {% for name, hint in CONTACT_ROLES %}
+      <option value="{{ name }}">{{ name }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <button type="submit" name="action" value="role"
+          class="btn btn-outline btn-sm">Assign role</button>
+
+  <button type="submit" name="action" value="export"
+          class="btn btn-secondary btn-sm">Export CSV</button>
+</form>
+<datalist id="tag-suggestions">
+  {% for name, n in tag_counts %}<option value="{{ name }}">{% endfor %}
+</datalist>
+<script src="{{ url_for('static', filename='js/bulk-select.js') }}" defer></script>
 {% else %}
-<div class="card">
-  <div class="empty-state">
-    <div class="empty-icon">👤</div>
-    <p>{% if q %}No contacts match "{{ q }}".{% else %}No contacts yet.{% endif %}</p>
-    {% if not q %}<a href="{{ url_for('contact_new') }}" class="btn btn-primary" style="margin-top:12px">+ Add First Contact</a>{% endif %}
-  </div>
+<div class="empty" style="padding:24px 16px">
+  {% if roles_wanted %}Nobody currently holds {{ roles_wanted|join(' or ') }}.
+  {% elif q %}Nothing matches &ldquo;{{ q }}&rdquo;.
+  {% else %}No contacts yet.{% endif %}
 </div>
 {% endif %}
+
 {% endblock %}

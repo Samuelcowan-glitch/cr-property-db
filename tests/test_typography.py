@@ -89,7 +89,8 @@ print('6. one button: 3px corners, 38px standard, 32px compact, SemiBold')
 # ── 7. Nothing is left pill-shaped ─────────────────────────────────────────
 # A few things are round because they are round: an avatar, a pipeline dot,
 # the calendar's today marker and the current-time dot. Nothing you press.
-ROUND_BY_NATURE = {'.sidebar-avatar', '.pipeline-dot', '.cal-dayhead.is-today .cal-dnum',
+ROUND_BY_NATURE = {'.sidebar-avatar', '.ct-initials', '.pipeline-dot',
+                   '.cal-dayhead.is-today .cal-dnum',
                    '.cal-now::before', '.cal-mcell.is-today .cal-mday a', '.enq-act .mark',
                    '.lg-nav', '.ps-gallery-nav'}
 for path, body in CSS.items():

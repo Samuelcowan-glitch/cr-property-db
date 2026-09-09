@@ -1922,3 +1922,167 @@ body.pg-open { overflow: hidden; }
 }
 .prog-when.is-overdue { background: #fdf0ef; color: #8c2f26; font-weight: var(--w-heading); }
 .prog-when.is-today   { background: #fdf3e3; color: #8a5a12; font-weight: var(--w-heading); }
+
+/* ── Roles on a contact ────────────────────────────────────────────────────
+   A person is one record; a role is something they are doing, and somebody
+   can hold several at once. */
+.role-list { list-style: none; margin: 0; padding: 0; }
+.role-item { border-bottom: 1px solid var(--grey-200); padding: 11px 14px; }
+.role-item:last-child { border-bottom: 0; }
+.role-item.is-past { opacity: .6; }
+.role-head { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.role-pick { flex: 0 0 auto; max-width: 220px; }
+.role-name { font-size: 13px; font-weight: var(--w-heading); color: var(--navy); }
+.role-summary { font-size: 11.5px; color: var(--grey-600); overflow-wrap: anywhere; }
+
+.role-fields {
+  display: grid; gap: 7px 10px; margin-top: 9px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+.role-fields label { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.role-fields label span {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--grey-600);
+}
+.role-fields input, .role-fields select { width: 100%; box-sizing: border-box; }
+.role-wide { grid-column: 1 / -1; }
+.role-actions { display: flex; gap: 7px; margin-top: 9px; flex-wrap: wrap; }
+
+.role-add {
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  padding: 11px 14px; border-top: 1px solid var(--grey-200);
+  background: var(--grey-050);
+}
+.role-add select { flex: 1 1 220px; min-width: 0; }
+.role-past > summary {
+  cursor: pointer; padding: 9px 14px; font-size: 12px; color: var(--grey-600);
+  border-top: 1px solid var(--grey-200);
+}
+.role-past > summary:hover { background: var(--grey-050); }
+
+/* Role tags, on a list card. */
+.role-tags { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.role-tag {
+  font-size: 10.5px; padding: 1px 7px; border-radius: 3px;
+  background: #dbe2f0; color: var(--navy); font-weight: var(--w-heading);
+  white-space: nowrap;
+}
+
+/* ── Contacts as cards ─────────────────────────────────────────────────────
+   A card each rather than a table row: an agent scans these all day, and a
+   row of small cells is slower to read than a name with its company under it. */
+.role-filter {
+  display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+  margin-bottom: 14px; padding: 10px 12px;
+  background: var(--grey-050); border: 1px solid var(--grey-200);
+  border-radius: 3px;
+}
+.role-filter-label {
+  font-size: 11px; font-weight: var(--w-heading); text-transform: uppercase;
+  letter-spacing: .05em; color: var(--grey-600);
+}
+.role-chip {
+  display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
+  font-size: 12.5px; padding: 3px 9px; border-radius: 3px;
+  border: 1px solid var(--grey-300); background: var(--white);
+}
+.role-chip.is-on { border-color: var(--navy); background: #eef2f8; }
+.role-chip input { margin: 0; }
+.role-chip-count { opacity: .55; }
+.role-sort {
+  margin-left: auto; display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--grey-600);
+}
+
+.ct-list { list-style: none; margin: 0; padding: 0;
+           display: flex; flex-direction: column; gap: 6px; }
+.ct-card {
+  display: flex; align-items: stretch; gap: 0;
+  border: 1px solid var(--grey-200); border-radius: 3px;
+  background: var(--white); transition: border-color .15s, box-shadow .15s;
+}
+.ct-card:hover { border-color: var(--navy); box-shadow: 0 1px 6px rgba(14,31,68,.07); }
+.ct-main {
+  flex: 1 1 auto; min-width: 0; display: grid; align-items: center;
+  gap: 12px; padding: 11px 14px; text-decoration: none; color: inherit;
+  grid-template-columns: 38px minmax(0, 2fr) minmax(0, 2fr) minmax(0, 2fr);
+}
+.ct-initials {
+  width: 38px; height: 38px; border-radius: 50%; flex: none;
+  display: grid; place-items: center; background: #dbe2f0;
+  color: var(--navy); font-weight: var(--w-heading); font-size: 13px;
+  text-transform: uppercase;
+}
+.ct-who { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ct-name {
+  font-size: 13.5px; font-weight: var(--w-heading); color: var(--navy);
+  overflow-wrap: anywhere;
+}
+.ct-sub { font-size: 11.5px; color: var(--grey-600); overflow-wrap: anywhere; }
+.ct-flag {
+  font-size: 10px; padding: 1px 6px; border-radius: 3px;
+  background: #fdf0ef; color: #8c2f26; margin-left: 5px;
+}
+.ct-roles { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; min-width: 0; }
+.ct-status {
+  font-size: 10.5px; padding: 1px 7px; border-radius: 3px;
+  background: var(--grey-100); color: var(--grey-700); white-space: nowrap;
+}
+.ct-reach { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.ct-line { font-size: 11.5px; color: var(--grey-600); overflow-wrap: anywhere; }
+.ct-quick {
+  display: flex; align-items: center; gap: 2px; padding: 0 10px;
+  border-left: 1px solid var(--grey-200); flex: none;
+}
+.ct-quick a {
+  width: 30px; height: 30px; display: grid; place-items: center;
+  border-radius: 3px; text-decoration: none; color: var(--grey-600);
+  font-size: 14px;
+}
+.ct-quick a:hover { background: var(--grey-100); color: var(--navy); }
+.ct-count { font-size: 11.5px; color: var(--grey-600); margin: 10px 2px 0; }
+
+@media (max-width: 900px) {
+  .ct-main { grid-template-columns: 38px minmax(0, 1fr); }
+  .ct-roles, .ct-reach { grid-column: 2; }
+  .role-sort { margin-left: 0; }
+}
+
+/* ── Tags, selection and the bulk bar ──────────────────────────────────────
+   A tag is quieter than a role: a role means something to the CRM, a tag is
+   a note the agency has made, so it is outlined rather than filled. */
+.ct-tag {
+  font-size: 10.5px; padding: 1px 7px; border-radius: 3px;
+  border: 1px solid var(--grey-200); color: var(--grey-600);
+  background: var(--white); white-space: nowrap;
+}
+.ct-pick {
+  flex: none; display: grid; place-items: center; padding: 0 2px 0 12px;
+  cursor: pointer;
+}
+.ct-pick input { margin: 0; cursor: pointer; }
+.ct-card.is-picked { border-color: var(--navy); background: #f6f8fc; }
+
+.bulk-bar {
+  position: sticky; bottom: 12px; z-index: 5;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  margin-top: 12px; padding: 10px 14px; border-radius: 3px;
+  border: 1px solid var(--navy); background: var(--white);
+  box-shadow: 0 2px 10px rgba(14, 31, 68, .12);
+}
+.bulk-bar[hidden] { display: none; }
+.bulk-count { font-size: 12.5px; color: var(--grey-600); margin-right: 4px; }
+.bulk-count strong { color: var(--navy); font-variant-numeric: tabular-nums; }
+.bulk-do {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11px; font-weight: var(--w-heading); text-transform: uppercase;
+  letter-spacing: .5px; color: var(--grey-600);
+}
+.bulk-do input, .bulk-do select {
+  font-size: 12.5px; font-weight: 400; text-transform: none; letter-spacing: 0;
+  height: 30px; min-width: 150px;
+}
+@media (max-width: 700px) {
+  .bulk-bar { position: static; }
+  .bulk-do input, .bulk-do select { min-width: 0; }
+}

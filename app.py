@@ -1112,6 +1112,116 @@ class OrganisationType(db.Model):
                                           name='uq_org_type'),)
 
 
+# What a person can be to us. A contact is a person; a role is something they
+# are doing, and somebody can be doing several at once — a landlord who is also
+# buying is one person with two roles, not two records.
+CONTACT_ROLES = [
+    ('Tenant',              'Occupies a property'),
+    ('Prospective Tenant',  'Looking to rent'),
+    ('Landlord',            'Lets a property through us'),
+    ('Prospective Landlord', 'May instruct us to let'),
+    ('Buyer',               'Looking to buy'),
+    ('Vendor',              'Selling a property'),
+    ('Investor',            'Buying to hold'),
+    ('Agent',               'Acting for another party'),
+]
+CONTACT_ROLE_NAMES = [name for name, _hint in CONTACT_ROLES]
+
+# Which roles carry what. A tenancy has dates; a search has a budget and an
+# area. The form shows only what the chosen role actually uses.
+ROLE_WANTS_DATES = {'Tenant', 'Landlord'}
+ROLE_WANTS_SEARCH = {'Prospective Tenant', 'Buyer', 'Investor'}
+
+
+class ContactRole(db.Model):
+    """One thing a contact is doing, with the detail that role needs.
+
+    Modelled on OrganisationRole, which already does this for companies, so a
+    person and a company behave the same way.
+
+    A role is assigned, not guessed. It sits alongside the relationships the
+    CRM derives — the properties somebody is recorded against — rather than
+    replacing them: one says what we have been told, the other what is on
+    record. Ending a role sets its end date and the row stays, because what
+    somebody used to be is part of their history.
+    """
+    __tablename__ = 'contact_roles'
+    id = db.Column(db.Integer, primary_key=True)
+    contact_id = db.Column(db.Integer, db.ForeignKey('contacts.id'),
+                           nullable=False, index=True)
+    role = db.Column(db.String(40), nullable=False, index=True)
+
+    # What it is about, where that is known. All optional: somebody can be a
+    # Buyer before there is anything to buy.
+    property_id    = db.Column(db.Integer, db.ForeignKey('properties.id'))
+    project_id     = db.Column(db.Integer, db.ForeignKey('projects.id'))
+    transaction_id = db.Column(db.Integer, db.ForeignKey('transactions.id'))
+    organisation_id = db.Column(db.Integer, db.ForeignKey('organisations.id'))
+
+    # A tenancy or an instruction runs between dates.
+    start_date = db.Column(db.Date)
+    end_date   = db.Column(db.Date)
+
+    # A search has a budget, an area and a size.
+    budget_min  = db.Column(db.Float)
+    budget_max  = db.Column(db.Float)
+    budget_unit = db.Column(db.String(10))     # pa / pcm / sale
+    target_area = db.Column(db.String(160))
+    size_min    = db.Column(db.Float)
+    size_max    = db.Column(db.Float)
+
+    notes      = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    contact = db.relationship('Contact', backref=db.backref(
+        'roles', lazy=True, cascade='all, delete-orphan',
+        order_by='ContactRole.created_at'))
+    linked_property = db.relationship('Property', lazy=True)
+    linked_project = db.relationship('Project', lazy=True)
+    organisation = db.relationship('Organisation', lazy=True)
+
+    @property
+    def is_current(self):
+        """Whether this role is still running.
+
+        No end date means it is. An end date of today means it has ended:
+        pressing "End it" should take effect at once rather than leaving the
+        role listed as current for the rest of the day.
+        """
+        return not self.end_date or self.end_date > date.today()
+
+    @property
+    def wants_dates(self):
+        return self.role in ROLE_WANTS_DATES
+
+    @property
+    def wants_search(self):
+        return self.role in ROLE_WANTS_SEARCH
+
+    @property
+    def summary(self):
+        """The one line that goes on a card, built from whatever is filled in."""
+        bits = []
+        if self.linked_property:
+            bits.append(self.linked_property.address)
+        elif self.linked_project:
+            bits.append(self.linked_project.name)
+        if self.target_area:
+            bits.append(self.target_area)
+        if self.budget_max:
+            unit = {'pa': 'per annum', 'pcm': 'per month'}.get(self.budget_unit, '')
+            bits.append(f'up to {money_gbp(self.budget_max)} {unit}'.strip())
+        if self.start_date:
+            span = self.start_date.strftime('%b %Y')
+            if self.end_date:
+                span += f' to {self.end_date.strftime("%b %Y")}'
+            bits.append(span)
+        return ' · '.join(bits)
+
+    def __repr__(self):
+        return f'<ContactRole {self.role} contact={self.contact_id}>'
+
+
 class OrganisationRole(db.Model):
     """One relationship between an organisation and something in the CRM.
 
@@ -1192,6 +1302,9 @@ class Contact(db.Model):
     mobile = db.Column(db.String(50))
     email = db.Column(db.String(120))
     contact_type = db.Column(db.String(50))
+    # Free labels, comma separated: "Key account, Kings Road, Christmas card".
+    # Tags say what somebody is to us; a role says what they are doing.
+    tags         = db.Column(db.Text)
     notes        = db.Column(db.Text)
     # Which Outlook contact this one is mirrored to, if it has been.
     ms_contact_id  = db.Column(db.String(255))
@@ -5632,6 +5745,24 @@ def contacts_list():
     _type_groups = CONTACT_SECTIONS
     if ctype in _type_groups:
         query = query.filter(Contact.contact_type.in_(_type_groups[ctype]))
+
+    # Filter by the roles somebody actually holds. A role is a record, so this
+    # asks the roles table rather than reading a label off the contact.
+    roles_wanted = [r for r in request.args.getlist('role')
+                    if r in CONTACT_ROLE_NAMES]
+    if roles_wanted:
+        held = (db.session.query(ContactRole.contact_id)
+                .filter(ContactRole.role.in_(roles_wanted))
+                .filter(db.or_(ContactRole.end_date.is_(None),
+                               ContactRole.end_date > date.today()))
+                .subquery())
+        query = query.filter(Contact.id.in_(db.select(held.c.contact_id)))
+    # Filter by tag. Matched on the stored text rather than a join, because a
+    # tag list is short and this keeps the tag itself free-form.
+    tags_wanted = [t for t in request.args.getlist('tag') if t.strip()]
+    for tag in tags_wanted:
+        query = query.filter(Contact.tags.ilike(f'%{tag}%'))
+
     # Multi-select status filter. With none chosen, hide Archived from the default view.
     statuses = [s for s in request.args.getlist('status') if s in CONTACT_STATUSES]
     if statuses:
@@ -5642,18 +5773,39 @@ def contacts_list():
     if q:
         query = query.filter(
             db.or_(Contact.first_name.ilike(f'%{q}%'), Contact.last_name.ilike(f'%{q}%'),
-                   Contact.email.ilike(f'%{q}%'), Contact.contact_type.ilike(f'%{q}%'))
+                   Contact.email.ilike(f'%{q}%'), Contact.contact_type.ilike(f'%{q}%'),
+                   Contact.tags.ilike(f'%{q}%'))
         )
-    contacts = query.order_by(Contact.last_name, Contact.first_name).all()
+    sort = request.args.get('sort', 'name')
+    orders = {
+        'name': (Contact.last_name, Contact.first_name),
+        'added': (Contact.created_at.desc(),),
+        'company': (Contact.organisation_id, Contact.last_name),
+    }
+    contacts = query.order_by(*orders.get(sort, orders['name'])).all()
     # Counts for the section tabs
     counts = {k: Contact.query.filter(Contact.contact_type.in_(v)).count()
               for k, v in _type_groups.items()}
+    # How many people hold each role, for the filter chips.
+    role_counts = dict(
+        db.session.query(ContactRole.role, db.func.count(db.distinct(ContactRole.contact_id)))
+        .filter(db.or_(ContactRole.end_date.is_(None),
+                       ContactRole.end_date > date.today()))
+        .group_by(ContactRole.role).all())
     counts['all'] = Contact.query.count()
     status_counts = {s: Contact.query.filter(Contact.status == s).count()
                      for s in CONTACT_STATUSES}
+    # `ilike` matches a substring, so "Key" would also bring back "Key account".
+    # Narrow it to whole tags now the rows are in hand.
+    if tags_wanted:
+        wanted = {t.lower() for t in tags_wanted}
+        contacts = [c for c in contacts
+                    if wanted <= {t.lower() for t in contact_tags(c)}]
     return render_template('crm/contacts_list.html', contacts=contacts, q=q,
                            ctype=ctype, counts=counts, statuses=statuses,
-                           status_counts=status_counts)
+                           status_counts=status_counts, roles_wanted=roles_wanted,
+                           role_counts=role_counts, sort=sort,
+                           tags_wanted=tags_wanted, tag_counts=all_tags())
 
 
 @app.route('/contacts/new', methods=['GET', 'POST'])
@@ -5723,6 +5875,86 @@ app.jinja_env.globals['CONTACT_TYPES'] = CONTACT_TYPES
 app.jinja_env.globals['contact_type_options'] = contact_type_options
 
 
+def contact_roles(contact, current_only=True):
+    """The roles a contact holds, current ones first."""
+    if not contact:
+        return []
+    rows = list(contact.roles or [])
+    if current_only:
+        rows = [r for r in rows if r.is_current]
+    return sorted(rows, key=lambda r: (not r.is_current,
+                                       CONTACT_ROLE_NAMES.index(r.role)
+                                       if r.role in CONTACT_ROLE_NAMES else 99))
+
+
+def role_names(contact):
+    """Just the names of the roles somebody currently holds, in order."""
+    seen, out = set(), []
+    for r in contact_roles(contact):
+        if r.role not in seen:
+            seen.add(r.role)
+            out.append(r.role)
+    return out
+
+
+# ── Tags ────────────────────────────────────────────────────────────────────
+# A tag is a label the agency puts on somebody: "Key account", "Kings Road",
+# "Christmas card". It is deliberately free text, because the useful ones are
+# never the ones anybody thought to define in advance. Roles are the opposite
+# — a fixed list, because they mean something to the rest of the CRM.
+
+TAG_MAX = 40
+
+
+def contact_tags(contact):
+    """The tags on a contact, in the order they were put there."""
+    seen, out = set(), []
+    for raw in (contact.tags or '').split(','):
+        tag = ' '.join(raw.split())
+        if tag and tag.lower() not in seen:
+            seen.add(tag.lower())
+            out.append(tag)
+    return out
+
+
+def set_contact_tags(contact, tags):
+    """Store tags, de-duplicated case-insensitively and length-capped."""
+    seen, out = set(), []
+    for raw in tags:
+        tag = ' '.join(str(raw).split())[:TAG_MAX]
+        if tag and tag.lower() not in seen:
+            seen.add(tag.lower())
+            out.append(tag)
+    contact.tags = ', '.join(out) or None
+    return out
+
+
+def parse_tags(text):
+    """Tags as typed into a box: comma separated, spacing forgiven."""
+    return [t for t in (' '.join(p.split()) for p in (text or '').split(',')) if t]
+
+
+def all_tags():
+    """Every tag in use, with how many contacts carry it. Sorted by name so
+    the filter list does not reorder itself as people are tagged."""
+    counts = {}
+    for (raw,) in db.session.query(Contact.tags).filter(Contact.tags.isnot(None)):
+        for tag in (' '.join(p.split()) for p in (raw or '').split(',')):
+            if tag:
+                key = tag.lower()
+                name, n = counts.get(key, (tag, 0))
+                counts[key] = (name, n + 1)
+    return sorted(counts.values(), key=lambda x: x[0].lower())
+
+
+app.jinja_env.globals['CONTACT_ROLES'] = CONTACT_ROLES
+app.jinja_env.globals['CONTACT_ROLE_NAMES'] = CONTACT_ROLE_NAMES
+app.jinja_env.globals['contact_roles'] = contact_roles
+app.jinja_env.globals['contact_tags'] = contact_tags
+app.jinja_env.globals['all_tags'] = all_tags
+app.jinja_env.globals['role_names'] = role_names
+
+
 def linked_properties(contact):
     """Properties this contact genuinely has a relationship with.
 
@@ -5775,6 +6007,217 @@ def linked_properties(contact):
 app.jinja_env.globals['linked_properties'] = linked_properties
 
 
+# ── Roles on a contact ──────────────────────────────────────────────────────
+# Assigned, changed and ended on the contact record. A role is never a reason
+# to make a second contact: the same person picks up another role instead.
+
+def _role_from_form(form, role=None):
+    """Read a role form, keeping only what that role actually uses."""
+    name = (form.get('role') or '').strip()
+    if name not in CONTACT_ROLE_NAMES:
+        return None, 'Choose a role.'
+
+    role = role or ContactRole()
+    role.role = name
+    role.notes = (form.get('notes') or '').strip() or None
+    role.property_id = _fint(form.get('property_id'))
+    role.project_id = _fint(form.get('project_id'))
+
+    # Dates belong to a tenancy or an instruction; a search has none.
+    if name in ROLE_WANTS_DATES:
+        role.start_date = _parse_date(form.get('start_date'))
+        role.end_date = _parse_date(form.get('end_date'))
+    else:
+        role.start_date = role.end_date = None
+
+    # A budget and an area belong to somebody looking, not to a sitting tenant.
+    if name in ROLE_WANTS_SEARCH:
+        role.budget_min = _fnum(form.get('budget_min'))
+        role.budget_max = _fnum(form.get('budget_max'))
+        role.budget_unit = (form.get('budget_unit') or 'pa').strip() or 'pa'
+        role.target_area = (form.get('target_area') or '').strip() or None
+        role.size_min = _fnum(form.get('size_min'))
+        role.size_max = _fnum(form.get('size_max'))
+    else:
+        role.budget_min = role.budget_max = None
+        role.budget_unit = None
+        role.target_area = None
+        role.size_min = role.size_max = None
+
+    if role.start_date and role.end_date and role.end_date < role.start_date:
+        return None, 'The end date is before the start date.'
+    return role, None
+
+
+@app.route('/contacts/<int:id>/roles/add', methods=['POST'])
+@requires('edit')
+def contact_role_add(id):
+    contact = Contact.query.get_or_404(id)
+    role, problem = _role_from_form(request.form)
+    if problem:
+        flash(problem, 'error')
+        return _back_to('contact_detail', id=id)
+
+    # The same role twice, still running, is a duplicate rather than a second
+    # relationship — unless it is about a different property.
+    same = [r for r in (contact.roles or [])
+            if r.role == role.role and r.is_current
+            and r.property_id == role.property_id]
+    if same:
+        flash(f'{contact.first_name} is already recorded as a {role.role}.',
+              'warning')
+        return _back_to('contact_detail', id=id)
+
+    role.contact_id = contact.id
+    db.session.add(role)
+    db.session.commit()
+    audit('role-added', entity='Contact', entity_id=contact.id,
+          detail=f'{role.role}')
+    flash(f'{contact.first_name} is now recorded as a {role.role}.', 'success')
+    return _back_to('contact_detail', id=id)
+
+
+@app.route('/contacts/<int:id>/roles/<int:role_id>/edit', methods=['POST'])
+@requires('edit')
+def contact_role_edit(id, role_id):
+    contact = Contact.query.get_or_404(id)
+    role = ContactRole.query.filter_by(id=role_id, contact_id=contact.id).first_or_404()
+    was = role.role
+    updated, problem = _role_from_form(request.form, role)
+    if problem:
+        flash(problem, 'error')
+        return _back_to('contact_detail', id=id)
+    db.session.commit()
+    audit('role-edited', entity='Contact', entity_id=contact.id,
+          detail=f'{was} to {role.role}' if was != role.role else was)
+    flash('Role updated.', 'success')
+    return _back_to('contact_detail', id=id)
+
+
+@app.route('/contacts/<int:id>/roles/<int:role_id>/end', methods=['POST'])
+@requires('edit')
+def contact_role_end(id, role_id):
+    """Finish a role without losing it. What somebody used to be is history,
+    not a mistake, so the row stays and simply stops being current."""
+    contact = Contact.query.get_or_404(id)
+    role = ContactRole.query.filter_by(id=role_id, contact_id=contact.id).first_or_404()
+    role.end_date = _parse_date(request.form.get('end_date')) or date.today()
+    db.session.commit()
+    audit('role-ended', entity='Contact', entity_id=contact.id,
+          detail=f'{role.role} ended {role.end_date:%d %b %Y}')
+    flash(f'{role.role} ended. It is still on the record.', 'success')
+    return _back_to('contact_detail', id=id)
+
+
+@app.route('/contacts/<int:id>/roles/<int:role_id>/delete', methods=['POST'])
+@requires('delete')
+def contact_role_delete(id, role_id):
+    """For a role added in error. Ending one is almost always what is wanted."""
+    contact = Contact.query.get_or_404(id)
+    role = ContactRole.query.filter_by(id=role_id, contact_id=contact.id).first_or_404()
+    name = role.role
+    db.session.delete(role)
+    db.session.commit()
+    audit('role-removed', entity='Contact', entity_id=contact.id, detail=name)
+    flash(f'{name} removed.', 'success')
+    return _back_to('contact_detail', id=id)
+
+
+@app.route('/contacts/bulk', methods=['POST'])
+@requires('edit')
+def contacts_bulk():
+    """Do one thing to several contacts at once.
+
+    Selecting forty people and tagging them one at a time is the sort of job
+    that quietly does not get done, so the three that come up — tag them,
+    record them all as the same role, take them out as a spreadsheet — are
+    here. Nothing destructive: none of these removes anything.
+
+    All three are behind the edit permission, export included: taking the
+    contact book out as a spreadsheet is the one action here that sends data
+    somewhere the CRM cannot see again, so it is not given to a viewer.
+    """
+    action = request.form.get('action', '')
+    ids = []
+    for raw in request.form.getlist('ids'):
+        try:
+            ids.append(int(raw))
+        except (TypeError, ValueError):
+            continue
+    if not ids:
+        flash('Nothing was selected.', 'warning')
+        return _back_to('contacts_list')
+
+    contacts = Contact.query.filter(Contact.id.in_(ids)).all()
+    if not contacts:
+        flash('Nothing was selected.', 'warning')
+        return _back_to('contacts_list')
+
+    if action == 'tag':
+        adding = parse_tags(request.form.get('tag'))
+        if not adding:
+            flash('Type a tag to add.', 'error')
+            return _back_to('contacts_list')
+        for c in contacts:
+            set_contact_tags(c, contact_tags(c) + adding)
+        db.session.commit()
+        audit('contacts-tagged', entity='Contact',
+              detail=f"{', '.join(adding)} on {len(contacts)} contact(s)")
+        flash(f"Tagged {len(contacts)} contact(s) {', '.join(adding)}.", 'success')
+        return _back_to('contacts_list')
+
+    if action == 'role':
+        role = request.form.get('role', '')
+        if role not in CONTACT_ROLE_NAMES:
+            flash('Choose a role to assign.', 'error')
+            return _back_to('contacts_list')
+        added = 0
+        for c in contacts:
+            # Somebody already recorded as this is left alone rather than
+            # given the role twice.
+            if any(r.role == role and r.is_current and r.property_id is None
+                   for r in (c.roles or [])):
+                continue
+            db.session.add(ContactRole(contact_id=c.id, role=role,
+                                       notes='Assigned in bulk'))
+            added += 1
+        db.session.commit()
+        audit('roles-assigned', entity='Contact',
+              detail=f'{role} to {added} contact(s)')
+        already = len(contacts) - added
+        msg = f'{added} contact(s) recorded as {role}.'
+        if already:
+            msg += f' {already} already were.'
+        flash(msg, 'success')
+        return _back_to('contacts_list')
+
+    if action == 'export':
+        import csv
+        import io as _io
+        buf = _io.StringIO()
+        w = csv.writer(buf)
+        w.writerow(['First name', 'Last name', 'Job title', 'Organisation',
+                    'Email', 'Phone', 'Mobile', 'Type', 'Status', 'Roles', 'Tags'])
+        order = {cid: n for n, cid in enumerate(ids)}
+        for c in sorted(contacts, key=lambda c: order.get(c.id, 0)):
+            w.writerow([c.first_name, c.last_name, c.job_title or '',
+                        c.organisation.name if c.organisation else '',
+                        c.email or '', c.phone or '', c.mobile or '',
+                        c.contact_type or '', c.status or '',
+                        '; '.join(role_names(c)), '; '.join(contact_tags(c))])
+        audit('contacts-exported', entity='Contact',
+              detail=f'{len(contacts)} contact(s)')
+        from flask import Response
+        stamp = date.today().isoformat()
+        return Response(
+            buf.getvalue(), mimetype='text/csv',
+            headers={'Content-Disposition':
+                     f'attachment; filename="contacts-{stamp}.csv"'})
+
+    flash('Choose what to do with the selected contacts.', 'error')
+    return _back_to('contacts_list')
+
+
 @app.route('/contacts/<int:id>')
 def contact_detail(id):
     contact = Contact.query.get_or_404(id)
@@ -5784,6 +6227,9 @@ def contact_detail(id):
     return render_template('crm/contact_detail.html',
                            all_organisations=Organisation.query.order_by(Organisation.name).all(),
                            linked=linked_properties(contact),
+                           roles=contact_roles(contact, current_only=False),
+                           all_properties=Property.query.order_by(Property.address).all(),
+                           all_projects=Project.query.order_by(Project.name).all(),
                            contact=contact)
 
 
@@ -6147,6 +6593,10 @@ def _save_contact_from_form(contact, form):
         contact.organisation_id = int(raw) if raw else None
     if 'status' in form:
         _apply_status(form.get('status'), contact=contact)
+    # Tags arrive as one comma-separated box, and are normalised on the way in
+    # so "key account" and "Key Account" do not become two different tags.
+    if 'tags' in form:
+        set_contact_tags(contact, parse_tags(form.get('tags')))
 
 
 def _back_to(default_endpoint, **kw):
@@ -9875,6 +10325,31 @@ def _link_fee_earners():
             'ambiguous': sorted(ambiguous)}
 
 
+def _migrate_contact_roles():
+    """The contact_roles table. db.create_all() makes it; this is here so the
+    boot sequence names it, and so a contact filed under a type that is really
+    a role gets that role recorded once."""
+    with app.app_context():
+        db.create_all()
+        # Tags live alongside roles: TEXT, which Postgres and SQLite read the
+        # same way, on a table that already exists.
+        _add_columns('contacts', [('tags', 'TEXT')])
+        # A contact already filed as a Tenant or a Landlord is given the
+        # matching role, once, so nothing has to be re-entered. Their
+        # contact_type is left exactly as it is.
+        seeded = 0
+        for label in ('Tenant', 'Landlord', 'Prospective Tenant'):
+            for c in Contact.query.filter(Contact.contact_type == label).all():
+                if any(r.role == label for r in (c.roles or [])):
+                    continue
+                db.session.add(ContactRole(contact_id=c.id, role=label,
+                                           notes='From the contact type on record'))
+                seeded += 1
+        if seeded:
+            db.session.commit()
+            app.logger.info('Recorded %s role(s) from existing contact types', seeded)
+
+
 def _migrate_progression_columns():
     """When to chase a transaction next, and the completion being aimed at.
 
@@ -9947,6 +10422,7 @@ if __name__ == '__main__':
         _migrate_crm_columns()
         _migrate_rates_tables()
         _migrate_progression_columns()
+        _migrate_contact_roles()
         _ensure_default_user()
         if Property.query.count() == 0:
             import import_listings  # seeds the 32 website properties

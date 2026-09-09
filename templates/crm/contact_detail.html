@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "crm/_contact_roles.html" as cr %}
 {% block title %}{{ contact.full_name }}{% endblock %}
 {% block topbar_title %}Contact{% endblock %}
 {% block topbar_actions %}
@@ -81,6 +82,17 @@
         <div class="fcell is-empty">{{ contact.created_at.strftime('%d %b %Y') if contact.created_at else '—' }}</div>
       </div>
       <div class="frow">
+        <div class="fcell fcell--label">Tags</div>
+        <div class="fcell fcell--edit" style="grid-column: span 3">
+          <input type="text" name="tags" value="{{ contact_tags(contact) | join(', ') }}"
+                 list="tag-suggestions"
+                 placeholder="Key account, Kings Road &mdash; separate with commas">
+          <datalist id="tag-suggestions">
+            {% for name, n in all_tags() %}<option value="{{ name }}">{% endfor %}
+          </datalist>
+        </div>
+      </div>
+      <div class="frow">
         <div class="fcell fcell--label">Status</div>
         <div class="fcell fcell--edit">
           <select name="status">
@@ -121,6 +133,8 @@
         <div class="fcell fcell--edit"><input type="text" name="email" value="{{ contact.email or '' }}" placeholder="Not added"></div>
       </div>
     </div>
+
+    {{ cr.roles_box(contact, roles, all_properties, all_projects) }}
 
     {# Where Requirement used to be. Not a matching section: these are the
        properties this contact is genuinely recorded against elsewhere in the
@@ -244,6 +258,7 @@
   </div>
 </div>
 </form>
+{{ cr.roles_forms(contact, roles) }}
 
 {# The journal forms sit outside the record form — a form cannot be nested
    inside another — and their fields above point back here by id. #}

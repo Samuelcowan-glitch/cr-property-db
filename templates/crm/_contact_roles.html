@@ -1,0 +1,165 @@
+{#
+   The roles a contact holds.
+
+   A person is one record. What they are doing — letting a building, looking
+   for one, buying — is a role, and somebody can hold several at once. A
+   landlord who is also buying is one contact with two roles, never two
+   contacts.
+
+   Each role carries only the detail it needs: a tenancy has dates, a search
+   has a budget and an area. Ending a role keeps it on the record, because
+   what somebody used to be is part of their history.
+#}
+{% macro roles_box(contact, roles, all_properties, all_projects) %}
+{% set current = roles | selectattr('is_current') | list %}
+{% set past = roles | rejectattr('is_current') | list %}
+
+<div class="box" id="roles-box">
+  <div class="box-head">
+    <span class="box-title">Roles</span>
+    {% if current %}<span class="box-actions">{{ current|length }} current</span>{% endif %}
+  </div>
+
+  {% if current %}
+  <ul class="role-list">
+    {% for r in current %}
+    <li class="role-item">
+      <div class="role-edit">
+        <div class="role-head">
+          <select name="role" class="role-pick" aria-label="Role"
+                  form="role-{{ r.id }}">
+            {% for name, hint in CONTACT_ROLES %}
+            <option value="{{ name }}" {{ 'selected' if r.role == name }}>{{ name }}</option>
+            {% endfor %}
+          </select>
+          {% if r.summary %}<span class="role-summary">{{ r.summary }}</span>{% endif %}
+        </div>
+
+        <div class="role-fields">
+          {% if r.wants_dates %}
+          <label><span>From</span>
+            <input type="date" name="start_date"
+                   value="{{ r.start_date.isoformat() if r.start_date else '' }}" form="role-{{ r.id }}"></label>
+          <label><span>To</span>
+            <input type="date" name="end_date"
+                   value="{{ r.end_date.isoformat() if r.end_date else '' }}" form="role-{{ r.id }}"></label>
+          {% endif %}
+
+          {% if r.wants_search %}
+          <label><span>Area wanted</span>
+            <input type="text" name="target_area" value="{{ r.target_area or '' }}"
+                   placeholder="e.g. Fulham, Chelsea" form="role-{{ r.id }}"></label>
+          <label><span>Budget up to</span>
+            <input type="text" inputmode="decimal" name="budget_max"
+                   value="{{ r.budget_max|int if r.budget_max else '' }}"
+                   placeholder="£" form="role-{{ r.id }}"></label>
+          <label><span>Basis</span>
+            <select name="budget_unit" form="role-{{ r.id }}">
+              {% for u, lbl in [('pa','per annum'),('pcm','per month'),('sale','purchase')] %}
+              <option value="{{ u }}" {{ 'selected' if (r.budget_unit or 'pa') == u }}>{{ lbl }}</option>
+              {% endfor %}
+            </select></label>
+          <label><span>Size from</span>
+            <input type="text" inputmode="decimal" name="size_min"
+                   value="{{ r.size_min|int if r.size_min else '' }}" placeholder="sq ft" form="role-{{ r.id }}"></label>
+          <label><span>Size to</span>
+            <input type="text" inputmode="decimal" name="size_max"
+                   value="{{ r.size_max|int if r.size_max else '' }}" placeholder="sq ft" form="role-{{ r.id }}"></label>
+          {% endif %}
+
+          <label class="role-wide"><span>Property</span>
+            <select name="property_id" data-search data-placeholder="Search properties…" form="role-{{ r.id }}">
+              <option value="">— Not about a specific property —</option>
+              {% for p in all_properties %}
+              <option value="{{ p.id }}" {{ 'selected' if r.property_id == p.id }}>
+                {{ p.address }}</option>
+              {% endfor %}
+            </select></label>
+
+          <label class="role-wide"><span>Notes</span>
+            <input type="text" name="notes" value="{{ r.notes or '' }}"
+                   placeholder="Anything worth recording about this role" form="role-{{ r.id }}"></label>
+        </div>
+
+        <div class="role-actions">
+          <button type="submit" class="btn btn-outline btn-sm"
+                  form="role-{{ r.id }}">Save role</button>
+          <button type="submit" class="btn btn-outline btn-sm" form="role-{{ r.id }}"
+                  formaction="{{ url_for('contact_role_end', id=contact.id, role_id=r.id) }}"
+                  formnovalidate>End it</button>
+          <button type="submit" class="btn btn-link is-danger btn-sm confirm-delete"
+                  form="role-{{ r.id }}"
+                  formaction="{{ url_for('contact_role_delete', id=contact.id, role_id=r.id) }}"
+                  formnovalidate>Remove</button>
+        </div>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <div class="empty" style="padding:12px 14px">
+    No roles yet. Add one below &mdash; the same person can hold several.
+  </div>
+  {% endif %}
+
+  {# ── Adding one ── #}
+  <div class="role-add">
+    <select name="role" required aria-label="Role to add" form="role-add-{{ contact.id }}">
+      <option value="">— Add a role —</option>
+      {% for name, hint in CONTACT_ROLES %}
+      <option value="{{ name }}">{{ name }} &mdash; {{ hint }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="btn btn-primary btn-sm"
+            form="role-add-{{ contact.id }}">Add</button>
+    <span class="fcell-hint">
+      Assign it now and fill in the detail once it is on the record.
+    </span>
+  </div>
+
+  {% if past %}
+  <details class="role-past">
+    <summary>{{ past|length }} past role{{ '' if past|length == 1 else 's' }}</summary>
+    <ul class="role-list">
+      {% for r in past %}
+      <li class="role-item is-past">
+        <div class="role-head">
+          <span class="role-name">{{ r.role }}</span>
+          <span class="role-summary">
+            {%- if r.summary %}{{ r.summary }}{% endif -%}
+            {%- if r.end_date %} &middot; ended {{ r.end_date.strftime('%d %b %Y') }}{% endif -%}
+          </span>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+  </details>
+  {% endif %}
+</div>
+{% endmacro %}
+
+
+{#
+   The forms the roles box posts to.
+
+   The contact page is itself one big form, and a form cannot contain another,
+   so these are emitted outside it and reached by the form="…" attribute on
+   each control — the same arrangement the call log and notes already use.
+#}
+{% macro roles_forms(contact, roles) %}
+{% for r in roles if r.is_current %}
+<form id="role-{{ r.id }}" method="post"
+      action="{{ url_for('contact_role_edit', id=contact.id, role_id=r.id) }}"></form>
+{% endfor %}
+<form id="role-add-{{ contact.id }}" method="post"
+      action="{{ url_for('contact_role_add', id=contact.id) }}"></form>
+{% endmacro %}
+{# Role tags, for a list card. #}
+{% macro role_tags(contact) %}
+{% set names = role_names(contact) %}
+{% if names %}
+<span class="role-tags">
+  {% for name in names %}<span class="role-tag">{{ name }}</span>{% endfor %}
+</span>
+{% endif %}
+{% endmacro %}
