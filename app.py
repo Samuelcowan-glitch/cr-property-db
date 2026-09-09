@@ -5729,9 +5729,14 @@ def organisation_delete(id):
 
 # ── Contacts ─────────────────────────────────────────────────────────────────
 
+# One sidebar page per type. Each also gathers the older labels that meant the
+# same thing, so nobody filed years ago as a "Client" or a "Prospective
+# Tenant" disappears from the list they have always been in.
 CONTACT_SECTIONS = {
-    'Client': ['Client', 'Landlord'],
-    'Tenant': ['Tenant', 'Prospective Tenant'],
+    'Landlord': ['Landlord', 'Client', 'Prospective Landlord'],
+    'Tenant':   ['Tenant', 'Prospective Tenant'],
+    'Buyer':    ['Buyer', 'Prospective Buyer', 'Investor'],
+    'Seller':   ['Seller', 'Vendor'],
 }
 
 
@@ -5816,12 +5821,12 @@ def contact_new():
         c = Contact(
             first_name=request.form['first_name'],
             last_name=request.form['last_name'],
-            job_title=request.form.get('job_title'),
             organisation_id=int(org_id_raw) if org_id_raw else None,
             phone=request.form.get('phone'),
             mobile=request.form.get('mobile'),
             email=request.form.get('email'),
-            contact_type=request.form.get('contact_type'),
+            contact_type=(request.form.get('contact_type')
+                          if request.form.get('contact_type') in CONTACT_TYPES else None),
             notes=request.form.get('notes'),
             req_category=request.form.get('req_category') or None,
             req_property_type=request.form.get('req_property_type') or None,
@@ -5842,6 +5847,14 @@ def contact_new():
         )
         db.session.add(c)
         db.session.commit()
+        # The type names a role, and the form may name a further one. Both go
+        # on now, so a new contact is never a headline with nothing underneath
+        # it. Worked out as a set first: naming Tenant as both the type and the
+        # role is one role, not two.
+        wanted = {c.contact_type, request.form.get('role')}
+        for name in sorted(n for n in wanted if n in CONTACT_ROLE_NAMES):
+            db.session.add(ContactRole(contact_id=c.id, role=name))
+        db.session.commit()
         _log_activity('status_change', contact=c, new_status=c.status,
                       body=f'Contact created (status: {c.status})')
         db.session.commit()
@@ -5850,25 +5863,47 @@ def contact_new():
     return render_template('crm/contact_form.html', contact=None, organisations=organisations)
 
 
-# What a contact may be recorded as. Deliberately two: this field says who
-# somebody is to us, not what they are currently doing. Whether they are a
-# buyer, a seller, a landlord or an applicant is answered by their actual
-# records — the properties they are the client for, and the applicant
-# requirements registered against them — not by a label typed here.
-CONTACT_TYPES = ['Client', 'Tenant']
+# What a contact is to the agency, as one word: the four sides of the two
+# deals this office does. It is the headline; the roles on the record are the
+# full picture, because somebody can be a Landlord on one building and a Buyer
+# on another at the same time.
+#
+# The two are kept in step rather than left to disagree. Setting the type
+# records the matching role if it is not already there, so a contact typed
+# Landlord is never a contact with no Landlord role. Nothing is ever removed:
+# changing the type from Buyer to Seller adds Seller and leaves the Buyer role
+# alone, because that history is real.
+CONTACT_TYPES = ['Landlord', 'Tenant', 'Buyer', 'Seller']
 
 
 def contact_type_options(current=None):
-    """The two types, plus whatever this record already holds.
+    """The four types, plus whatever this record already holds.
 
-    Contacts filed years ago as "Prospect" or "Enquiry" keep that, and it is
-    offered on their own record, so opening and saving cannot silently
-    reclassify somebody.
+    Contacts filed before this as "Client", "Prospect" or "Enquiry" keep that,
+    and it is offered on their own record, so opening and saving cannot
+    silently reclassify somebody.
     """
     options = list(CONTACT_TYPES)
     if current and current not in options:
         options.append(current)
     return options
+
+
+def sync_type_to_role(contact):
+    """Give a contact the role their type names, if they have not got it.
+
+    Additive only. This is what stops the record saying Landlord at the top
+    while holding no Landlord role underneath.
+    """
+    kind = (contact.contact_type or '').strip()
+    if kind not in CONTACT_ROLE_NAMES or not contact.id:
+        return None
+    if any(r.role == kind and r.is_current for r in (contact.roles or [])):
+        return None
+    role = ContactRole(contact_id=contact.id, role=kind,
+                       notes='From the contact type on record')
+    db.session.add(role)
+    return role
 
 
 app.jinja_env.globals['CONTACT_TYPES'] = CONTACT_TYPES
@@ -6196,11 +6231,11 @@ def contacts_bulk():
         import io as _io
         buf = _io.StringIO()
         w = csv.writer(buf)
-        w.writerow(['First name', 'Last name', 'Job title', 'Organisation',
+        w.writerow(['First name', 'Last name', 'Organisation',
                     'Email', 'Phone', 'Mobile', 'Type', 'Status', 'Roles', 'Tags'])
         order = {cid: n for n, cid in enumerate(ids)}
         for c in sorted(contacts, key=lambda c: order.get(c.id, 0)):
-            w.writerow([c.first_name, c.last_name, c.job_title or '',
+            w.writerow([c.first_name, c.last_name,
                         c.organisation.name if c.organisation else '',
                         c.email or '', c.phone or '', c.mobile or '',
                         c.contact_type or '', c.status or '',
@@ -6358,7 +6393,6 @@ CONTACT_FIELDS = [
     ('phone',             'phone',             _ftext),
     ('mobile',            'mobile',            _ftext),
     ('email',             'email',             _ftext),
-    ('contact_type',      'contact_type',      _ftext),
     ('notes',             'notes',             _ftext),
     ('req_category',      'req_category',      _ftext),
     ('req_property_type', 'req_property_type', _ftext),
@@ -6593,6 +6627,17 @@ def _save_contact_from_form(contact, form):
         contact.organisation_id = int(raw) if raw else None
     if 'status' in form:
         _apply_status(form.get('status'), contact=contact)
+    if 'contact_type' in form:
+        # A dropdown offering four values is not a guarantee that four values
+        # arrive, so the list is checked here. An older label the record
+        # already holds is allowed through, so opening and saving somebody
+        # filed years ago as a "Client" does not blank their type.
+        chosen = (form.get('contact_type') or '').strip()
+        if chosen in contact_type_options(contact.contact_type):
+            contact.contact_type = chosen or None
+        elif not chosen:
+            contact.contact_type = None
+        sync_type_to_role(contact)
     # Tags arrive as one comma-separated box, and are normalised on the way in
     # so "key account" and "Key Account" do not become two different tags.
     if 'tags' in form:

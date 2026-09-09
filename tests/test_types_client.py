@@ -245,7 +245,10 @@ assert 'Jane Smith (Example Holdings Ltd)' in body
 assert 'mailto:jane@example.co.uk' in body, 'the email is not clickable'
 assert 'tel:07700900100' in body, 'the mobile is not clickable'
 assert 'tel:01732555100' in body, 'the office number is not clickable'
-assert 'Estates Director' in body and '12 Bank Street, Tonbridge' in body
+# The subtitle is what they are to us — the label already on the record —
+# rather than what their business card says.
+assert 'Client' in body, 'the contact role is not shown'
+assert '12 Bank Street, Tonbridge' in body
 with app.app_context():
     columns = {c.name for c in Property.__table__.columns}
     assert 'client_contact_id' in columns

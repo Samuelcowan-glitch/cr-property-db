@@ -45,8 +45,10 @@
       {# One page each, so there is no category filter on the pages themselves. #}
       {% set section = request.args.get('type') if request.endpoint == 'contacts_list' else none %}
       <a href="{{ url_for('contacts_list') }}" class="nav-more {{ 'active' if request.endpoint == 'contacts_list' and not section else '' }}">Contacts</a>
-      <a href="{{ url_for('contacts_list', type='Client') }}" class="nav-more {{ 'active' if section == 'Client' else '' }}">Clients</a>
-      <a href="{{ url_for('contacts_list', type='Tenant') }}" class="nav-more {{ 'active' if section == 'Tenant' else '' }}">Tenants</a>
+      {% for _t in CONTACT_TYPES %}
+      <a href="{{ url_for('contacts_list', type=_t) }}"
+         class="nav-more {{ 'active' if section == _t else '' }}">{{ _t }}s</a>
+      {% endfor %}
       <a href="{{ url_for('organisations_list') }}" class="nav-more {{ 'active' if request.endpoint and 'organisation' in request.endpoint else '' }}">Companies</a>
       <a href="{{ url_for('enquiries_list') }}" class="nav-more {{ 'active' if request.endpoint and 'enquir' in request.endpoint else '' }}">Enquiries</a>
       <a href="{{ url_for('property_new') }}" class="nav-more">Add property</a>

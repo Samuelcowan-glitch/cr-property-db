@@ -20,10 +20,11 @@
     {% if contact %}
     <a class="clientpick-name" href="{{ url_for('contact_detail', id=contact.id) }}"
        title="{{ contact_label(contact) }}">{{ contact_label(contact) }}</a>
-    {% if contact.job_title or (sensitive and contact.email) %}
+{% set _role = role_names(contact) | join(', ') or contact.contact_type %}
+    {% if _role or (sensitive and contact.email) %}
     <span class="clientpick-meta">
-      {{ contact.job_title or '' }}
-      {%- if sensitive and contact.email %}{% if contact.job_title %} &middot; {% endif %}{{ contact.email }}{% endif -%}
+      {{ _role or '' }}
+      {%- if sensitive and contact.email %}{% if _role %} &middot; {% endif %}{{ contact.email }}{% endif -%}
     </span>
     {% endif %}
     {% endif %}
@@ -122,8 +123,9 @@
       {% if contact.phone %}<a href="tel:{{ contact.phone|replace(' ', '') }}">{{ contact.phone }}</a>
       {% else %}Not set{% endif %}
     </div>
-    <div class="fcell fcell--label">Job title</div>
-    <div class="fcell {{ 'is-empty' if not contact.job_title }}">{{ contact.job_title or 'Not set' }}</div>
+    <div class="fcell fcell--label">Contact role</div>
+    {% set _roles = role_names(contact) | join(', ') %}
+    <div class="fcell {{ 'is-empty' if not _roles }}">{{ _roles or 'Not set' }}</div>
   </div>
   <div class="frow frow--full">
     <div class="fcell fcell--label fcell--top">Correspondence</div>

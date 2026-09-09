@@ -253,7 +253,15 @@ print('17. one label width, shared by both the grid and flex rows')
 # ─── 18. One control height, everywhere ─────────────────────────────────────
 style = open(f'{ROOT}/static/css/style.css').read()
 assert 'height: var(--cell-h)' in grid, 'record inputs have no shared height'
-assert 'height: var(--cell-h, 32px)' in style, 'add-page inputs have no shared height'
+# The height is stated once, for every single-line control on every page,
+# rather than only for the ones that happen to sit inside a .form-group.
+import re as _re
+rule = _re.search(r'input:not\(\[type="checkbox"\]\)[^{]*\{([^}]*)\}', style)
+assert rule and 'var(--ctl-h)' in rule.group(1), \
+    'single-line controls have no one shared height'
+assert 'select' in rule.group(0) and '.ss-button' in rule.group(0), \
+    'the shared height misses selects or custom dropdowns'
+assert '--ctl-h:' in grid, 'the control height is not defined as a token'
 assert 'border-radius: 3px' in style.split('input[type=text]')[1][:200], \
     'inputs are not squared to 3px'
 print('18. every single-line input and dropdown is the same height and shape')

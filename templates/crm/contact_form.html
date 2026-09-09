@@ -31,17 +31,25 @@
                value="{{ contact.last_name if contact else '' }}">
       </div>
       <div class="form-group">
-        <label for="job_title">Job Title</label>
-        <input type="text" id="job_title" name="job_title"
-               value="{{ contact.job_title if contact else '' }}"
-               placeholder="e.g. Director">
-      </div>
-      <div class="form-group">
         <label for="contact_type">Contact Type</label>
         <select id="contact_type" name="contact_type">
-          <option value="">— Select —</option>
-          {% for t in ['Prospective Tenant','Prospective Buyer','Prospect','Client','Landlord','Tenant','Agent','Solicitor','Developer','Investor','Surveyor','Other'] %}
+          <option value="">&mdash; Select &mdash;</option>
+          {% for t in contact_type_options(contact.contact_type if contact else none) %}
           <option value="{{ t }}" {{ 'selected' if contact and contact.contact_type == t else '' }}>{{ t }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {# The type is the headline. A contact can be doing more than one thing,
+         so this records a further role at the same time; the rest are managed
+         on the record itself, where each one keeps its own detail. #}
+      <div class="form-group">
+        <label for="role">Contact Role
+          <span style="font-weight:400;color:#9aa0a6">(if more than one)</span>
+        </label>
+        <select id="role" name="role">
+          <option value="">{{ '&mdash; Same as type &mdash;' | safe if not contact else '&mdash; None &mdash;' | safe }}</option>
+          {% for name, hint in CONTACT_ROLES %}
+          <option value="{{ name }}">{{ name }}</option>
           {% endfor %}
         </select>
       </div>

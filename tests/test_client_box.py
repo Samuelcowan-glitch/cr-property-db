@@ -40,7 +40,7 @@ with app.app_context():
     org = Organisation(name=COMPANY, status='Active', address=CLIENT_ADDRESS)
     db.session.add(org); db.session.commit()
     who = Contact(first_name='Phillipa', last_name='Smith', organisation_id=org.id,
-                  job_title='Estates Director', phone=CLIENT_PHONE,
+                  contact_type='Landlord', phone=CLIENT_PHONE,
                   mobile=CLIENT_MOBILE, email=CLIENT_EMAIL)
     solo = Contact(first_name='Terence', last_name='Vole', phone='01732 555 999')
     db.session.add_all([who, solo]); db.session.commit()
@@ -97,10 +97,12 @@ print('2. no empty box, heading or column was left behind')
 
 # ─── 3. It shows the linked client, from their own record ───────────────────
 assert f'{CLIENT} ({COMPANY})' in OVERVIEW, 'the name and company are not shown'
-assert 'Estates Director' in OVERVIEW, 'the job title is missing'
+assert 'Contact role' in OVERVIEW, 'the contact role label is missing'
+assert 'Landlord' in OVERVIEW, 'what the client is to us is not shown'
+assert 'Job title' not in OVERVIEW, 'a field that was removed is still shown'
 assert CLIENT_PHONE in OVERVIEW and CLIENT_MOBILE in OVERVIEW
 assert CLIENT_EMAIL in OVERVIEW
-print('3. name, company, job title, telephone, mobile and email all shown')
+print('3. name, company, contact role, telephone, mobile and email all shown')
 
 
 # ─── 4. Clickable ───────────────────────────────────────────────────────────

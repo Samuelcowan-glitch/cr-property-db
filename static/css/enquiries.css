@@ -202,3 +202,10 @@
   .enq-controls select, .enq-dates { flex: 1 1 100%; }
   .enq-dates input { flex: 1 1 auto; width: auto; }
 }
+
+/* A date field has a minimum width of its own, and two of them plus the words
+   between would not fit a phone. They may shrink here. */
+@media (max-width: 820px) {
+  .enq-dates { min-width: 0; flex-wrap: wrap; }
+  .enq-dates input { min-width: 0; flex: 1 1 120px; }
+}

@@ -228,7 +228,7 @@
           <div class="org-main">
             <a class="org-title" href="{{ url_for('contact_detail', id=c.id) }}" title="{{ contact_label(c) }}">{{ contact_label(c) }}</a>
             <div class="org-sub">
-              {{ c.contact_type or 'Landlord' }}
+              {{ c.contact_type or 'Contact' }}
               {% if c.last_contact_date %} &middot; last called {{ c.last_contact_date.strftime('%d/%m/%Y') }}
               {% else %} &middot; not yet called{% endif %}
               {% if c.next_follow_up %}

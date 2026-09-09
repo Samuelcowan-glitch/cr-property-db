@@ -158,6 +158,7 @@ assert 'text/csv' in r.headers['Content-Type']
 assert 'attachment' in r.headers['Content-Disposition']
 rows = list(csv.reader(io.StringIO(r.get_data(as_text=True))))
 assert rows[0][0] == 'First name' and 'Roles' in rows[0] and 'Tags' in rows[0]
+assert 'Job title' not in rows[0], 'the export still offers a field that was removed'
 assert len(rows) == 3, f'{len(rows) - 1} data rows for a selection of two'
 assert rows[1][1] == 'Okelo' and rows[2][1] == 'Smith', 'the order was not kept'
 smith = dict(zip(rows[0], rows[2]))

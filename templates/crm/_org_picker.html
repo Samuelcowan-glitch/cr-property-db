@@ -38,7 +38,7 @@
             </option>
             {% for c in link.organisation.contacts %}
             <option value="{{ c.id }}" {{ 'selected' if link.contact_id == c.id }}>
-              {{ c.full_name }}{% if c.job_title %} — {{ c.job_title }}{% endif %}
+              {{ c.full_name }}{% if c.contact_type %} — {{ c.contact_type }}{% endif %}
             </option>
             {% endfor %}
           </select>

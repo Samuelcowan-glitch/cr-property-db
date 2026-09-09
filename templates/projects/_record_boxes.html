@@ -185,10 +185,10 @@
          title="{{ contact_label(who) }}">{{ contact_label(who) }}</a>
     </div>
   </div>
-  {% if who.job_title %}
+  {% if role_names(who) or who.contact_type %}
   <div class="frow frow--full">
-    <div class="fcell fcell--label">Job title</div>
-    <div class="fcell">{{ who.job_title }}</div>
+    <div class="fcell fcell--label">Contact role</div>
+    <div class="fcell">{{ role_names(who) | join(', ') or who.contact_type }}</div>
   </div>
   {% endif %}
   <div class="frow">

@@ -353,7 +353,7 @@
             <a href="{{ url_for('contact_detail', id=c.id) }}">{{ c.full_name }}</a>
             {% if c.id == org.main_contact_id %}<span class="org-type-tag">Main contact</span>{% endif %}
             <div class="rel-meta">
-              {{ c.job_title or 'No job title' }}
+              {{ role_names(c) | join(', ') or c.contact_type or 'No role recorded' }}
               {%- if c.email %} &middot; {{ c.email }}{% endif -%}
             </div>
           </div>

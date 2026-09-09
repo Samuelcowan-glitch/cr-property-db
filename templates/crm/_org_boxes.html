@@ -120,7 +120,7 @@
         <option value="">Not set</option>
         {% for c in contacts %}
         <option value="{{ c.id }}" {{ 'selected' if v.get('main_contact_id')|string == c.id|string }}>
-          {{ c.full_name }}{% if c.job_title %} — {{ c.job_title }}{% endif %}
+          {{ c.full_name }}{% if c.contact_type %} — {{ c.contact_type }}{% endif %}
         </option>
         {% endfor %}
       </select>

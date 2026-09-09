@@ -163,19 +163,50 @@ assert 'end date is before the start date' in body
 print('8. an invented role, and an end date before its start, are both refused')
 
 
-# ─── 9. The contact type is untouched by any of this ────────────────────────
-with A.app.app_context():
-    c = A.Contact.query.get(IDS['john'])
-    assert c.contact_type in (None, '', 'Client', 'Tenant'), c.contact_type
+# ─── 9. The type is the four sides of a deal, and nothing else ──────────────
+# The type is the headline and the roles are the full picture, so the type
+# offers only the four — not every role somebody might hold.
 page = cl.get(f"/contacts/{IDS['john']}").get_data(as_text=True)
 block = page[page.index('name="contact_type"'):]
 block = block[:block.index('</select>')]
-for label in ('Client', 'Tenant'):
+for label in ('Landlord', 'Tenant', 'Buyer', 'Seller'):
     assert f'>{label}<' in block, f'the type dropdown lost {label}'
-for role in ('Buyer', 'Investor', 'Prospective Landlord'):
-    assert f'>{role}<' not in block, \
-        f'{role} leaked into the contact type — roles belong in their own records'
-print('9. the Client / Tenant type is unchanged; roles live in their own records')
+for narrower in ('Prospective Tenant', 'Prospective Landlord', 'Investor', 'Agent'):
+    assert f'>{narrower}<' not in block, \
+        f'{narrower} is a role, not one of the four types'
+print('9. the type offers the four sides of a deal, and not the narrower roles')
+
+
+# ─── 9b. Setting a type records the matching role, and removes nothing ──────
+cl.post(f"/contacts/{IDS['sara']}/edit",
+        data={'first_name': 'Sara', 'last_name': 'Okelo',
+              'contact_type': 'Landlord'}, follow_redirects=True)
+with A.app.app_context():
+    sara_now = A.Contact.query.get(IDS['sara'])
+    assert sara_now.contact_type == 'Landlord'
+    assert 'Landlord' in A.role_names(sara_now), \
+        'the type says Landlord but no Landlord role was recorded'
+    kept = {r.role for r in roles_of(IDS['sara'])}
+    assert 'Prospective Tenant' in kept, 'changing the type removed another role'
+# Saving again must not record it twice.
+cl.post(f"/contacts/{IDS['sara']}/edit",
+        data={'first_name': 'Sara', 'last_name': 'Okelo',
+              'contact_type': 'Landlord'}, follow_redirects=True)
+with A.app.app_context():
+    n = A.ContactRole.query.filter_by(contact_id=IDS['sara'],
+                                      role='Landlord').count()
+assert n == 1, f'{n} Landlord roles after saving the same type twice'
+print('9b. setting a type records the matching role once, and removes nothing')
+
+
+# ─── 9c. A type nobody offers is refused ────────────────────────────────────
+cl.post(f"/contacts/{IDS['sara']}/edit",
+        data={'first_name': 'Sara', 'last_name': 'Okelo',
+              'contact_type': 'Supreme Overlord'}, follow_redirects=True)
+with A.app.app_context():
+    got = A.Contact.query.get(IDS['sara']).contact_type
+assert got != 'Supreme Overlord', 'an invented type was saved'
+print('9c. an invented type is not saved')
 
 
 # ─── 10. An existing contact_type becomes a role, once ──────────────────────

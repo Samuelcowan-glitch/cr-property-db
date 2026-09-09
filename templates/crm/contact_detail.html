@@ -76,14 +76,22 @@
         </div>
       </div>
       <div class="frow">
-        <div class="fcell fcell--label">Job title</div>
-        <div class="fcell fcell--edit"><input type="text" name="job_title" value="{{ contact.job_title or '' }}" placeholder="Not added"></div>
+        {# The roles themselves are edited in the Roles box below, where each
+           one keeps its own dates, area and budget. This is the summary. #}
+        <div class="fcell fcell--label">Contact role</div>
+        <div class="fcell {{ 'is-empty' if not role_names(contact) }}">
+          {% if role_names(contact) %}
+          <span class="role-tags">
+            {% for name in role_names(contact) %}<span class="role-tag">{{ name }}</span>{% endfor %}
+          </span>
+          {% else %}<a href="#roles-box">Add a role</a>{% endif %}
+        </div>
         <div class="fcell fcell--label">Registered</div>
         <div class="fcell is-empty">{{ contact.created_at.strftime('%d %b %Y') if contact.created_at else '—' }}</div>
       </div>
-      <div class="frow">
+      <div class="frow frow--full">
         <div class="fcell fcell--label">Tags</div>
-        <div class="fcell fcell--edit" style="grid-column: span 3">
+        <div class="fcell fcell--edit">
           <input type="text" name="tags" value="{{ contact_tags(contact) | join(', ') }}"
                  list="tag-suggestions"
                  placeholder="Key account, Kings Road &mdash; separate with commas">

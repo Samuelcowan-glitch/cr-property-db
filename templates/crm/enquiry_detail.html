@@ -282,9 +282,9 @@
         <div class="fcell fcell--label">&nbsp;</div>
         <div class="fcell">&nbsp;</div>
       </div>
-      <div class="frow">
+      <div class="frow frow--full">
         <div class="fcell fcell--label">Anything else</div>
-        <div class="fcell fcell--edit" style="grid-column:span 3">
+        <div class="fcell fcell--edit">
           <textarea name="req_notes" rows="2" placeholder="Parking, frontage, fit-out, lease length…">{{ e.req_notes or '' }}</textarea>
         </div>
       </div>
@@ -295,7 +295,7 @@
       <div class="box-head"><span class="box-title">Follow-up</span></div>
       <div class="frow">
         <div class="fcell fcell--label">Next action</div>
-        <div class="fcell fcell--edit" style="grid-column:span 3">
+        <div class="fcell fcell--edit">
           <input type="text" name="next_action" value="{{ e.next_action or '' }}" placeholder="e.g. Send the brochure and call to arrange a second viewing">
         </div>
       </div>
@@ -316,9 +316,9 @@
           {% else %}<span style="color:var(--grey-400)">No follow-up set</span>{% endif %}
         </div>
       </div>
-      <div class="frow">
+      <div class="frow frow--full">
         <div class="fcell fcell--label">Notes</div>
-        <div class="fcell fcell--edit" style="grid-column:span 3">
+        <div class="fcell fcell--edit">
           <textarea name="notes" rows="3" placeholder="Background on the enquiry…">{{ e.notes or '' }}</textarea>
         </div>
       </div>

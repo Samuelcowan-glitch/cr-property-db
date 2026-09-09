@@ -25,6 +25,11 @@
   --cell-head:  #eef0f3;   /* heading strip inside a box */
   --cell-label: #f7f8fa;   /* label cell background */
   --cell-h:     32px;      /* one row — matches a compact button */
+  /* The height of every single-line control: input, select, custom dropdown.
+     Equal to a compact button, so a control and a button on the same row have
+     the same top and bottom edge. */
+  --ctl-h:      32px;
+  --ctl-h-sm:   28px;
   --label-w:    118px;     /* every field label, everywhere */
 }
 
@@ -238,7 +243,11 @@ table.rec-table td.actions { white-space: nowrap; text-align: right; }
   min-height: var(--cell-h);
 }
 .form-grid > .form-group > label {
-  display: flex; align-items: center;
+  /* Flex centres the label in its cell, but it also makes the label's text and
+     any parenthetical after it two separate items, so "Preferred Area(s)" and
+     "(comma-separated)" were laid out side by side and squeezed rather than
+     read as one line. They wrap together, with a space between them. */
+  display: flex; align-items: center; flex-wrap: wrap; column-gap: 4px;
   margin: 0; padding: 6px 9px;
   background: var(--cell-label);
   border-right: 1px solid var(--cell-line);
@@ -349,6 +358,10 @@ table.rec-table td.actions { white-space: nowrap; text-align: right; }
 }
 .rec-save [data-save-status] { font-size: 11.5px; color: var(--orange); font-weight: 600; }
 .btn-save { border-radius: 3px; }
+/* One height for everything on a record's toolbar. Save was the full 38px
+   while Archive beside it was a 32px compact button, so the bar had two
+   baselines. The toolbar sets the size; the buttons on it follow. */
+.rec-toolbar .btn { --btn-h: var(--ctl-h); }
 .btn-save:disabled { opacity: .45; cursor: default; }
 .btn-save.is-dirty { background: var(--orange); border-color: var(--orange); color: #fff; }
 
@@ -828,7 +841,7 @@ table.rec-table td.actions { white-space: nowrap; text-align: right; }
 .fin-filters input[type="date"] { width: 148px; flex: 0 0 auto; }
 .fin-filters .ss-wrap { flex: 0 1 176px; width: auto; }
 .fin-filters .ss-button {
-  width: 100%; height: 28px; min-height: 28px; font-size: 12px; padding: 0 22px 0 7px;
+  width: 100%; font-size: 12px; padding: 0 22px 0 7px;
 }
 .fin-filters select { max-width: 170px; }
 .fin-filters .lbl { font-size: 11px; color: var(--grey-600); margin-left: 4px; }
@@ -1073,6 +1086,20 @@ table.rec-table td.actions { white-space: nowrap; text-align: right; }
 .fin-tip .tot { border-top: 1px solid rgba(255,255,255,.18); margin-top: 4px; padding-top: 4px; }
 /* Keep the first and last tooltips on the page. */
 .fin-cols > .fin-col:first-child .fin-tip { left: 0; transform: none; }
+/* The last column's tooltip is centred on a column at the right-hand edge, so
+   it hung off the side of the page — and because it is only hidden, not taken
+   out of the layout, it made the whole page scroll sideways on a phone. It
+   aligns to its right edge, the mirror of the rule above. */
+.fin-cols > .fin-col:last-child .fin-tip { left: auto; right: 0; transform: none; }
+.fin-tip { max-width: min(260px, calc(100vw - 24px)); }
+/* This card only ever appears on hover, and nothing inside a column can take
+   focus, so on a touch screen there is no way to see it at all. It was still
+   laid out though — 190px of it, hanging off the right-hand edge, which is
+   what made the whole page scroll sideways on a phone. Where it cannot be
+   used, it is not drawn. */
+@media (max-width: 700px), (hover: none) {
+  .fin-cols > .fin-col .fin-tip { display: none; }
+}
 .fin-cols > .fin-col:last-child  .fin-tip { left: auto; right: 0; transform: none; }
 
 @media (max-width: 900px) {
@@ -1575,8 +1602,11 @@ body.pg-open { overflow: hidden; }
 }
 .br-est-tag { background: #fdf3e3; color: #8a5a12; border: 1px solid #e8d5a3; }
 
-.br-pair { display: flex; align-items: center; gap: 8px; }
-.br-pair input[type="text"] { min-width: 0; }
+/* Two fields and the word between them, inside one cell of a narrow column.
+   They wrap onto a second line rather than running past the cell edge. */
+.br-pair { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.br-pair input[type="text"] { min-width: 0; flex: 1 1 64px; }
+.br-pair .br-or { flex: 0 0 auto; }
 .br-or { font-size: 12px; color: var(--grey-600); flex: none; }
 .br-check { display: flex; align-items: center; gap: 6px; font-size: 13px;
             white-space: nowrap; flex: none; }
@@ -1690,7 +1720,7 @@ body.pg-open { overflow: hidden; }
 .kt-grip:active { cursor: grabbing; }
 .kt-input { flex: 1 1 auto; min-width: 0; }
 .kt-x {
-  flex: none; width: 22px; height: 22px; padding: 0; line-height: 1;
+  flex: none; width: var(--ctl-h); height: var(--ctl-h); padding: 0; line-height: 1;
   border: 1px solid var(--grey-200); background: var(--white);
   color: var(--grey-600); border-radius: 3px; cursor: pointer; font-size: 15px;
 }
@@ -2085,4 +2115,38 @@ body.pg-open { overflow: hidden; }
 @media (max-width: 700px) {
   .bulk-bar { position: static; }
   .bulk-do input, .bulk-do select { min-width: 0; }
+}
+
+/* ── Things that would not fit ──────────────────────────────────────────────
+   Each of these was measured sticking out of its container in a real browser,
+   at one of the three widths the CRM is used at. A flex item will not shrink
+   below its content unless it is told it may, which is what most of these say.
+
+   A cell holding role tags lets them wrap onto a second line rather than
+   pushing the last one past the edge on a phone. */
+.fcell > .role-tags { flex-wrap: wrap; min-width: 0; }
+.fcell:has(> .role-tags) { flex-wrap: wrap; }
+
+/* An edit cell's control fills the cell and stops there. */
+.fcell--edit > input, .fcell--edit > select, .fcell--edit > textarea {
+  min-width: 0; max-width: 100%;
+}
+
+/* The business rates box sits in a narrow column, where "Calculate Business
+   Rates" is wider than the column is. The button takes the full width and
+   wraps its label rather than hanging 87px into the next box. */
+.br-actions .btn {
+  flex: 1 1 100%; min-width: 0; white-space: normal;
+  height: auto; min-height: var(--btn-h); padding-top: 7px; padding-bottom: 7px;
+}
+@media (min-width: 1100px) {
+  .br-actions .btn { flex: 0 1 auto; white-space: nowrap; }
+}
+
+/* The three financial views are labelled in full, which is wider than a phone.
+   They wrap onto as many lines as they need instead of running off. */
+@media (max-width: 900px) {
+  .fin-views { flex-wrap: wrap; }
+  .fin-views a { flex: 1 1 140px; white-space: normal; text-align: center; }
+  .fin-views a:last-child { border-right: 0; }
 }

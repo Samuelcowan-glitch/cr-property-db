@@ -7,9 +7,9 @@
 
 {% import "crm/_contact_roles.html" as cr %}
 {% block content %}
-{% set section_titles = {'Tenant': 'Tenants', 'Client': 'Clients'} %}
+
 <div class="section-header">
-  <h2>{{ section_titles.get(ctype, 'All Contacts') }}</h2>
+  <h2>{{ (ctype ~ 's') if ctype else 'All Contacts' }}</h2>
   <form class="search-bar" method="get">
     {% if ctype %}<input type="hidden" name="type" value="{{ ctype }}">{% endif %}
     <input type="text" name="q" value="{{ q }}" placeholder="Search name, email, type…">
@@ -107,7 +107,7 @@
         </span>
         <span class="ct-sub">
           {%- if c.organisation %}{{ c.organisation.name }}
-          {%- elif c.job_title %}{{ c.job_title }}
+          {%- elif c.contact_type %}{{ c.contact_type }}
           {%- else %}No company recorded{% endif -%}
         </span>
       </span>

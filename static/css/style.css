@@ -534,10 +534,24 @@ input:focus, select:focus, textarea:focus {
   outline: none; border-color: var(--navy);
   box-shadow: 0 0 0 2px rgba(14, 31, 68, .12);
 }
-/* Every single-line control is the same height, on every page. */
-.form-group > input:not([type="checkbox"]):not([type="radio"]),
-.form-group > select { height: var(--cell-h, 32px); box-sizing: border-box; }
-.form-group > textarea { box-sizing: border-box; }
+/* Every single-line control is the same height, on every page.
+   This used to apply only inside a .form-group, which is why a search box was
+   29px beside a 32px button and a date field was 35.5px beside a 33px select:
+   each one worked its own height out from its font and padding. Stated once,
+   for every one of them, so a row of controls has one baseline and one cap.
+   Checkboxes, radios and textareas keep their own sizing — a checkbox is not
+   a row, and a textarea grows. */
+input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="file"]),
+select, .ss-button {
+  height: var(--ctl-h); min-height: var(--ctl-h); box-sizing: border-box;
+}
+textarea { box-sizing: border-box; }
+/* Where a row is deliberately compact, both the controls and the buttons on it
+   step down together rather than one of them shrinking on its own. */
+.is-compact input:not([type="checkbox"]):not([type="radio"]),
+.is-compact select, .is-compact .ss-button { height: var(--ctl-h-sm);
+                                             min-height: var(--ctl-h-sm); }
+.is-compact .btn { --btn-h: var(--ctl-h-sm); }
 /* Something that failed validation says so, and not by colour alone. */
 .form-group.is-invalid > input,
 .form-group.is-invalid > select { border-color: var(--danger); background: #fdf3f3; }

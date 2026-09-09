@@ -78,16 +78,21 @@ def page(cid):
     return r.get_data(as_text=True)
 
 
-# ─── 1. Type is a dropdown of Client and Tenant ─────────────────────────────
+# ─── 1. Type is a dropdown of the four sides of a deal ──────────────────────
 body = page(IDS['sara'])
 block = body[body.index('name="contact_type"'):]
 block = block[:block.index('</select>')]
 assert 'name="contact_type"' in body
 assert 'input type="text" name="contact_type"' not in body, \
     'Type is still a free-text box'
-for t in ('Client', 'Tenant'):
+for t in ('Landlord', 'Tenant', 'Buyer', 'Seller'):
     assert f'>{t}<' in block, f'{t!r} is not offered'
-print('1. Type is a dropdown offering Client and Tenant')
+# Nothing beyond those four, except a label this record already holds.
+import re as _re
+offered = {t.strip() for t in _re.findall(r'<option[^>]*>([^<]*)<', block)}
+assert offered <= {'Landlord', 'Tenant', 'Buyer', 'Seller',
+                   '— Not set —', 'Client'}, offered
+print('1. Type offers Landlord, Tenant, Buyer and Seller')
 
 
 # ─── 2. It is edited on the page, not on a separate screen ──────────────────
@@ -95,13 +100,20 @@ rec_form = body[body.index('<form'):body.rindex('</form>')]
 assert 'name="contact_type"' in rec_form
 assert f"/contacts/{IDS['sara']}/edit" in body, \
     'the page does not post to the contact edit route'
+cl.post(f"/contacts/{IDS['sara']}/edit", data={'contact_type': 'Landlord'},
+        follow_redirects=True)
+with A.app.app_context():
+    assert A.Contact.query.get(IDS['sara']).contact_type == 'Landlord'
+# "Client" is an older label. A record that already holds it keeps it, but it
+# is not on offer to anybody else.
 cl.post(f"/contacts/{IDS['sara']}/edit", data={'contact_type': 'Client'},
         follow_redirects=True)
 with A.app.app_context():
-    assert A.Contact.query.get(IDS['sara']).contact_type == 'Client'
+    assert A.Contact.query.get(IDS['sara']).contact_type == 'Landlord', \
+        'a type that is no longer offered was accepted'
     A.Contact.query.get(IDS['sara']).contact_type = 'Tenant'
     db.session.commit()
-print('2. the type saves from the contact page itself')
+print('2. the type saves from the contact page, and only the offered ones do')
 
 
 # ─── 3. An older type is kept and offered, not silently rewritten ───────────
@@ -193,7 +205,12 @@ body = page(IDS['sara'])
 assert 'Linked Properties' in body
 assert 'No linked properties' in body, \
     'an applicant with requirements was given matched properties'
-assert '42 Peterborough Road' not in body, \
+# Scoped to the box itself. Elsewhere on the page a role can be pointed at a
+# property, so its picker lists every address — that is a chooser, not a
+# suggestion, and matching on the whole page would confuse the two.
+linked_box = body[body.index('Linked Properties'):]
+linked_box = linked_box[:linked_box.index('</div>', linked_box.index('No linked properties'))]
+assert '42 Peterborough Road' not in linked_box, \
     'a property was suggested from her requirement'
 with A.app.app_context():
     assert A.linked_properties(A.Contact.query.get(IDS['sara'])) == []
