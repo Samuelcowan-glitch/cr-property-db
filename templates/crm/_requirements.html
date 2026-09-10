@@ -1,0 +1,167 @@
+{#
+   What a tenant or a buyer is looking for, and what fits it.
+
+   A landlord has a building; a tenant has a brief. Showing both the same box
+   asked a landlord what size of property they wanted, which is the wrong
+   question. So the box a contact gets is decided by what they are: a tenant
+   gets Tenant Requirements, a buyer gets Buyer Requirements, and a landlord or
+   a seller gets the properties they are actually recorded against.
+
+   The status on this box belongs to the requirement, not to the person.
+   Somebody can stop looking without ceasing to be a tenant, and a satisfied
+   requirement should stop bringing properties back without archiving anyone.
+#}
+
+{% macro requirements_box(contact, form_id) %}
+{% set label = requirement_label(contact) %}
+{% if label %}
+<div class="box box--grid" id="requirements">
+  <div class="box-head">
+    <span class="box-title">{{ label }}</span>
+    <span class="box-actions">
+      {{ 'Recorded' if has_requirement(contact) else 'Not yet recorded' }}
+    </span>
+  </div>
+
+  <div class="frow">
+    <div class="fcell fcell--label">Requirement status</div>
+    <div class="fcell fcell--edit">
+      <select name="req_status" form="{{ form_id }}">
+        {% for s in REQUIREMENT_STATUSES %}
+        <option value="{{ s }}"
+          {{ 'selected' if (contact.req_status or 'Active Requirement') == s }}>{{ s }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="fcell fcell--label">Move-in date</div>
+    <div class="fcell fcell--edit">
+      <input type="date" name="preferred_move_in" form="{{ form_id }}"
+             value="{{ contact.preferred_move_in.isoformat() if contact.preferred_move_in else '' }}">
+    </div>
+  </div>
+
+  <div class="frow frow--full">
+    <div class="fcell fcell--label">Preferred location</div>
+    <div class="fcell fcell--edit">
+      <input type="text" name="req_area" form="{{ form_id }}"
+             value="{{ contact.req_area or '' }}"
+             placeholder="e.g. Fulham, Chelsea, SW6 &mdash; separate with commas">
+    </div>
+  </div>
+
+  <div class="frow">
+    <div class="fcell fcell--label">Property type</div>
+    <div class="fcell fcell--edit">
+      {% set _cur = contact.req_property_type %}
+      <select name="req_property_type" form="{{ form_id }}">
+        <option value="">Any type</option>
+        {% for t in property_type_options(_cur) %}
+        <option value="{{ t }}" {{ 'selected' if _cur == t }}>{{ t }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="fcell fcell--label">Intended use</div>
+    <div class="fcell fcell--edit">
+      <input type="text" name="req_use" form="{{ form_id }}"
+             value="{{ contact.req_use or '' }}"
+             placeholder="What they will do there">
+    </div>
+  </div>
+
+  <div class="frow">
+    <div class="fcell fcell--label">Size from</div>
+    <div class="fcell fcell--edit">
+      <input type="number" min="0" name="req_size_min" form="{{ form_id }}"
+             value="{{ contact.req_size_min|int if contact.req_size_min else '' }}"
+             placeholder="sq ft">
+    </div>
+    <div class="fcell fcell--label">Size to</div>
+    <div class="fcell fcell--edit">
+      <input type="number" min="0" name="req_size_max" form="{{ form_id }}"
+             value="{{ contact.req_size_max|int if contact.req_size_max else '' }}"
+             placeholder="sq ft">
+    </div>
+  </div>
+
+  <div class="frow">
+    <div class="fcell fcell--label">
+      {{ 'Maximum rent' if contact.contact_type == 'Tenant' else 'Maximum price' }}
+    </div>
+    <div class="fcell fcell--edit">
+      <input type="number" min="0" name="req_budget_max" form="{{ form_id }}"
+             value="{{ contact.req_budget_max|int if contact.req_budget_max else '' }}"
+             placeholder="£">
+    </div>
+    <div class="fcell fcell--label">Basis</div>
+    <div class="fcell fcell--edit">
+      <select name="req_budget_unit" form="{{ form_id }}">
+        {% for u, lbl in [('pa','Per annum'),('pcm','Per month'),('sale','Purchase price')] %}
+        <option value="{{ u }}"
+          {{ 'selected' if (contact.req_budget_unit or ('sale' if contact.contact_type == 'Buyer' else 'pa')) == u }}>
+          {{ lbl }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+
+  <div class="frow frow--full">
+    <div class="fcell fcell--label">Other requirements</div>
+    <div class="fcell fcell--edit">
+      <textarea name="req_notes" rows="2" form="{{ form_id }}"
+                placeholder="Parking, frontage, fit-out, lease length&hellip;">{{ contact.req_notes or '' }}</textarea>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endmacro %}
+
+
+{# What fits the brief. Read from the live instructions, so a property that has
+   been let or sold is not offered to anybody. #}
+{% macro matched_box(contact, matches) %}
+{% if requirement_label(contact) %}
+<div class="box" id="matched-properties">
+  <div class="box-head">
+    <span class="box-title">Matched Properties</span>
+    {% if matches %}<span class="box-actions">{{ matches|length }}</span>{% endif %}
+  </div>
+
+  {% if matches %}
+  <ul class="match-list">
+    {% for m in matches %}
+    <li class="match-row">
+      <a class="match-main" href="{{ url_for('property_detail', id=m.property.id) }}">
+        <span class="match-addr">{{ m.property.address }}</span>
+        <span class="match-meta">
+          {%- if m.size %}{{ '{:,.0f}'.format(m.size) }} sq ft{% endif -%}
+          {%- if m.size and m.asking %} &middot; {% endif -%}
+          {%- if m.asking %}{{ m.listing.display_price }}{% endif -%}
+          {%- if m.property.property_type %} &middot; {{ m.property.property_type }}{% endif -%}
+        </span>
+      </a>
+      {# Why it is on the list, so a match is never a mystery. #}
+      {% if m.why %}
+      <span class="match-why">
+        {% for reason in m.why %}<span class="match-tag">{{ reason }}</span>{% endfor %}
+      </span>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% elif not has_requirement(contact) %}
+  <div class="empty" style="padding:14px 12px">
+    Nothing to match on yet. Fill in the requirement and anything that fits
+    will appear here.
+  </div>
+  {% elif contact.req_status in ('Requirement Satisfied', 'Withdrawn') %}
+  <div class="empty" style="padding:14px 12px">
+    This requirement is {{ contact.req_status|lower }}, so nothing is being matched.
+  </div>
+  {% else %}
+  <div class="empty" style="padding:14px 12px">
+    Nothing available fits this requirement at the moment.
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+{% endmacro %}

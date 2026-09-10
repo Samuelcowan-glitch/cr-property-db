@@ -2394,3 +2394,30 @@ body.pg-open { overflow: hidden; }
   .form-group.span-2,
   .form-group.span-3 { grid-column: auto; }
 }
+
+/* ── Matched properties ─────────────────────────────────────────────────────
+   What fits a tenant's or a buyer's brief. A row is the address, what it is,
+   and why it matched — the last so a suggestion is never a mystery. */
+.match-list { list-style: none; margin: 0; padding: 0; }
+.match-row {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 10px; padding: 9px 12px;
+  border-bottom: 1px solid var(--cell-line);
+}
+.match-row:last-child { border-bottom: 0; }
+.match-main {
+  display: flex; flex-direction: column; gap: 2px; min-width: 0;
+  text-decoration: none; color: inherit;
+}
+.match-addr { font-size: 13px; color: var(--blue); }
+.match-row:hover .match-addr { text-decoration: underline; }
+.match-meta {
+  font-size: 12px; color: var(--grey-600);
+  font-variant-numeric: tabular-nums;
+}
+.match-why { display: flex; flex-wrap: wrap; gap: 4px; flex: none; }
+.match-tag {
+  font-size: 10.5px; padding: 1px 6px; border-radius: 3px;
+  background: var(--grey-100); color: var(--grey-600);
+  text-transform: capitalize; white-space: nowrap;
+}

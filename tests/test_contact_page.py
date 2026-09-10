@@ -129,32 +129,44 @@ with A.app.app_context():
 print('3. an existing contact keeps its own type, and saving does not change it')
 
 
-# ─── 4. Matched Properties is gone ──────────────────────────────────────────
-for cid in (IDS['john'], IDS['sara'], IDS['nobody']):
+# ─── 4. Matched Properties is for whoever is looking ────────────────────────
+# It belongs to a tenant or a buyer, who have a brief. A landlord has a
+# building, so suggesting properties to them is the wrong question.
+with A.app.app_context():
+    kinds = {k: A.Contact.query.get(v).contact_type
+             for k, v in IDS.items() if k in ('john', 'sara', 'nobody')}
+for who, cid in (('john', IDS['john']), ('sara', IDS['sara']),
+                 ('nobody', IDS['nobody'])):
     body = page(cid)
-    assert 'Matched Properties' not in body, 'Matched Properties is still there'
-    assert 'matched_properties' not in body
-    assert 'match-row' not in body and 'match-list' not in body
-print('4. Matched Properties is gone from every contact page')
+    looking = kinds.get(who) in ('Tenant', 'Buyer')
+    if looking:
+        assert 'Matched Properties' in body, f'{who} is looking but sees no matches box'
+    else:
+        assert 'Matched Properties' not in body, \
+            f'{who} is a {kinds.get(who)} and should not be offered properties'
+print('4. Matched Properties appears for whoever is actually looking')
 
 
-# ─── 5. Matching no longer runs for a contact ───────────────────────────────
+# ─── 5. And it is driven by the requirement, not by the contact ─────────────
 src = open(os.path.join(ROOT, 'app.py')).read()
 route = src[src.index('def contact_detail(id):'):]
 route = route[:route.index('\n@app.route')]
-assert 'match_properties_to_contact' not in route, \
-    'the contact page still runs property matching'
-assert 'linked_properties' in route
-print('5. the contact page no longer runs the matching logic at all')
+assert 'matched_properties' in route, 'the page does not run the matching'
+assert 'linked_properties' in route, 'the derived list was dropped'
+print('5. the page runs matching for the requirement, and keeps the derived list')
 
 
-# ─── 6. Requirements are gone from the page ─────────────────────────────────
+# ─── 6. A tenant is asked what they are looking for ─────────────────────────
 body = page(IDS['sara'])
-assert '>Requirement<' not in body and 'New Requirement' not in body
-for field in ('req_category', 'req_area', 'req_size_min', 'req_size_max',
-              'req_budget_max', 'req_notes'):
-    assert f'name="{field}"' not in body, f'{field} is still on the contact page'
-print('6. no requirement fields remain on the contact page')
+with A.app.app_context():
+    sara_kind = A.Contact.query.get(IDS['sara']).contact_type
+if sara_kind in ('Tenant', 'Buyer'):
+    assert f'{sara_kind} Requirements' in body, 'the requirement box is not named'
+    assert 'Roles' not in body, 'the Roles box is still on a contact who has a type'
+    for field in ('req_area', 'req_size_min', 'req_size_max',
+                  'req_budget_max', 'req_notes', 'req_status'):
+        assert f'name="{field}"' in body, f'{field} is missing from the requirement'
+print('6. a tenant or buyer is asked what they are looking for, and has no Roles box')
 
 
 # ─── 7. But the requirement DATA is untouched ───────────────────────────────
@@ -200,21 +212,24 @@ assert A.INSTRUCTION_TO_LET in card, 'the instruction type is not shown'
 print('10. each card shows address, status and instruction type, and links through')
 
 
-# ─── 11. Nothing is suggested — an applicant gets no properties ─────────────
+# ─── 11. Linked properties stays derived, and never matches ─────────────────
+# The two lists answer different questions: what somebody is recorded against,
+# and what would suit them. Matches belong in the matches box, not this one.
 body = page(IDS['sara'])
-assert 'Linked Properties' in body
-assert 'No linked properties' in body, \
-    'an applicant with requirements was given matched properties'
-# Scoped to the box itself. Elsewhere on the page a role can be pointed at a
-# property, so its picker lists every address — that is a chooser, not a
-# suggestion, and matching on the whole page would confuse the two.
-linked_box = body[body.index('Linked Properties'):]
-linked_box = linked_box[:linked_box.index('</div>', linked_box.index('No linked properties'))]
-assert '42 Peterborough Road' not in linked_box, \
-    'a property was suggested from her requirement'
 with A.app.app_context():
-    assert A.linked_properties(A.Contact.query.get(IDS['sara'])) == []
-print('11. an applicant with requirements gets no properties — nothing is matched')
+    sara = A.Contact.query.get(IDS['sara'])
+    derived = A.linked_properties(sara)
+    kind = sara.contact_type
+# The derived list is exactly what she is recorded against — nothing inferred.
+assert derived == [], 'the derived list was filled from her requirement'
+if kind in ('Tenant', 'Buyer'):
+    # For somebody who is looking, an empty derived list is a footnote worth
+    # leaving off the page. What would suit her has its own box.
+    assert 'No linked properties' not in body, \
+        'an empty derived list is still taking up room on a tenant page'
+else:
+    assert 'No linked properties' in body
+print('11. what somebody is recorded against stays separate from what would suit them')
 
 
 # ─── 12. A contact with nothing shows the empty message ─────────────────────

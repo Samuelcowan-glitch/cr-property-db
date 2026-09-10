@@ -53,7 +53,13 @@ with A.app.app_context():
                       email=f'{first.lower()}@example.co.uk',
                       phone='020 7731 0000', mobile='07700 900100',
                       organisation_id=org.id, status='Prospect',
-                      tags='Key account, Kings Road')
+                      tags='Key account, Kings Road',
+                      req_area=('Fulham, SW6' if kind == 'Tenant' else None),
+                      req_size_min=(500 if kind == 'Tenant' else None),
+                      req_size_max=(3000 if kind == 'Tenant' else None),
+                      req_budget_max=(90000 if kind == 'Tenant' else None),
+                      req_budget_unit=('pa' if kind == 'Tenant' else None),
+                      req_status=('Active Requirement' if kind == 'Tenant' else None))
         db.session.add(c)
         people.append(c)
     db.session.commit()

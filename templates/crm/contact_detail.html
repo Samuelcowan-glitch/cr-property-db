@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% import "crm/_contact_roles.html" as cr %}
+{% import "crm/_requirements.html" as rq %}
 {% block title %}{{ contact.full_name }}{% endblock %}
 {% block topbar_title %}Contact{% endblock %}
 {% block topbar_actions %}
@@ -19,7 +20,7 @@
   'Inactive': '#8a939f', 'Archived': '#5f6368' } %}
 
 <!-- ── Record toolbar ── -->
-<form method="post" action="{{ url_for('contact_edit', id=contact.id) }}" data-inline-edit>
+<form id="contact-form" method="post" action="{{ url_for('contact_edit', id=contact.id) }}" data-inline-edit>
 <input type="hidden" name="next" value="{{ url_for('contact_detail', id=contact.id) }}">
 
 <div class="rec-toolbar">
@@ -142,15 +143,30 @@
       </div>
     </div>
 
+    {# What this contact gets depends on what they are. A tenant or a buyer is
+       looking for something, so they get a requirement. A landlord or a seller
+       has property, so the linked instructions below are their picture. The
+       roles box stays only for a contact with no type yet, because otherwise
+       there would be no way to record what an unclassified contact is. #}
+    {{ rq.requirements_box(contact, 'contact-form') }}
+    {% if not contact.contact_type %}
     {{ cr.roles_box(contact, roles, all_properties, all_projects) }}
+    {% endif %}
 
-    {# Where Requirement used to be. Not a matching section: these are the
-       properties this contact is genuinely recorded against elsewhere in the
-       CRM, so nothing has to be linked twice. What somebody is LOOKING for is
-       an applicant requirement and lives with the applicant. #}
+    {# The properties this contact is recorded against elsewhere in the CRM —
+       what they own or act on, not what they are looking for. It is the whole
+       picture for a landlord or a seller, and still worth showing to a tenant
+       or a buyer who already holds something. Never a matching list: what
+       somebody wants is the requirement above, and what fits it is on the
+       right. #}
+    {% if linked or contact.contact_type not in ('Tenant', 'Buyer') %}
     <div class="box" id="linked-properties">
       <div class="box-head">
-        <span class="box-title">Linked Properties</span>
+        <span class="box-title">
+          {%- if contact.contact_type in ('Landlord', 'Seller') -%}
+            Properties &amp; Instructions
+          {%- else -%}Linked Properties{%- endif -%}
+        </span>
         {% if linked %}<span class="box-actions">{{ linked|length }}</span>{% endif %}
       </div>
       {% if linked %}
@@ -178,11 +194,16 @@
       <div class="empty" style="padding:14px 12px">No linked properties</div>
       {% endif %}
     </div>
+    {% endif %}
 
   </div>
 
   <!-- ════ RIGHT ════ -->
   <div class="rec-col">
+
+    {# What fits the brief, beside the brief. Only for the types that are
+       looking for something. #}
+    {{ rq.matched_box(contact, matches) }}
 
     <div class="box box--grid">
       <div class="box-head">

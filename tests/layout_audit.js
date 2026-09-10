@@ -29,6 +29,7 @@ const PAGES = [
   ['contacts', '/contacts'],
   ['contacts by type', '/contacts?type=Landlord'],
   ['contact record', '/contacts/1'],
+  ['tenant record', '/contacts/2'],
   ['add contact', '/contacts/new'],
   ['organisations', '/organisations'],
   ['organisation record', '/organisations/1'],

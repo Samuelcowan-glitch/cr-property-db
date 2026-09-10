@@ -53,14 +53,16 @@
           {% endfor %}
         </select>
       </div>
+      {% if contact %}
       <div class="form-group">
-        <label for="status">Status *</label>
-        <select id="status" name="status" required>
+        <label for="status">Status</label>
+        <select id="status" name="status">
           {% for s in CONTACT_STATUSES %}
-          <option value="{{ s }}" {{ 'selected' if (contact and contact.status == s) or (not contact and s == 'Prospect') else '' }}>{{ s }}</option>
+          <option value="{{ s }}" {{ 'selected' if contact.status == s else '' }}>{{ s }}</option>
           {% endfor %}
         </select>
       </div>
+      {% endif %}
       <div class="form-group span-2">
         <label for="organisation_id">Organisation</label>
         <select id="organisation_id" name="organisation_id">

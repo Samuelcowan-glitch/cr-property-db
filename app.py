@@ -1430,6 +1430,12 @@ class Contact(db.Model):
     req_budget_max    = db.Column(db.Float)
     req_budget_unit   = db.Column(db.String(10))   # pa / pcm / sale
     req_notes         = db.Column(db.Text)          # special requirements
+    # The requirement's own state. It belongs to what they are looking for,
+    # not to the person: somebody can stop looking without ceasing to be a
+    # tenant, and a satisfied requirement should stop matching properties
+    # without archiving the contact.
+    req_status        = db.Column(db.String(30))
+    req_use           = db.Column(db.String(120))   # what they intend to do there
     # Lifecycle status + follow-up / requirement extras
     status            = db.Column(db.String(30), default='Prospect')
     preferred_move_in = db.Column(db.Date)
@@ -6211,7 +6217,11 @@ def contact_new():
             req_budget_max=float(request.form.get('req_budget_max')) if request.form.get('req_budget_max','').strip() else None,
             req_budget_unit=request.form.get('req_budget_unit') or 'pa',
             req_notes=request.form.get('req_notes') or None,
-            status=(request.form.get('status') if request.form.get('status') in CONTACT_STATUSES else 'Prospect'),
+            # The add form no longer asks for a status — nobody registers a new
+            # contact as Archived. Everyone starts as a Prospect, and the
+            # field is edited on the record once it means something.
+            status=(request.form.get('status')
+                    if request.form.get('status') in CONTACT_STATUSES else 'Prospect'),
             preferred_move_in=_parse_date(request.form.get('preferred_move_in')),
             lease_length=request.form.get('lease_length') or None,
             assigned_agent=request.form.get('assigned_agent') or None,
@@ -6260,6 +6270,162 @@ def contact_type_options(current=None):
     if current and current not in options:
         options.append(current)
     return options
+
+
+# ── What somebody is looking for ────────────────────────────────────────────
+# A requirement belongs to a tenant or a buyer: it is the brief they have given
+# us. Its status is the requirement's, not the person's — somebody can stop
+# looking without ceasing to be a tenant.
+
+REQUIREMENT_STATUSES = ['Active Requirement', 'On Hold', 'Requirement Satisfied',
+                        'Withdrawn']
+
+# Which types are looking for something, and what they are looking at.
+LOOKING_FOR = {'Tenant': INSTRUCTION_TO_LET, 'Buyer': INSTRUCTION_FOR_SALE}
+
+
+def requirement_label(contact):
+    """What the requirement box is called for this contact."""
+    kind = (contact.contact_type or '').strip()
+    return f'{kind} Requirements' if kind in LOOKING_FOR else None
+
+
+def has_requirement(contact):
+    """Whether anything has actually been recorded about what they want."""
+    return any([contact.req_area, contact.req_property_type, contact.req_use_class,
+                contact.req_size_min, contact.req_size_max, contact.req_budget_min,
+                contact.req_budget_max, contact.req_notes, contact.req_use,
+                contact.preferred_move_in])
+
+
+def requirement_is_live(contact):
+    """A requirement that should still be bringing properties back.
+
+    Blank counts as live: a requirement typed in before this field existed is
+    still a requirement, and quietly dropping it would lose somebody's brief.
+    """
+    return (contact.req_status or 'Active Requirement') in ('Active Requirement', 'On Hold')
+
+
+def _listing_property(listing):
+    """The property a listing sits on. Listing holds the id, not a relationship."""
+    if listing.property_id:
+        return Property.query.get(listing.property_id)
+    if listing.project is not None:
+        return listing.project.property
+    return None
+
+
+def _area_matches(wanted, listing):
+    """Whether a listing is in one of the areas asked for.
+
+    Areas are typed as free text — "Fulham, SW6, Chelsea" — because that is how
+    people describe where they want to be. Each is matched against the address
+    and the postcode, so both a district and a postcode prefix work.
+    """
+    if not wanted:
+        return True
+    prop = _listing_property(listing)
+    haystack = ' '.join(filter(None, [
+        getattr(prop, 'address', None) if prop is not None else None,
+        getattr(prop, 'postcode', None) if prop is not None else None,
+        listing.unit_name,
+    ])).lower()
+    for area in (a.strip().lower() for a in wanted.split(',')):
+        if area and area in haystack:
+            return True
+    return False
+
+
+def _rent_pa(listing):
+    """A listing's asking figure as a yearly rent, so budgets compare."""
+    if not listing.listing_price:
+        return None
+    unit = (listing.listing_price_unit or 'pa').lower()
+    if unit == 'pcm':
+        return listing.listing_price * 12
+    if unit == 'poa':
+        return None
+    return listing.listing_price
+
+
+def matched_properties(contact, limit=12):
+    """Available properties that fit what this contact is looking for.
+
+    Only for the types that are actually looking — a landlord is not shown
+    properties to rent. Only available ones, which now means the deal says so
+    rather than a label. A requirement that has been satisfied or withdrawn
+    matches nothing.
+
+    Every criterion is skipped when it has not been given: somebody who has
+    only said "Fulham, under £60,000" should see everything in Fulham under
+    £60,000, not nothing because they did not state a size. Each match says
+    which criteria it met, so it is clear why it is on the list.
+    """
+    kind = (contact.contact_type or '').strip()
+    instruction = LOOKING_FOR.get(kind)
+    if not instruction or not has_requirement(contact) or not requirement_is_live(contact):
+        return []
+
+    budget = contact.req_budget_max
+    # A sale budget is a capital figure; a letting budget is per year unless
+    # it was entered per month.
+    if budget and kind == 'Tenant' and (contact.req_budget_unit or 'pa').lower() == 'pcm':
+        budget = budget * 12
+
+    out = []
+    for listing in _available_listings(instruction):
+        prop = _listing_property(listing)
+        why = []
+
+        if contact.req_area:
+            if not _area_matches(contact.req_area, listing):
+                continue
+            why.append('area')
+
+        size = listing.size or (prop.size if prop is not None else None)
+        if contact.req_size_min or contact.req_size_max:
+            if size is None:
+                continue                      # cannot say it fits, so it does not
+            if contact.req_size_min and size < contact.req_size_min:
+                continue
+            if contact.req_size_max and size > contact.req_size_max:
+                continue
+            why.append('size')
+
+        asking = _rent_pa(listing) if kind == 'Tenant' else listing.listing_price
+        if budget:
+            if asking is None:
+                continue                      # price on application cannot be judged
+            if asking > budget:
+                continue
+            why.append('budget')
+
+        if contact.req_property_type and prop is not None:
+            if not same_property_type(contact.req_property_type, prop.property_type):
+                continue
+            why.append('type')
+
+        if contact.req_use_class and prop is not None:
+            wanted = (contact.req_use_class or '').strip().lower()
+            actual = (getattr(prop, 'website_category', '') or '').strip().lower()
+            if wanted and actual and wanted != actual:
+                continue
+            why.append('use')
+
+        out.append({'listing': listing, 'property': prop, 'why': why,
+                    'size': size, 'asking': asking})
+
+    # The closest fit first: the most criteria met, then the cheapest, so the
+    # top of the list is the one worth ringing about.
+    out.sort(key=lambda m: (-len(m['why']), m['asking'] if m['asking'] else float('inf')))
+    return out[:limit]
+
+
+app.jinja_env.globals['REQUIREMENT_STATUSES'] = REQUIREMENT_STATUSES
+app.jinja_env.globals['requirement_label'] = requirement_label
+app.jinja_env.globals['has_requirement'] = has_requirement
+app.jinja_env.globals['LOOKING_FOR'] = LOOKING_FOR
 
 
 def sync_type_to_role(contact):
@@ -6634,6 +6800,7 @@ def contact_detail(id):
     # tenure are actually known.
     return render_template('crm/contact_detail.html',
                            all_organisations=Organisation.query.order_by(Organisation.name).all(),
+                           matches=matched_properties(contact),
                            linked=linked_properties(contact),
                            roles=contact_roles(contact, current_only=False),
                            all_properties=Property.query.order_by(Property.address).all(),
@@ -6777,6 +6944,8 @@ CONTACT_FIELDS = [
     ('req_budget_max',    'req_budget_max',    _fnum),
     ('req_budget_unit',   'req_budget_unit',   _ftext),
     ('req_notes',         'req_notes',         _ftext),
+    ('req_status',        'req_status',        _ftext),
+    ('req_use',           'req_use',           _ftext),
     ('preferred_move_in', 'preferred_move_in', _parse_date),
     ('lease_length',      'lease_length',      _ftext),
     ('assigned_agent',    'assigned_agent',    _ftext),
@@ -10788,7 +10957,9 @@ def _migrate_retire_client():
     same thing under a different word.
     """
     with app.app_context():
-        _add_columns('contacts', [('tags', 'TEXT')])
+        _add_columns('contacts', [('tags', 'TEXT'),
+                                  ('req_status', 'TEXT'),
+                                  ('req_use', 'TEXT')])
         renamed = remapped = flagged = 0
 
         # Vendor and Purchaser are the old words for Seller and Buyer. Nothing
