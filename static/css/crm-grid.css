@@ -2150,3 +2150,146 @@ body.pg-open { overflow: hidden; }
   .fin-views a { flex: 1 1 140px; white-space: normal; text-align: center; }
   .fin-views a:last-child { border-right: 0; }
 }
+
+/* ── Dashboard: the four figures ────────────────────────────────────────────
+   Four cards rather than four boxes. The figure leads, the label sits above it
+   small and tracked so the eye lands on the number first, and the footing
+   carries the month-on-month. Same 3px corners and same type as everything
+   else — the complaint was that these looked bolted on. */
+.kpi-row {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px;
+}
+.kpi-card {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 16px 18px 14px;
+  border: 1px solid var(--grey-200); border-radius: 3px;
+  background: var(--white); text-decoration: none; color: inherit;
+  transition: border-color .15s, box-shadow .15s;
+}
+.kpi-card:hover {
+  border-color: var(--navy); box-shadow: 0 1px 6px rgba(14, 31, 68, .07);
+}
+.kpi-label {
+  font-size: 11px; font-weight: var(--w-heading); text-transform: uppercase;
+  letter-spacing: .6px; color: var(--grey-600);
+}
+.kpi-figure {
+  font-size: 34px; line-height: 1.05; font-weight: var(--w-heading);
+  color: var(--navy); font-variant-numeric: tabular-nums; letter-spacing: -.5px;
+}
+.kpi-foot {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 8px; margin-top: 2px; flex-wrap: wrap;
+}
+.kpi-of { font-size: 12px; color: var(--grey-600); }
+.kpi-trend {
+  display: inline-flex; align-items: baseline; gap: 4px;
+  font-size: 12px; font-weight: var(--w-heading);
+  font-variant-numeric: tabular-nums;
+}
+.kpi-trend.is-up   { color: #0e5a34; }
+.kpi-trend.is-down { color: #a4331f; }
+.kpi-trend.is-flat { color: var(--grey-600); font-weight: 400; }
+.kpi-trend-of { font-weight: 400; color: var(--grey-600); }
+@media (max-width: 1000px) { .kpi-row { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px)  { .kpi-row { grid-template-columns: 1fr; } }
+
+/* ── Dashboard: today, as the diary draws it ────────────────────────────────
+   The diary page scaled down. Hours down the left, an appointment at the
+   height its time puts it, and a line across the day for now. Positions are
+   percentages of the window shown, so the same markup works at any height. */
+.minical {
+  margin-top: 12px;
+  border: 1px solid var(--grey-200); border-radius: 3px;
+  background: var(--white); overflow: hidden;
+}
+.minical-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 6px 10px;
+  background: var(--cell-head); border-bottom: 1px solid var(--cell-edge);
+  font-size: 12.5px; font-weight: var(--w-heading); color: var(--navy);
+}
+.minical-title .count { font-weight: 400; color: var(--grey-600); }
+.minical-actions { display: flex; gap: 10px; font-size: 11.5px; font-weight: 400; }
+.minical-actions a { color: var(--blue); }
+
+.minical-allday {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  padding: 8px 10px; border-bottom: 1px solid var(--cell-line);
+}
+.minical-chip {
+  border-left: 3px solid var(--grey-400); background: var(--grey-50);
+  padding: 3px 8px; border-radius: 3px; font-size: 11.5px;
+  color: var(--text); text-decoration: none; white-space: nowrap;
+}
+
+.minical-body {
+  display: grid; grid-template-columns: 52px minmax(0, 1fr);
+  height: 320px; padding: 10px 10px 10px 0;
+}
+.minical-times { position: relative; }
+.minical-hour { position: absolute; top: calc(var(--at) * 1%); right: 8px; }
+.minical-hour span {
+  display: block; transform: translateY(-50%);
+  font-size: 11px; color: var(--grey-600); font-variant-numeric: tabular-nums;
+}
+.minical-day {
+  position: relative; border-left: 1px solid var(--grey-200); min-width: 0;
+}
+.minical-line {
+  position: absolute; left: 0; right: 0; top: calc(var(--at) * 1%);
+  border-top: 1px solid var(--grey-100);
+}
+.minical-now {
+  position: absolute; left: 0; right: 0; top: calc(var(--at) * 1%);
+  height: 2px; background: var(--orange); z-index: 3;
+}
+.minical-now::before {
+  content: ""; position: absolute; left: -4px; top: -3px;
+  width: 8px; height: 8px; border-radius: 50%; background: var(--orange);
+}
+.minical-event {
+  position: absolute; left: 6px; right: 6px;
+  top: calc(var(--top) * 1%); height: calc(var(--height) * 1%);
+  border-radius: 3px; padding: 3px 7px; overflow: hidden;
+  display: flex; flex-direction: column; gap: 1px; z-index: 2;
+  color: #fff; text-decoration: none; font-size: 11.5px; line-height: 1.25;
+  box-shadow: 0 1px 3px rgba(14, 31, 68, .18);
+}
+.minical-event.is-past { opacity: .6; }
+.minical-when { font-weight: var(--w-heading); font-variant-numeric: tabular-nums; }
+.minical-what { font-weight: var(--w-heading); }
+.minical-where, .minical-what, .minical-when {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.minical-where { opacity: .85; }
+.minical-empty {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  font-size: 12.5px; color: var(--grey-600);
+}
+
+/* With the diary and the task list lifted out of it, the organiser runs on two
+   columns rather than three with an empty one in the middle. */
+.org-grid--two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 900px) { .org-grid--two { grid-template-columns: 1fr; } }
+
+/* A day squeezed into 320px gives an hour about thirty pixels, which is one
+   line of text, not three. So the length of the appointment decides how it is
+   set: a short one runs along a single line, and only a long one has the room
+   to stack the time, the title and the place. Worked out from the times in the
+   template rather than from a container query, because a container query
+   cannot style the element that declares it. */
+.minical-event.is-brief {
+  flex-direction: row; align-items: baseline; gap: 6px; padding: 2px 7px;
+}
+.minical-event.is-brief .minical-where { display: none; }
+.minical-event.is-brief .minical-what { min-width: 0; }
+.minical-event.is-tiny { font-size: 10.5px; padding: 1px 6px; }
+
+/* Messages and tasks, below the day's work rather than beside it. */
+.tasks-row { margin-top: 12px; }
+.tasks-panel .org-body { max-height: none; }
+
+@media (max-width: 700px) {
+  .minical-body { height: 280px; grid-template-columns: 44px minmax(0, 1fr); }
+}

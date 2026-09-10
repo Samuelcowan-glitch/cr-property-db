@@ -2638,6 +2638,45 @@ def progression_summary():
 app.jinja_env.globals['PROGRESSION_STAGES'] = PROGRESSION_STAGES
 
 
+def _month_bounds(when=None):
+    """This month and last month, as UTC windows over London dates.
+
+    Records are stamped in UTC. A month "runs" in London, so the boundaries are
+    worked out there and converted back, or everything logged late on the last
+    evening of a month lands in the wrong one.
+    """
+    today = to_london(when or datetime.utcnow()).date()
+    this_start = today.replace(day=1)
+    last_start = (this_start - timedelta(days=1)).replace(day=1)
+    return (from_london(datetime.combine(last_start, datetime.min.time())),
+            from_london(datetime.combine(this_start, datetime.min.time())),
+            from_london(datetime.combine(today + timedelta(days=1), datetime.min.time())))
+
+
+def _month_on_month(model, column=None):
+    """How many were created this month against last, from the real records.
+
+    Returns None when there is nothing to compare against — no records last
+    month means any number this month is an increase from nothing, and "↑ 100%"
+    off a base of zero tells nobody anything. Better to say how many and stop.
+    """
+    column = column or getattr(model, 'created_at', None)
+    if column is None:
+        return None
+    last_start, this_start, tomorrow = _month_bounds()
+    try:
+        this_month = model.query.filter(column >= this_start, column < tomorrow).count()
+        last_month = model.query.filter(column >= last_start, column < this_start).count()
+    except Exception:
+        return None
+    out = {'this_month': this_month, 'last_month': last_month, 'pct': None, 'dir': None}
+    if last_month:
+        change = (this_month - last_month) / last_month * 100
+        out['pct'] = abs(round(change))
+        out['dir'] = 'up' if change > 0 else 'down' if change < 0 else 'level'
+    return out
+
+
 @app.route('/')
 def dashboard():
     prop_count = Property.query.count()
@@ -2670,6 +2709,20 @@ def dashboard():
             'past': (not ev.all_day) and end < to_london(datetime.utcnow()),
         })
 
+    # The dashboard's diary is the diary page, scaled down: the same builder,
+    # for today only, so an appointment moved on one is moved on the other.
+    day_view = to_london(datetime.utcnow()).date()
+    mini_events = [e for e in _events_between(day_view, day_view) if not e['all_day']]
+    mini_allday = [e for e in _events_between(day_view, day_view) if e['all_day']]
+    # The window shown. Normally the working day, widened when something falls
+    # outside it so nothing is hidden by the frame.
+    mini_from, mini_to = 8 * 60, 19 * 60
+    for e in mini_events:
+        mini_from = min(mini_from, (e['start_min'] // 60) * 60)
+        mini_to = max(mini_to, -(-e['end_min'] // 60) * 60)
+    mini_from, mini_to = max(0, mini_from), min(24 * 60, max(mini_to, mini_from + 60))
+    now_london = to_london(datetime.utcnow())
+
     to_let = _available_listings(INSTRUCTION_TO_LET)
     for_sale = _available_listings(INSTRUCTION_FOR_SALE)
     appraisals = _projects_of_type(INSTRUCTION_APPRAISAL)
@@ -2697,6 +2750,23 @@ def dashboard():
     enq_count = Enquiry.query.filter(Enquiry.status == 'Open').count()
     contact_count = Contact.query.count()
 
+    # Month on month, from the records themselves. Only where it means
+    # something: open enquiries is a snapshot of what is outstanding right now,
+    # so a percentage against last month's snapshot would compare two different
+    # questions. That card gets a count of what came in instead.
+    kpi_trend = {
+        'transactions': _month_on_month(Transaction),
+        'properties': _month_on_month(Property),
+        'projects': _month_on_month(Project),
+    }
+    enq_this_month = None
+    _, this_start, tomorrow = _month_bounds()
+    try:
+        enq_this_month = Enquiry.query.filter(Enquiry.created_at >= this_start,
+                                              Enquiry.created_at < tomorrow).count()
+    except Exception:
+        enq_this_month = None
+
     return render_template('dashboard.html',
                            progression=progression,
                            todays_diary=todays_diary,
@@ -2710,6 +2780,10 @@ def dashboard():
                            contacts=contacts,
                            recent_transactions=recent_transactions,
                            tx_stage=tx_stage, tx_payment=tx_payment,
+                           kpi_trend=kpi_trend, enq_this_month=enq_this_month,
+                           mini_events=mini_events, mini_allday=mini_allday,
+                           mini_from=mini_from, mini_to=mini_to,
+                           now_minutes=now_london.hour * 60 + now_london.minute,
                            today=today)
 
 

@@ -94,6 +94,11 @@
       </div>
     </div>
 
+    {% if contact %}
+    {# Only once the record exists. When a contact is first created nobody
+       knows yet whether they are looking for anything — they may be a
+       landlord or a seller — so asking what they want is the wrong question
+       at the wrong moment. #}
     <div class="form-section">
       🔍 Applicant Requirements <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#9aa0a6">— used for automatic property matching</span>
     </div>
@@ -177,6 +182,7 @@
                   placeholder="Any other specific requirements…">{{ contact.req_notes if contact and contact.req_notes else '' }}</textarea>
       </div>
     </div>
+    {% endif %}
 
     <div class="form-section">
       📅 Follow-up &amp; Ownership

@@ -10,33 +10,146 @@
 
 {% block content %}
 
-<!-- ── Stat strip ── -->
-<div class="stat-row">
-  <a class="stat-tile" href="{{ url_for('properties_list') }}">
-    <div class="stat-num">{{ prop_count }}</div>
-    <div class="stat-lbl">Properties</div>
-    <div class="stat-sub">on register</div>
+{#
+   The four figures the day starts with.
+
+   Each one carries its own month against the one before, worked out from the
+   records themselves. Where that comparison would be dishonest it is not
+   shown: open enquiries is a count of what is outstanding right now, and
+   holding this month's snapshot against last month's answers a different
+   question from the one the card asks. It reports what came in instead.
+
+   A change is only shown against a month that had something in it. A rise
+   from nothing is not a percentage.
+#}
+{% macro trend(t) %}
+  {%- if t and t.pct is not none and t.dir != 'level' -%}
+    <span class="kpi-trend is-{{ t.dir }}">
+      <span aria-hidden="true">{{ '&#8593;' | safe if t.dir == 'up' else '&#8595;' | safe }}</span>
+      {{ t.pct }}%
+      <span class="kpi-trend-of">vs last month</span>
+    </span>
+  {%- elif t and t.this_month -%}
+    <span class="kpi-trend is-flat">{{ t.this_month }} this month</span>
+  {%- else -%}
+    <span class="kpi-trend is-flat">None yet this month</span>
+  {%- endif -%}
+{% endmacro %}
+
+<div class="kpi-row">
+  <a class="kpi-card" href="{{ url_for('properties_list') }}">
+    <span class="kpi-label">Properties</span>
+    <span class="kpi-figure">{{ prop_count }}</span>
+    <span class="kpi-foot">
+      <span class="kpi-of">on register</span>
+      {{ trend(kpi_trend.properties) }}
+    </span>
   </a>
-  <a class="stat-tile" href="{{ url_for('projects_list') }}">
-    <div class="stat-num">{{ proj_count }}</div>
-    <div class="stat-lbl">Instructions</div>
-    <div class="stat-sub">projects</div>
+
+  <a class="kpi-card" href="{{ url_for('enquiries_list') }}">
+    <span class="kpi-label">Open enquiries</span>
+    <span class="kpi-figure">{{ enq_count }}</span>
+    <span class="kpi-foot">
+      <span class="kpi-of">being worked</span>
+      {% if enq_this_month is not none %}
+      <span class="kpi-trend is-flat">{{ enq_this_month }} in this month</span>
+      {% endif %}
+    </span>
   </a>
-  <a class="stat-tile" href="{{ url_for('enquiries_list') }}">
-    <div class="stat-num">{{ enq_count }}</div>
-    <div class="stat-lbl">Open enquiries</div>
-    <div class="stat-sub">being worked</div>
+
+  <a class="kpi-card" href="{{ url_for('projects_list') }}">
+    <span class="kpi-label">Instructions</span>
+    <span class="kpi-figure">{{ proj_count }}</span>
+    <span class="kpi-foot">
+      <span class="kpi-of">projects</span>
+      {{ trend(kpi_trend.projects) }}
+    </span>
   </a>
-  <a class="stat-tile" href="{{ url_for('transactions_list') }}">
-    <div class="stat-num">{{ trans_count }}</div>
-    <div class="stat-lbl">Transactions</div>
-    <div class="stat-sub">recorded</div>
+
+  <a class="kpi-card" href="{{ url_for('transactions_list') }}">
+    <span class="kpi-label">Transactions</span>
+    <span class="kpi-figure">{{ trans_count }}</span>
+    <span class="kpi-foot">
+      <span class="kpi-of">recorded</span>
+      {{ trend(kpi_trend.transactions) }}
+    </span>
   </a>
 </div>
 
+{#
+   Today, as the diary page draws it.
+
+   This is not a list of what is coming up — it is the diary page scaled down:
+   the hours run down the left, an appointment sits at the height its time puts
+   it, and the line across the day is now. It is built from the same events the
+   diary page uses, for today only, so moving an appointment on one moves it on
+   the other.
+#}
+{% set mini_span = (mini_to - mini_from) or 60 %}
+<section class="minical" aria-label="Today's diary">
+  <header class="minical-head">
+    <span class="minical-title">
+      Today &mdash; {{ today.strftime('%A %-d %B') }}
+      <span class="count">({{ mini_events|length + mini_allday|length }})</span>
+    </span>
+    <span class="minical-actions">
+      <a href="{{ url_for('diary') }}?view=day">Day</a>
+      <a href="{{ url_for('diary') }}">Full diary</a>
+    </span>
+  </header>
+
+  {% if mini_allday %}
+  <div class="minical-allday">
+    {% for e in mini_allday %}
+    <a class="minical-chip" href="{{ e.url }}" style="border-left-color:{{ e.colour }}">{{ e.title }}</a>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="minical-body" style="--span:{{ mini_span }}">
+    <div class="minical-times">
+      {% for m in range(mini_from, mini_to, 60) %}
+      <div class="minical-hour" style="--at:{{ ((m - mini_from) / mini_span * 100)|round(3) }}">
+        <span>{{ '%02d:00'|format(m // 60) }}</span>
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="minical-day">
+      {% for m in range(mini_from, mini_to, 60) %}
+      <div class="minical-line" style="--at:{{ ((m - mini_from) / mini_span * 100)|round(3) }}"></div>
+      {% endfor %}
+
+      {% if now_minutes >= mini_from and now_minutes <= mini_to %}
+      <div class="minical-now" style="--at:{{ ((now_minutes - mini_from) / mini_span * 100)|round(3) }}"
+           title="Now"></div>
+      {% endif %}
+
+      {% for e in mini_events %}
+      {% set top = ((e.start_min - mini_from) / mini_span * 100) %}
+      {% set height = ((e.end_min - e.start_min) / mini_span * 100) %}
+      {% set mins = e.end_min - e.start_min %}
+      <a class="minical-event{{ ' is-past' if e.end_min < now_minutes }}{{ ' is-brief' if mins < 75 }}{{ ' is-tiny' if mins < 40 }}"
+         href="{{ e.url }}"
+         style="--top:{{ [top, 0]|max|round(3) }}; --height:{{ [height, 3.2]|max|round(3) }};
+                background:{{ e.colour }}"
+         title="{{ e.title }} — {{ e.start }}–{{ e.end }}{% if e.location %} · {{ e.location }}{% endif %}">
+        <span class="minical-when">{{ e.start }}&ndash;{{ e.end }}</span>
+        <span class="minical-what">{{ e.title }}</span>
+        {% if e.location %}<span class="minical-where">{{ e.location }}</span>{% endif %}
+      </a>
+      {% endfor %}
+
+      {% if not mini_events %}
+      <div class="minical-empty">Nothing in the diary today.</div>
+      {% endif %}
+    </div>
+  </div>
+</section>
+
 {# Three columns of panels, as in the organiser reference. Every list below is
    read live from the CRM — no fixed examples anywhere. #}
-<div class="org-grid" style="margin-top:12px">
+<div class="org-grid org-grid--two" style="margin-top:12px">
 
   <!-- ════ LEFT: what is on the market ════ -->
   <div class="org-col">
@@ -163,57 +276,6 @@
 
   </div>
 
-  <!-- ════ MIDDLE: people and what is due ════ -->
-  <div class="org-col">
-
-    <section class="org-panel">
-      <header>
-        <span>My Diary for the day <span class="count">({{ todays_diary|length }})</span></span>
-        <a href="{{ url_for('diary') }}">Full diary</a>
-      </header>
-      <div class="org-body">
-        {% for e in todays_diary %}
-        <div class="org-row{{ ' is-past' if e.past }}">
-          <div class="org-main">
-            <a class="org-title" href="{{ url_for('diary_event', id=e.id) }}">{{ e.title }}</a>
-            <div class="org-sub">
-              <strong>{{ e.when }}</strong>
-              {%- if e.place %} &middot; {{ e.place }}{% endif -%}
-              {%- if e.owner %} &middot; {{ e.owner }}{% endif -%}
-              {%- if e.from_outlook %} &middot; from Outlook{% endif -%}
-            </div>
-          </div>
-        </div>
-        {% else %}
-        <div class="org-empty">Nothing in the diary today.</div>
-        {% endfor %}
-      </div>
-    </section>
-
-    <section class="org-panel">
-      <header>
-        <span>Messages &amp; Tasks <span class="count">({{ diary_items|length }})</span></span>
-        <a href="{{ url_for('diary') }}">Diary</a>
-      </header>
-      <div class="org-body short">
-        {% for i in diary_items %}
-        <div class="org-row">
-          <div class="org-main">
-            <a class="org-title" href="{{ i.url }}">{{ i.what }}</a>
-            <div class="org-sub">
-              {{ i.kind }}{% if i.who %} &middot; {{ i.who }}{% endif %}
-              &middot; <span class="{{ 'org-due' if i.on < today }}">due {{ i.on.strftime('%d/%m/%Y') }}</span>
-            </div>
-          </div>
-        </div>
-        {% else %}
-        <div class="org-empty">Nothing is due.</div>
-        {% endfor %}
-      </div>
-    </section>
-
-  </div>
-
   <!-- ════ RIGHT: who to call, and what has moved ════ -->
   <div class="org-col">
 
@@ -322,4 +384,30 @@
 
   </div>
 </div>
+{# Messages and tasks sit under the day's work rather than beside it — they
+   are what to pick up next, not what is happening now. #}
+<div class="tasks-row">
+    <section class="org-panel tasks-panel">
+      <header>
+        <span>Messages &amp; Tasks <span class="count">({{ diary_items|length }})</span></span>
+        <a href="{{ url_for('diary') }}">Diary</a>
+      </header>
+      <div class="org-body">
+        {% for i in diary_items %}
+        <div class="org-row">
+          <div class="org-main">
+            <a class="org-title" href="{{ i.url }}">{{ i.what }}</a>
+            <div class="org-sub">
+              {{ i.kind }}{% if i.who %} &middot; {{ i.who }}{% endif %}
+              &middot; <span class="{{ 'org-due' if i.on < today }}">due {{ i.on.strftime('%d/%m/%Y') }}</span>
+            </div>
+          </div>
+        </div>
+        {% else %}
+        <div class="org-empty">Nothing is due.</div>
+        {% endfor %}
+      </div>
+    </section>
+</div>
+
 {% endblock %}

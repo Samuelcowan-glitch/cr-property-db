@@ -99,6 +99,18 @@ with A.app.app_context():
             property_id=props[n % len(props)].id))
     db.session.commit()
 
+    # A day's appointments, so the dashboard's diary has something in it.
+    from datetime import datetime as _dt, timedelta as _td
+    base = A.to_london(_dt.utcnow()).replace(minute=0, second=0, microsecond=0)
+    for hour, title, kind, place in ((10, 'Viewing', 'viewing', '1 Stanley Bridge Studios'),
+                                     (12, 'Meeting — client', 'meeting', 'Office'),
+                                     (15, 'Inspection', 'appointment', '10 New Kings Road')):
+        start = A.from_london(base.replace(hour=hour))
+        db.session.add(A.DiaryEvent(title=title, event_type=kind, location=place,
+                                    owner='Benjamin Cowan',
+                                    start_at=start, end_at=start + _td(minutes=60)))
+    db.session.commit()
+
 print(f'layout server on {PORT}', flush=True)
 A.app.config.update(TESTING=False)
 A.app.run(host='127.0.0.1', port=PORT, debug=False, threaded=True,

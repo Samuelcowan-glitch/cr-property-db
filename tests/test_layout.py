@@ -351,6 +351,9 @@ assert LONG_ADDRESS in body
 assert 'overflow-wrap: anywhere' in CSS
 # No fixed pixel width was reintroduced anywhere in the Overview's own rules.
 own = CSS[CSS.index('/* ── Property Overview'):]
+_next = own.find('/* ── ', 10)
+if _next != -1:
+    own = own[:_next]        # this section only, not everything after it
 declarations = re.sub(r'@\w+\s*\([^)]*\)', '', own)
 fixed = re.findall(r'(?<!max-)(?<!min-)width:\s*\d{3,}px', declarations)
 assert not fixed, f'a fixed pixel width crept into the Overview rules: {fixed}'

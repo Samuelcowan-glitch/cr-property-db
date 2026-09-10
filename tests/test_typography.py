@@ -91,7 +91,7 @@ print('6. one button: 3px corners, 38px standard, 32px compact, SemiBold')
 # the calendar's today marker and the current-time dot. Nothing you press.
 ROUND_BY_NATURE = {'.sidebar-avatar', '.ct-initials', '.pipeline-dot',
                    '.cal-dayhead.is-today .cal-dnum',
-                   '.cal-now::before', '.cal-mcell.is-today .cal-mday a', '.enq-act .mark',
+                   '.cal-now::before', '.minical-now::before', '.cal-mcell.is-today .cal-mday a', '.enq-act .mark',
                    '.lg-nav', '.ps-gallery-nav'}
 for path, body in CSS.items():
     for block in re.finditer(r'([^{}]+){([^}]*border-radius:\s*(999px|50%|1[2-9]px|[2-9]\dpx)[^}]*)}', body):
