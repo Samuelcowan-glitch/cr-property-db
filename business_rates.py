@@ -130,6 +130,26 @@ def multiplier_str(scaled, blank='—'):
     return f'{Decimal(int(scaled)) / MULTIPLIER_SCALE:.3f}'
 
 
+def percent_str(value, blank='—'):
+    """A percentage written the way somebody would say it: 40%, 12.5%.
+
+    Decimal.normalize() turns 40 into 4E+1, which is correct and unreadable —
+    and it catches exactly the reliefs that come up most: 100% small business,
+    40% retail, 80% charity. Formatting with 'f' keeps the plain form, and the
+    trailing zeros are trimmed by hand so 12.50 reads as 12.5.
+    """
+    if value is None:
+        return blank
+    try:
+        number = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return blank
+    text = format(number, 'f')
+    if '.' in text:
+        text = text.rstrip('0').rstrip('.')
+    return text or '0'
+
+
 def _apply(pence, scaled_rate):
     """A rate in the pound applied to a sum, rounded to the nearest penny.
 
@@ -251,7 +271,7 @@ def calculate(rateable_value_pence, multiplier_scaled,
         taken = int((Decimal(base) * pct / 100).quantize(Decimal('1'),
                                                          rounding=ROUND_HALF_UP))
         relief += taken
-        relief_lines.append((f'Relief at {pct.normalize()}% of the base liability',
+        relief_lines.append((f'Relief at {percent_str(pct)}% of the base liability',
                              -taken))
     if relief_amount_pence:
         relief += int(relief_amount_pence)

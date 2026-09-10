@@ -1229,8 +1229,10 @@ table.rec-table td.actions { white-space: nowrap; text-align: right; }
 
 .fcell-error { display: block; width: 100%; font-size: 10.5px; color: var(--danger);
                padding: 0 9px 4px; }
-.fcell-hint  { display: block; width: 100%; font-size: 10.5px; color: var(--grey-600);
-               padding: 0 9px 4px; }
+.fcell--edit { flex-wrap: wrap; }
+.fcell-hint  { display: block; flex: 1 1 100%; min-width: 0; box-sizing: border-box;
+               font-size: 10.5px; color: var(--grey-600);
+               padding: 0 9px 4px; overflow-wrap: anywhere; }
 .req { color: var(--danger); }
 
 /* ── Choosing an organisation for a landlord, tenant or client field ─────── */
@@ -2421,3 +2423,13 @@ body.pg-open { overflow: hidden; }
   background: var(--grey-100); color: var(--grey-600);
   text-transform: capitalize; white-space: nowrap;
 }
+
+/* A calculator working from an out-of-date multiplier. Said plainly, because
+   a stale rate looks exactly like a current one once it is a number. */
+.br-stale {
+  margin: 0; padding: 10px 14px;
+  border-bottom: 1px solid var(--cell-line);
+  background: #fdf6ec; color: #7a4b12;
+  font-size: 12.5px; line-height: 1.5;
+}
+.br-stale a { color: #7a4b12; text-decoration: underline; }

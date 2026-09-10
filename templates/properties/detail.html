@@ -180,7 +180,8 @@
 <div class="prop-grid" style="margin-top:8px">
   <div class="prop-span">
     {{ rates.rates_calculator(prop, tax_years, multipliers, rates_summary(prop),
-                              default_tax_year, years_with_multipliers) }}
+                              default_tax_year, years_with_multipliers,
+                              this_tax_year) }}
   </div>
   <div class="prop-span">{{ cp.client_details(prop.client_contact) }}</div>
 </div>

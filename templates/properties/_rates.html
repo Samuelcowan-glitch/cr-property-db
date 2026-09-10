@@ -42,7 +42,8 @@
 
 {# ── The calculator ──────────────────────────────────────────────────────── #}
 {% macro rates_calculator(prop, tax_years, multipliers, summary,
-                          default_tax_year=none, years_with_multipliers=[]) %}
+                          default_tax_year=none, years_with_multipliers=[],
+                          this_tax_year=none) %}
 {% set current = prop.current_rates %}
 <form id="rates-form" method="post"
       action="{{ url_for('property_rates_save', id=prop.id) }}"></form>
@@ -54,6 +55,20 @@
     Business Rates Calculator
     <span class="br-est-tag">Estimated figure</span>
   </div>
+
+  {# The multipliers are published once a year. When this year's are not on
+     record the calculator opens on the most recent year that has them, which
+     produces a figure — just not this year's. Somebody about to put that
+     figure in a set of particulars needs telling, because a stale multiplier
+     looks exactly like a current one. #}
+  {% if default_tax_year and this_tax_year and default_tax_year != this_tax_year %}
+  <div class="br-stale">
+    <strong>{{ this_tax_year }} multipliers are not on record.</strong>
+    This is calculated on {{ default_tax_year }} figures, so it is last year's
+    rate. Add the current multipliers in
+    <a href="{{ url_for('rates_reference') }}">Business rates</a> before quoting it.
+  </div>
+  {% endif %}
 
   <div class="frow">
     <div class="fcell fcell--label">Rateable value <span class="req">*</span></div>

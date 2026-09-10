@@ -8177,6 +8177,15 @@ COUNCIL_SEED = [
      'short_name': 'Kensington and Chelsea',
      'phone': '020 7361 2828',
      'website': 'https://www.rbkc.gov.uk/business/business-rates'},
+    # Taken from the council's own contact page on 10 September 2026. Left
+    # unverified like the rest until somebody in the office has rung it.
+    {'name': 'Wandsworth Borough Council',
+     'short_name': 'Wandsworth',
+     'phone': '020 8871 6454',
+     'email': 'brates@wandsworth.gov.uk',
+     'address': ('Business Rates Service, PO Box 65993, Town Hall, '
+                 'Wandsworth High Street, London SW18 9LB'),
+     'website': 'https://www.wandsworth.gov.uk/business-and-licensing/business-rates/'},
 ]
 
 
@@ -8227,10 +8236,20 @@ def seed_rates_reference():
 
 def councils(include=None):
     """Every council that may be chosen, plus one that is no longer active if
-    a property still points at it — so an old record still reads correctly."""
+    a property still points at it — so an old record still reads correctly.
+
+    `include` is a council id, and the comparison used to be `include not in
+    rows` — an integer against a list of Council objects, which is never a
+    match. So the council a property already pointed at was added a second
+    time, and every property showed its own authority twice in the list. The
+    ids are compared now.
+    """
     rows = Council.query.filter_by(active=True).order_by(Council.name).all()
-    if include and include not in rows:
-        kept = Council.query.get(include) if isinstance(include, int) else include
+    if include is None:
+        return rows
+    wanted = include if isinstance(include, int) else getattr(include, 'id', None)
+    if wanted is not None and not any(c.id == wanted for c in rows):
+        kept = Council.query.get(wanted)
         if kept:
             rows = sorted(rows + [kept], key=lambda c: c.name)
     return rows
@@ -8422,6 +8441,10 @@ def rates_form_context():
     return {
         'tax_years': years,
         'default_tax_year': default_tax_year(),
+        # The year we are actually in. Where the calculator has had to fall
+        # back to an earlier one, the page says so rather than presenting a
+        # last-year figure as though it were current.
+        'this_tax_year': br.tax_year_of(today),
         'years_with_multipliers': years_with_multipliers(),
         'multipliers': (RatesMultiplier.query.filter_by(active=True)
                         .order_by(RatesMultiplier.tax_year.desc(),

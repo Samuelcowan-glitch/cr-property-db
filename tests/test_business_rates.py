@@ -831,4 +831,153 @@ assert r.status_code == 302 and r.headers['Location'].endswith(
 print('54. every property detail is on the Overview, and the old page redirects')
 
 
+# ─── 55. Wandsworth is a council on record ──────────────────────────────────
+with A.app.app_context():
+    w = A.Council.query.filter(A.Council.name.ilike('%Wandsworth%')).first()
+    assert w is not None, 'Wandsworth is not on the council list'
+    assert w.phone == '020 8871 6454', w.phone
+    assert w.email == 'brates@wandsworth.gov.uk', w.email
+    assert 'wandsworth.gov.uk' in (w.website or ''), w.website
+    assert w.label == 'Wandsworth'
+    # Seeded unverified like the rest, so the page says so until the office
+    # has actually rung it.
+    assert w.verified_on is None, 'a seeded council was marked as verified'
+    names = {c.name for c in A.Council.query.all()}
+    assert any('Hammersmith' in n for n in names) and any('Kensington' in n for n in names), \
+        'adding a council removed the others'
+print('55. Wandsworth is on the council list, with the other boroughs intact')
+
+
+# ─── 56. Seeding again adds nothing and changes nothing ─────────────────────
+with A.app.app_context():
+    before = {(c.name, c.phone) for c in A.Council.query.all()}
+    # An office correction must survive the next deploy.
+    w = A.Council.query.filter(A.Council.name.ilike('%Wandsworth%')).first()
+    w.phone = '020 0000 0000'
+    A.db.session.commit()
+    A.seed_rates_reference()
+    w = A.Council.query.filter(A.Council.name.ilike('%Wandsworth%')).first()
+    assert w.phone == '020 0000 0000', 'seeding overwrote a corrected number'
+    assert A.Council.query.count() == len(before), 'seeding added a duplicate'
+    w.phone = '020 8871 6454'
+    A.db.session.commit()
+print('56. seeding again neither duplicates a council nor undoes a correction')
+
+
+# ─── 57. A relief percentage is written as a person would write it ──────────
+# Decimal.normalize() renders 40 as 4E+1, which caught exactly the reliefs that
+# come up most: 100% small business, 40% retail, 80% charity.
+for value, expected in ((100, '100'), (40, '40'), (80, '80'), (50, '50'),
+                        (20, '20'), (12.5, '12.5'), ('33.33', '33.33'),
+                        (0.5, '0.5'), (0, '0')):
+    got = br.percent_str(value)
+    assert got == expected, f'{value} shown as {got}, expected {expected}'
+    assert 'E' not in got and 'e' not in got, f'{value} came out as {got}'
+r = br.calculate(br.to_pence('45000'), br.to_multiplier('0.499'), relief_percent=40)
+assert 'Relief at 40% of the base liability' == r['relief_lines'][0][0], \
+    r['relief_lines'][0][0]
+r = br.calculate(br.to_pence('45000'), br.to_multiplier('0.499'), relief_percent=100)
+assert 'Relief at 100%' in r['relief_lines'][0][0], r['relief_lines'][0][0]
+print('57. a relief reads as 40% and 100%, never as 4E+1')
+
+
+# ─── 58. The sums, checked by hand ──────────────────────────────────────────
+rv, small, standard = br.to_pence('45000'), br.to_multiplier('0.499'), br.to_multiplier('0.555')
+assert br.calculate(rv, small)['base'] == 2245500          # 45,000 x 0.499
+assert br.calculate(br.to_pence('120000'), standard)['base'] == 6660000
+assert br.to_multiplier('0.555') == br.to_multiplier('55.5p'), \
+    'a multiplier typed in pence is not the same as one typed as a decimal'
+# base 22,455 - 40% (8,982) + 600 - 1,200 + 50 = 12,923
+full = br.calculate(rv, small, relief_percent=40,
+                    supplement_pence=br.to_pence('600'),
+                    transitional_pence=br.to_pence('-1200'),
+                    other_pence=br.to_pence('50'))
+assert full['total'] == 1292300, full['total']
+assert full['monthly'] == 107692, full['monthly']
+# The relief is taken off the base, not off base-plus-supplements.
+assert full['relief'] == 898200, full['relief']
+# Two reliefs are listed and applied separately.
+both = br.calculate(rv, small, relief_percent=25,
+                    relief_amount_pence=br.to_pence('1000'))
+assert both['total'] == 1584125, both['total']
+assert len(both['relief_lines']) == 2
+# A relief larger than the bill cannot make it negative.
+over = br.calculate(rv, small, relief_amount_pence=br.to_pence('99999'))
+assert over['total'] == 0 and over['floored']
+print('58. multipliers, reliefs, supplements and the zero floor all compute')
+
+
+# ─── 59. The multiplier threshold is exclusive at £51,000 ───────────────────
+rows = [
+    {'tax_year': '2025/26', 'name': 'Standard multiplier', 'multiplier_type': 'Standard',
+     'value': 55500, 'rv_min': 5_100_000, 'rv_max': None, 'category': None},
+    {'tax_year': '2025/26', 'name': 'Small business multiplier',
+     'multiplier_type': 'Small business', 'value': 49900, 'rv_min': None,
+     'rv_max': 5_100_000, 'category': None},
+]
+for rv_text, expected in (('50999', 'Small business'), ('51000', 'Standard'),
+                          ('51001', 'Standard'), ('12000', 'Small business')):
+    pick = br.suggest_multiplier(rows, br.to_pence(rv_text))
+    assert pick and pick['multiplier_type'] == expected, \
+        f'RV {rv_text} proposed {pick and pick["multiplier_type"]}, expected {expected}'
+assert br.suggest_multiplier([], br.to_pence('45000')) is None
+print('59. £51,000 exactly takes the standard multiplier; below it, small business')
+
+
+# ─── 60. A stale multiplier is not passed off as a current one ──────────────
+# The figures are published once a year. When this year's are missing the
+# calculator falls back so it still works — and must say that it has.
+with A.app.app_context():
+    this_year = br.tax_year_of(A.date.today())
+    have = A.years_with_multipliers()
+    ctx = A.rates_form_context()
+    assert ctx['this_tax_year'] == this_year
+    if this_year not in have:
+        assert ctx['default_tax_year'] != this_year, \
+            'the calculator claims to be on a year it has no figures for'
+        body = cl.get(f"/properties/{IDS['hflet']['prop']}").get_data(as_text=True)
+        assert 'are not on record' in body, \
+            'the page does not say it is using an earlier year'
+        assert ctx['default_tax_year'] in body
+        print(f'60. {this_year} has no multipliers — the page says so and uses '
+              f"{ctx['default_tax_year']}")
+    else:
+        assert ctx['default_tax_year'] == this_year
+        print(f'60. {this_year} has multipliers on record, and is what is used')
+
+
+# ─── 61. A council is offered once, not twice ───────────────────────────────
+# The list used to compare a council id against a list of Council objects,
+# which never matches, so the authority a property already pointed at was
+# appended a second time and appeared twice in its own dropdown.
+with A.app.app_context():
+    every = A.councils()
+    ids = [c.id for c in every]
+    assert len(ids) == len(set(ids)), 'a council is listed twice'
+    for c in every:
+        with_chosen = A.councils(c.id)
+        chosen_ids = [x.id for x in with_chosen]
+        assert len(chosen_ids) == len(set(chosen_ids)), \
+            f'choosing {c.label} listed it twice'
+        assert chosen_ids == ids, 'choosing a council changed the list'
+    # An inactive council a property still points at is still offered, once.
+    old_one = A.Council(name='Old Authority (merged)', short_name='Old', active=False)
+    A.db.session.add(old_one); A.db.session.commit()
+    assert not any(c.id == old_one.id for c in A.councils()), \
+        'an inactive council is offered to everybody'
+    kept = A.councils(old_one.id)
+    assert sum(1 for c in kept if c.id == old_one.id) == 1, \
+        'the inactive council was not kept, or was kept twice'
+    A.db.session.delete(old_one); A.db.session.commit()
+# And on the page itself.
+body = cl.get(f"/properties/{IDS['hflet']['prop']}").get_data(as_text=True)
+block = body[body.index('name="council_id"'):]
+block = block[:block.index('</select>')]
+import collections as _c
+names = _c.Counter(re.findall(r'<option[^>]*>([^<]+)</option>', block))
+repeated = [n.strip() for n, count in names.items() if count > 1]
+assert not repeated, f'these councils appear more than once: {repeated}'
+print('61. every council is offered exactly once, chosen or not')
+
+
 print('\nBUSINESS RATES: ALL CHECKS PASSED')
