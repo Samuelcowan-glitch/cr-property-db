@@ -39,6 +39,8 @@ const PAGES = [
   ['enquiries', '/enquiries'],
   ['enquiry record', '/enquiries/1'],
   ['transactions', '/transactions'],
+  ['transaction record', '/transactions/1'],
+  ['new transaction', '/transactions/new'],
   ['diary', '/diary'],
 ];
 

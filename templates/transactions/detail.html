@@ -45,7 +45,8 @@
         <span>Ref: <strong>{{ t.reference or '—' }}</strong></span>
         {% if t.transaction_type %}<span>{{ t.transaction_type }}</span>{% endif %}
         {% if t.fee_earner %}<span>Fee earner: <strong>{{ t.fee_earner }}</strong></span>{% endif %}
-        {% if t.client %}<span>Client: <strong>{{ t.client }}</strong></span>{% endif %}
+        {% if t.owner_side %}<span>{{ 'Landlord' if t.is_letting else 'Seller' }}:
+          <strong>{{ t.owner_side }}</strong></span>{% endif %}
         {% if t.completion_date %}<span>Completed: <strong>{{ shown(t.completion_date) }}</strong></span>{% endif %}
       </div>
     </div>
@@ -175,14 +176,17 @@
         {% endif %}
       </div>
 
-      <!-- ── 3. Client, tenant or purchaser ── -->
-      {# Each of these links an organisation by id. The name typed in before
-         is kept underneath and never overwritten. #}
+      <!-- ── 3. The two sides of the deal ── -->
+      {# A letting has a landlord and a tenant; a sale has a seller and a
+         buyer. Which pair is shown comes from the transaction, so a letting
+         is never asked who the purchaser is. Each links an organisation by
+         id, and the name typed in before is kept underneath, never
+         overwritten. #}
       <div class="box">
-        <div class="box-head">3. Client, tenant or purchaser</div>
-        {% for role, legacy in [('Client', t.client), ('Landlord', t.landlord),
-                                ('Tenant', t.tenant), ('Vendor', t.vendor),
-                                ('Purchaser', t.purchaser)] %}
+        <div class="box-head">
+          3. {{ 'Landlord and tenant' if t.is_letting else 'Seller and buyer' }}
+        </div>
+        {% for role, legacy, field in t.party_roles %}
         <div class="orgpick-row">
           <div class="orgpick-label">{{ role }}</div>
           <div class="orgpick-field">
@@ -203,11 +207,19 @@
                    placeholder="The rent or sale price the fee is charged on">
           </div>
         </div>
-        <div class="frow">
+        {# A sale has a price. A letting has a rent, a term and a break. Asking
+           a letting for its sale price is asking the wrong question, so only
+           the fields the deal actually has are shown. The other column keeps
+           its value in the record — nothing is cleared by not showing it. #}
+        {% if t.is_sale %}
+        <div class="frow frow--full">
           <div class="fcell fcell--label">Sale price</div>
           <div class="fcell fcell--edit">
             <input type="number" step="0.01" name="value" form="trx-form" value="{{ num(t.value) }}">
           </div>
+        </div>
+        {% else %}
+        <div class="frow frow--full">
           <div class="fcell fcell--label">Rent p.a.</div>
           <div class="fcell fcell--edit">
             <input type="number" step="0.01" name="rent_pa" form="trx-form" value="{{ num(t.rent_pa) }}">
@@ -229,6 +241,7 @@
             <input name="break_clause" form="trx-form" value="{{ t.break_clause or '' }}">
           </div>
         </div>
+        {% endif %}
       </div>
 
       <!-- ── 8. Important dates ── -->

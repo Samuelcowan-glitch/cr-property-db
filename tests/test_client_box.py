@@ -1,4 +1,4 @@
-"""One Client Contact Details box, read from the client's own record.
+"""One Contact Details box, read from the client's own record.
 
 And nothing about the client — name, company, telephone, email or address —
 on a marketing document. Particulars carry the property, the company and the
@@ -77,13 +77,13 @@ OVERVIEW = page(f'/projects/{PROJ}')
 
 
 # ─── 1. Only one box remains ────────────────────────────────────────────────
-assert OVERVIEW.count('Client Contact Details') == 1, \
-    f"{OVERVIEW.count('Client Contact Details')} Client Contact Details boxes"
+assert OVERVIEW.count('Contact Details') == 1, \
+    f"{OVERVIEW.count('Contact Details')} Contact Details boxes"
 assert '>Client details<' not in OVERVIEW, 'the duplicate box is still there'
 assert 'clientcard' not in OVERVIEW, 'the duplicate panel markup remains'
 src = open(f'{ROOT}/templates/projects/detail.html').read()
 assert 'client_details' not in src, 'the instruction still renders the second box'
-print('1. exactly one Client Contact Details box on the instruction')
+print('1. exactly one Contact Details box on the instruction')
 
 
 # ─── 2. Nothing empty was left where it was ─────────────────────────────────
@@ -120,7 +120,7 @@ after = page(f'/projects/{PROJ}')
 assert 'Terence Vole' in after, 'the box did not follow the new client'
 assert CLIENT_EMAIL not in after, "the previous client's details are still shown"
 assert '01732 555 999' in after, "the new client's telephone was not picked up"
-assert '()' not in after.split('Client Contact Details')[1][:900], \
+assert '()' not in after.split('Contact Details')[1][:900], \
     'a client with no company showed empty brackets'
 cl.post(f'/projects/{PROJ}/edit', data={'name': 'Marlin', 'client_contact_id': WHO},
         follow_redirects=True)

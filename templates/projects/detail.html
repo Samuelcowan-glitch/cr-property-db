@@ -425,11 +425,28 @@
 
           <div class="frow">
   <div class="fcell fcell--label">Status</div>
+  {# Where a transaction exists it is the status. Editing this box would only
+     let the two disagree, which is how a unit came to read Under Offer after
+     its deal had completed. It says where the status comes from instead, and
+     links to the deal that sets it. #}
+  {% if lst.status_is_derived %}
+  <div class="fcell">
+    <strong>{{ lst.status_label }}</strong>
+    <span class="fcell-hint">
+      From
+      {%- set deal = project.live_transaction %}
+      {% if deal %}<a href="{{ url_for('transaction_detail', id=deal.id) }}">the transaction</a>
+      ({{ deal.status }}){% else %}the transaction{% endif %}.
+      Change it there.
+    </span>
+  </div>
+  {% else %}
   <div class="fcell fcell--edit"><select name="listing_status" form="project-form">
               {% for s in ['available','under-offer','let-agreed','sold','withdrawn'] %}
               <option value="{{ s }}" {{ 'selected' if lst.listing_status == s else '' }}>{{ s|replace('-',' ')|title }}</option>
               {% endfor %}
             </select></div>
+  {% endif %}
 </div>
 
 

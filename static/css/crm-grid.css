@@ -272,12 +272,37 @@ table.rec-table td.actions { white-space: nowrap; text-align: right; }
 .form-grid > .form-group > textarea:focus {
   outline: 2px solid rgba(224,48,63,.35); outline-offset: -2px; box-shadow: none;
 }
-/* Anything that is not a label or a control — help text, checkbox rows,
-   sub-grids — spans the whole group rather than being squeezed into the
-   value column. */
-.form-grid > .form-group > *:not(label):not(input):not(select):not(textarea):not(.ss-wrap) {
+/* Anything that is not a label or a control — help text, notes, sub-grids —
+   spans the whole group rather than being squeezed into the value column. */
+.form-grid > .form-group
+  > *:not(label):not(input):not(select):not(textarea):not(.ss-wrap):not(.calc-value):not(
+      :has(> input, > select, > textarea, > .ss-wrap, > label)) {
   grid-column: 1 / -1; padding: 6px 9px;
 }
+
+/* A wrapper that IS the control — a field with a button beside it, a row of
+   radio buttons — is the value for its label and sits in the value column.
+   Spanning it dropped it onto the row below, which is what left labels
+   stranded above their own fields all down the transaction form. */
+.form-grid > .form-group > .calc-value,
+.form-grid > .form-group
+  > div:has(> input, > select, > textarea, > .ss-wrap, > label) {
+  grid-column: 2; padding: 6px 9px; min-width: 0;
+}
+/* A figure the CRM works out rather than one somebody types. It reads as a
+   field, in the field's place, and is marked as calculated by its colour
+   rather than by sitting somewhere different. */
+.calc-value {
+  display: flex; align-items: center;
+  min-height: var(--ctl-h);
+  background: #f2f8f4; border-left: 2px solid #1b7a3f;
+  font-weight: var(--w-heading); color: var(--navy);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A group whose only child is its label has no value column to fill, so the
+   label takes the width rather than leaving an empty cell beside it. */
+.form-grid > .form-group:not(:has(> :not(label))) > label { grid-column: 1 / -1; }
 .form-grid > .form-group.span-2,
 .form-grid > .form-group.span-3 { border-right: 0; }
 .form-grid > .form-group:last-child { border-bottom: 0; }
@@ -2292,4 +2317,80 @@ body.pg-open { overflow: hidden; }
 
 @media (max-width: 700px) {
   .minical-body { height: 280px; grid-template-columns: 44px minmax(0, 1fr); }
+}
+
+/* ── Transaction pages ──────────────────────────────────────────────────────
+   A control and the button beside it share one row and one height, so the
+   edge of the button lines up with the edge of the field above and below it. */
+.pick-row { display: flex; gap: 8px; align-items: stretch; min-width: 0; }
+.pick-row > select,
+.pick-row > .ss-wrap { flex: 1 1 auto; min-width: 0; }
+.pick-row > .btn { flex: 0 0 auto; white-space: nowrap; }
+
+/* What the chosen instruction already holds. Presented as a read, not as a
+   set of fields, because none of it is stored on the transaction. */
+.project-summary {
+  border: 1px solid var(--grey-200); border-radius: 3px;
+  background: var(--grey-50); padding: 12px 14px;
+}
+.ps-grid {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px 18px;
+}
+.ps-grid > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ps-label {
+  font-size: 11px; font-weight: var(--w-heading); text-transform: uppercase;
+  letter-spacing: .5px; color: var(--grey-600);
+}
+.ps-value {
+  font-size: 13px; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ps-note { margin: 10px 0 0; font-size: 11.5px; color: var(--grey-600); }
+.field-note { display: block; margin-top: 4px; font-size: 11.5px; color: var(--grey-600); }
+@media (max-width: 1100px) { .ps-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px)  { .ps-grid { grid-template-columns: 1fr; } }
+
+/* The type toggle is a row of choices, not two stacked lines, and it sits at
+   the same height as the fields either side of it. */
+.type-toggle {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+  min-height: var(--ctl-h);
+}
+.type-toggle label {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12.5px; font-weight: 400; text-transform: none; letter-spacing: 0;
+  cursor: pointer; color: var(--text);
+}
+.type-toggle input { margin: 0; }
+.type-toggle input:disabled + span,
+.type-toggle label:has(input:disabled) { color: var(--grey-600); cursor: default; }
+
+/* ── Forms on a narrow screen ───────────────────────────────────────────────
+   The record-style form group is a 132px label cell beside its field. That
+   works while the column is wide enough to hold both; in a three-column grid
+   on a phone the column is about 110px, so the label alone was wider than the
+   space and every field on the transaction form hung out of its box.
+
+   Below the breakpoint the grid becomes one column, and the label sits above
+   its field rather than beside it — the same arrangement the record boxes use
+   when they collapse, so the two look alike at every width. */
+@media (max-width: 900px) {
+  .form-grid.cols-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 700px) {
+  .form-grid,
+  .form-grid.cols-3 { grid-template-columns: 1fr; }
+  .form-grid > .form-group,
+  .form-grid.cols-3 > .form-group {
+    grid-template-columns: 1fr;
+    border-right: 0;
+  }
+  .form-grid > .form-group > label {
+    border-right: 0;
+    border-bottom: 1px solid var(--cell-line);
+  }
+  /* A group told to span two or three columns has only one to span. */
+  .form-group.span-2,
+  .form-group.span-3 { grid-column: auto; }
 }

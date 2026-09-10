@@ -213,8 +213,8 @@ print('14. the Key Contact already recorded is still in the database')
 # ─── 15. No empty box was left behind ───────────────────────────────────────
 shared = open(f'{ROOT}/templates/projects/_record_boxes.html').read()
 assert 'key_contact' not in shared
-assert 'Client Contact Details' in shared, 'the box was left with a misleading heading'
-box = shared.split('Client Contact Details')[1].split('{% endmacro %}')[0]
+assert 'Contact Details' in shared, 'the box was left with a misleading heading'
+box = shared.split('Contact Details')[1].split('{% endmacro %}')[0]
 assert 'frow--full' in box, 'the odd field was left holding half an empty row'
 assert 'key_contact' not in box, 'Key Contact is still in the box'
 assert '<div class="fcell"></div>' not in box, 'an empty cell was left'
@@ -232,9 +232,13 @@ org_page = BODIES['Organisation']
 assert 'main_contact_id' in org_page, 'the main contact chooser was removed'
 assert 'Relationships' in org_page, 'the linked relationships were removed'
 trx = BODIES['Transaction']
-assert 'data-role="Client"' in trx, 'the linked client was removed'
+roles = set(re.findall(r'data-role="([^"]+)"', trx))
+assert roles, 'the linked parties were removed from the transaction'
+assert roles in ({'Landlord', 'Tenant'}, {'Seller', 'Buyer'}), \
+    f'a transaction offers the wrong set of parties: {roles}'
+assert 'Client' not in roles, 'the retired Client role is still linked'
 assert 'Contact for this' in trx or 'orgpick' in trx
-print('16. linked client, landlord, tenant and applicant contacts all remain')
+print('16. a transaction links exactly the two sides of its own deal')
 
 
 # ─── 17. One label width, everywhere ────────────────────────────────────────

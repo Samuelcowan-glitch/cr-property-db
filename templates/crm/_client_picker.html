@@ -7,7 +7,7 @@
    never a second copy of the company's name.
 #}
 
-{% macro client_picker(contact, form_id, label='Client', can_change=None,
+{% macro client_picker(contact, form_id, label='Owner', can_change=None,
                        legacy=None, sensitive=None) %}
 {% set can_change = can_edit() if can_change is none else can_change %}
 {% set sensitive = can_edit() if sensitive is none else sensitive %}

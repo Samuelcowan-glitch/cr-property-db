@@ -22,22 +22,49 @@
     <!-- ══════════════ CORE — all transactions ══════════════ -->
     <div class="form-grid cols-3" style="margin-bottom:14px">
 
+      {# A transaction is a deal on an instruction, so that is what it asks
+         for. The instruction already knows the property, the size, whether it
+         is a letting or a sale, the asking figure and the fee — choosing it
+         fills all of that in rather than asking again. The property is still
+         recorded on the transaction, but it is read from the instruction
+         rather than picked separately, so the two can never disagree. #}
       <div class="form-group span-2">
-        <label>Property *</label>
-        <div style="display:flex;gap:8px">
-          <select id="property_id" name="property_id" required onchange="onPropertyChange(this)" style="flex:1">
-            <option value="">— Select property —</option>
-            {% for p in properties %}
-            <option value="{{ p.id }}"
-              data-category="{{ p.website_category or '' }}"
-              data-ruse="{{ p.residential_use or '' }}"
-              {{ 'selected' if (trans and trans.property_id == p.id) or (prop_id and prop_id|int == p.id) else '' }}>
-              {{ p.address }}, {{ p.postcode }}
+        <label for="project_id">Project / Instruction *</label>
+        <div class="pick-row">
+          <select id="project_id" name="project_id" required
+                  data-search data-placeholder="Search instructions…"
+                  onchange="onProjectChange()">
+            <option value="">&mdash; Select instruction &mdash;</option>
+            {% for pj in projects %}
+            <option value="{{ pj.id }}"
+              {{ 'selected' if (trans and trans.project_id == pj.id) or (project_id and project_id|int == pj.id) else '' }}>
+              {{ pj.name }}{% if pj.project_ref %} ({{ pj.project_ref }}){% endif %}
+              {%- if pj.instruction_type %} &middot; {{ pj.instruction_type }}{% endif -%}
             </option>
             {% endfor %}
           </select>
-          <a href="{{ url_for('property_new') }}" class="btn btn-outline btn-sm" style="white-space:nowrap">+ New</a>
+          <a href="{{ url_for('project_new') }}" class="btn btn-outline btn-sm">+ New</a>
         </div>
+        <input type="hidden" id="property_id" name="property_id"
+               value="{{ trans.property_id if trans else (prop_id or '') }}">
+      </div>
+
+      {# What the instruction already holds. Shown so it is obvious the
+         transaction is reading it rather than storing its own copy. #}
+      <div class="form-group span-3 project-summary" id="project-summary" hidden>
+        <div class="ps-grid">
+          <div><span class="ps-label">Property</span><span class="ps-value" data-ps="address">&mdash;</span></div>
+          <div><span class="ps-label">Unit</span><span class="ps-value" data-ps="unit">&mdash;</span></div>
+          <div><span class="ps-label">Size</span><span class="ps-value" data-ps="size">&mdash;</span></div>
+          <div><span class="ps-label">Instruction</span><span class="ps-value" data-ps="instruction_type">&mdash;</span></div>
+          <div><span class="ps-label">Asking</span><span class="ps-value" data-ps="asking_display">&mdash;</span></div>
+          <div><span class="ps-label" data-ps-label="owner_role">Landlord</span><span class="ps-value" data-ps="owner_name">&mdash;</span></div>
+          <div><span class="ps-label">Fee</span><span class="ps-value" data-ps="fee">&mdash;</span></div>
+          <div><span class="ps-label">Reference</span><span class="ps-value" data-ps="reference">&mdash;</span></div>
+        </div>
+        <p class="ps-note">
+          Read from the instruction. Change it there and it changes here.
+        </p>
       </div>
 
       <div class="form-group">
@@ -46,16 +73,23 @@
                value="{{ trans.transaction_date.strftime('%Y-%m-%d') if trans and trans.transaction_date else '' }}">
       </div>
 
+      {# The instruction says whether this is a letting or a sale, so it is not
+         asked for again. It stays visible, and editable, for a transaction
+         with no instruction behind it — and says where it came from when
+         there is one. #}
       <div class="form-group span-2">
         <label>Transaction Type *</label>
-        <div class="type-toggle">
+        <div class="type-toggle" id="type-toggle">
           <label><input type="radio" name="transaction_type" value="Capital"
-            {{ 'checked' if trans and trans.transaction_type == 'Capital' else ('checked' if not trans else '') }}
-            onchange="toggleTransFields()"> Capital (Sale / Purchase)</label>
+            {{ 'checked' if trans and trans.transaction_type == 'Capital' else '' }}
+            onchange="toggleTransFields()"> Sale</label>
           <label><input type="radio" name="transaction_type" value="Leasehold"
-            {{ 'checked' if trans and trans.transaction_type == 'Leasehold' else '' }}
-            onchange="toggleTransFields()"> Leasehold (Letting / Renewal)</label>
+            {{ 'checked' if not trans or trans.transaction_type != 'Capital' else '' }}
+            onchange="toggleTransFields()"> Letting</label>
         </div>
+        <span class="field-note" id="type-from-project" hidden>
+          Set by the instruction.
+        </span>
       </div>
 
       <div class="form-group">
@@ -94,7 +128,7 @@
 
     <!-- ══════════════ CAPITAL ══════════════ -->
     <div class="capital-only">
-      <div class="form-section">Capital Transaction Details</div>
+      <div class="form-section">Sale &mdash; seller, buyer and price</div>
       <div class="form-grid" style="margin-bottom:14px">
         <div class="form-group">
           <label>Sale Price (£)</label>
@@ -107,12 +141,14 @@
                  value="{{ '%.2f'|format(trans.capital_rate_psf) if trans and trans.capital_rate_psf else '' }}" placeholder="e.g. 450.00">
         </div>
         <div class="form-group">
-          <label>Vendor</label>
-          <input type="text" name="vendor" value="{{ trans.vendor or '' }}">
+          <label>Seller</label>
+          <input type="text" name="vendor" value="{{ trans.vendor or '' }}"
+                 placeholder="Who is selling">
         </div>
         <div class="form-group">
-          <label>Purchaser</label>
-          <input type="text" name="purchaser" value="{{ trans.purchaser or '' }}">
+          <label>Buyer</label>
+          <input type="text" name="purchaser" value="{{ trans.purchaser or '' }}"
+                 placeholder="Who is buying">
         </div>
         <div class="form-group span-2">
           <label>Property Description (for comparable evidence)</label>
@@ -198,7 +234,7 @@
 
     <!-- ══════════════ LEASEHOLD ══════════════ -->
     <div class="lease-only">
-      <div class="form-section">Leasehold / Letting Details</div>
+      <div class="form-section">Letting &mdash; landlord, tenant and rent</div>
 
       <!-- Row 1: Parties + Source -->
       <div class="form-grid cols-3" style="margin-bottom:14px">
@@ -275,7 +311,7 @@
         </div>
         <div class="form-group">
           <label>Headline Rate <span style="font-weight:400;color:#1b7a3f;font-size:10.5px">auto-calculated</span></label>
-          <div id="headline-rate-display" style="padding:8px 12px;background:#f0fdf4;border:1px solid #86efac;border-radius:5px;font-size:14px;font-weight:700;color:#0e1f44;min-height:36px">
+          <div id="headline-rate-display" class="calc-value">
             {% if trans and trans.headline_rate %}£{{ '%.2f'|format(trans.headline_rate) }} {{ trans.headline_rate_unit or 'psf pa' }}{% else %}—{% endif %}
           </div>
           <input type="hidden" name="headline_rate" id="headline-rate-val" value="{{ '%.2f'|format(trans.headline_rate) if trans and trans.headline_rate else '' }}">
@@ -283,7 +319,7 @@
         </div>
         <div class="form-group">
           <label>Net Effective Rate <span style="font-weight:400;color:#1b7a3f;font-size:10.5px">auto-calculated</span></label>
-          <div id="net-rate-display" style="padding:8px 12px;background:#f0fdf4;border:1px solid #86efac;border-radius:5px;font-size:14px;font-weight:700;color:#0e1f44;min-height:36px">
+          <div id="net-rate-display" class="calc-value">
             {% if trans and trans.net_rate %}£{{ '%.2f'|format(trans.net_rate) }} psf pa{% else %}—{% endif %}
           </div>
           <div id="net-rate-basis" style="font-size:10.5px;color:#1b7a3f;margin-top:3px"></div>
@@ -451,10 +487,15 @@
 
 <script>
 function getSelectedPropMeta() {
-  var sel = document.getElementById('property_id');
-  var opt = sel ? sel.options[sel.selectedIndex] : null;
-  if (!opt || !opt.value) return { category:'', ruse:'' };
-  return { category: opt.getAttribute('data-category')||'', ruse: opt.getAttribute('data-ruse')||'' };
+  /* The property is no longer picked by hand — it comes from the instruction,
+     and its category comes with it. Read from where the instruction put it,
+     rather than from a dropdown that is now a hidden field. */
+  var holder = document.getElementById('project_id');
+  if (!holder) return { category: '', ruse: '' };
+  return {
+    category: holder.getAttribute('data-category') || '',
+    ruse: holder.getAttribute('data-ruse') || ''
+  };
 }
 
 function onPropertyChange() { updateAnalysisFields(); }
@@ -610,5 +651,101 @@ document.querySelectorAll('[name="lease_start"],[name="lease_end"],[name="next_b
 toggleTransFields();
 updateAnalysisFields();
 calcLeaseLength();
+</script>
+<script>
+/*
+   Choosing the instruction fills in what it already knows.
+   The point is that nothing here is a second copy: the size, the address and
+   the fee live on the instruction, and this reads them so the person recording
+   a deal does not type them again. Anything already filled in is left alone —
+   a figure somebody has typed is never overwritten by a default.
+*/
+(function () {
+  'use strict';
+  var sel = document.getElementById('project_id');
+  if (!sel) return;
+  var summary = document.getElementById('project-summary');
+  function setIfEmpty(name, value) {
+    var el = document.querySelector('[name="' + name + '"]');
+    if (el && !el.value && value !== null && value !== undefined && value !== '') {
+      el.value = value;
+    }
+  }
+  function money(n) {
+    if (n === null || n === undefined || n === '') return '—';
+    return '£' + Number(n).toLocaleString('en-GB', { maximumFractionDigits: 0 });
+  }
+  function show(d) {
+    if (!summary) return;
+    var fee = d.fee_type === 'Fixed' ? money(d.fixed_fee)
+            : d.fee_percent ? d.fee_percent + '%' : '—';
+    var text = {
+      address: d.address || '—',
+      unit: d.unit || 'Whole building',
+      size: d.size ? Number(d.size).toLocaleString('en-GB') + ' sq ft' : '—',
+      instruction_type: d.instruction_type || '—',
+      asking_display: d.asking_display || '—',
+      owner_name: d.owner_name || d.landlord_name || '—',
+      fee: fee,
+      reference: d.reference || '—'
+    };
+    Object.keys(text).forEach(function (k) {
+      var el = summary.querySelector('[data-ps="' + k + '"]');
+      if (el) el.textContent = text[k];
+    });
+    var ownerLabel = summary.querySelector('[data-ps-label="owner_role"]');
+    if (ownerLabel) ownerLabel.textContent = d.owner_role || 'Landlord';
+    summary.hidden = false;
+  }
+  function apply(d) {
+    // The instruction decides whether this is a letting or a sale.
+    var wanted = d.transaction_type;
+    document.querySelectorAll('input[name="transaction_type"]').forEach(function (r) {
+      r.checked = r.value === wanted;
+      r.disabled = !!wanted;
+    });
+    var note = document.getElementById('type-from-project');
+    if (note) note.hidden = !wanted;
+    if (window.toggleTransFields) window.toggleTransFields();
+    var propField = document.getElementById('property_id');
+    if (propField) propField.value = d.property_id || '';
+    // The analysis fields read the property's category from here.
+    sel.setAttribute('data-category', d.category || '');
+    sel.setAttribute('data-ruse', d.residential_use || '');
+    setIfEmpty('size_units', d.size_units);
+    setIfEmpty('agreed_value', d.agreed_value);
+    setIfEmpty('fee_percent', d.fee_percent);
+    setIfEmpty('fixed_fee', d.fixed_fee);
+    if (d.deal_kind === 'sale') {
+      setIfEmpty('value', d.value);
+      setIfEmpty('vendor', d.owner_name || d.landlord_name);
+    } else {
+      setIfEmpty('rent_pa', d.rent_pa);
+      setIfEmpty('landlord', d.owner_name || d.landlord_name);
+    }
+    var feeType = document.querySelector('[name="fee_type"]');
+    if (feeType && !feeType.value && d.fee_type) feeType.value = d.fee_type;
+    show(d);
+  }
+  function load() {
+    var id = sel.value;
+    if (!id) {
+      if (summary) summary.hidden = true;
+      document.querySelectorAll('input[name="transaction_type"]').forEach(function (r) {
+        r.disabled = false;
+      });
+      var note = document.getElementById('type-from-project');
+      if (note) note.hidden = true;
+      return;
+    }
+    fetch('/api/projects/' + id + '/transaction-defaults', { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) { if (d) apply(d); })
+      .catch(function () { /* the form still works, it just fills nothing in */ });
+  }
+  window.onProjectChange = load;
+  sel.addEventListener('change', load);
+  if (sel.value) load();
+}());
 </script>
 {% endblock %}

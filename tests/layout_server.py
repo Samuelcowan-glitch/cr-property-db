@@ -88,6 +88,14 @@ with A.app.app_context():
             key_terms='New FRI lease\nAvailable now'))
         db.session.commit()
 
+    # A deal on the first instruction, so the transaction pages have something
+    # to draw.
+    db.session.add(A.Transaction(project_id=projs[0].id, property_id=props[0].id,
+                                 transaction_type='Leasehold', status='Under Offer',
+                                 agreed_value=57260, landlord='Hurlingham Holdings Ltd',
+                                 tenant='Okelo Retail Ltd'))
+    db.session.commit()
+
     for n, who in enumerate(people[:3]):
         db.session.add(A.Enquiry(
             subject=f'Particulars request from {who.first_name} {who.last_name}',

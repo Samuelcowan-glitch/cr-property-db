@@ -160,7 +160,7 @@ with app.app_context():
 print('8. every instruction type change is written to the audit log')
 
 # ── 9. Both boxes are on the shared column grid ─────────────────────────────
-for heading in ['Instruction Detail', 'Client Contact Details']:
+for heading in ['Instruction Detail', 'Contact Details']:
     assert f'>{heading}</div>' in html.replace('\n', '') or heading in html, heading
 assert html.count('box box--grid') >= 2, 'the boxes are not on the shared grid'
 css = open(f'{root}/static/css/crm-grid.css').read()
@@ -171,7 +171,7 @@ assert '.box--grid .frow { display: contents; }' in css
 print('9. both boxes share one four-column grid, so their columns line up')
 
 # ── 10. Every row has the same shape ────────────────────────────────────────
-for heading in ['Instruction Detail', 'Client Contact Details']:
+for heading in ['Instruction Detail', 'Contact Details']:
     cs = cells(html, heading)
     # Rows hold two pairs, or one pair spanning the width — either way, pairs.
     assert len(cs) % 2 == 0, f'{heading}: {len(cs)} cells is not whole label/value pairs'

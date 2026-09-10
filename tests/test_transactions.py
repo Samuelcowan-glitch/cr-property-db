@@ -404,7 +404,7 @@ print('23. all seventeen columns sort, in both directions')
 
 # ─── 24. The table shows every column asked for ──────────────────────────────
 head = html.split('class="fin-table"')[1].split('<thead>')[1].split('</thead>')[0]
-for col in ['Ref', 'Property', 'Client', 'Tenant / Purchaser', 'Type', 'Fee earner',
+for col in ['Ref', 'Property', 'Landlord / Seller', 'Tenant / Buyer', 'Type', 'Fee earner',
             'Agreed value', 'Fee', 'Commission', 'VAT', 'Invoice total', 'Received',
             'Outstanding', 'Invoiced', 'Due', 'Completed', 'Status']:
     assert f'>{col}' in head, f'the {col} column is missing from the table'
@@ -427,10 +427,25 @@ assert '<tbody>' not in rec.split('Payments received')[0] or 'fin-table' not in 
     'the transactions list is still beside the record'
 assert 'fin-table' not in rec, 'the transactions table is on the record page'
 for section in ['1. Transaction overview', '2. Property and project',
-                '3. Client, tenant or purchaser', '4. Agreed commercial terms',
+                '3. ', '4. Agreed commercial terms',
                 '5. Commission calculation', '6. Invoice and payment',
                 '7. Solicitors', '8. Important dates', '9. Documents', '10. Notes']:
     assert section in rec, f'the "{section}" section is missing'
+# Box 3 is named for the kind of deal, and holds only that deal's two sides.
+with app.app_context():
+    kind = Transaction.query.get(A).deal_kind
+expected = 'Landlord and tenant' if kind == 'letting' else 'Seller and buyer'
+unwanted = 'Seller and buyer' if kind == 'letting' else 'Landlord and tenant'
+assert expected in rec, f'box 3 is not headed "{expected}" on a {kind}'
+assert unwanted not in rec, f'a {kind} is showing the other deal\'s heading'
+# Only that deal's two sides are offered to link.
+roles = set(re.findall(r'data-role="([^"]+)"', rec))
+wanted = {'Landlord', 'Tenant'} if kind == 'letting' else {'Seller', 'Buyer'}
+assert wanted <= roles, f'{wanted - roles} missing from the record'
+assert not (roles & ({'Seller', 'Buyer'} if kind == 'letting'
+                     else {'Landlord', 'Tenant'})), \
+    f'the other deal\'s parties are on a {kind}: {roles}'
+assert 'Client' not in roles, 'the retired Client role is still on the record'
 assert 'Activity history' in rec
 print('26. the record opens on its own page with all ten sections and no list')
 

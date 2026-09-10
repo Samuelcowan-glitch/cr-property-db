@@ -770,19 +770,27 @@ class Transaction(db.Model):
         whichever figure was actually filled in decides it. That stops a fee
         someone has plainly entered from being read as nothing.
         """
+        fixed, percent = self.fixed_fee_effective, self.fee_percent_effective
         if self.fee_type == 'Fixed':
-            return bool(self.fixed_fee) or not self.fee_percent
+            return bool(fixed) or not percent
         if self.fee_type == 'Percentage':
-            return not self.fee_percent and bool(self.fixed_fee)
-        return bool(self.fixed_fee) and not self.fee_percent
+            return not percent and bool(fixed)
+        return bool(fixed) and not percent
 
     @property
     def net_commission(self):
-        """Our fee, before VAT."""
+        """Our fee, before VAT.
+
+        Where the transaction records no fee of its own, the instruction's is
+        used — it was agreed when the property was taken on, and asking for it
+        again on every deal is how the two come to disagree. Anything set on
+        the transaction always wins, so a one-off rate is still a one-off rate.
+        """
         if self.charges_fixed_fee:
-            return round(float(self.fixed_fee or 0.0), 2)
-        if self.fee_percent:
-            return round(self.commission_basis * float(self.fee_percent) / 100.0, 2)
+            return round(float(self.fixed_fee_effective or 0.0), 2)
+        percent = self.fee_percent_effective
+        if percent:
+            return round(self.commission_basis * float(percent) / 100.0, 2)
         return 0.0
 
     @property
@@ -847,6 +855,98 @@ class Transaction(db.Model):
         """The fee earner's full name, or whatever was recorded before."""
         return fee_earner_name(self.fee_earner_id, self.fee_earner)
 
+    # ── Which deal this is, and what the two sides are called ──────────────
+    # A letting has a landlord and a tenant. A sale has a seller and a buyer.
+    # They are never mixed, and nothing is called a "client" — that said who we
+    # invoiced, not what somebody is to the deal.
+    #
+    # Where the transaction belongs to an instruction, the instruction decides:
+    # a project To Let cannot produce a sale. That is the point of linking them.
+
+    @property
+    def is_sale(self):
+        if self.project and self.project.instruction_type in (INSTRUCTION_FOR_SALE,
+                                                              INSTRUCTION_TO_LET):
+            return self.project.is_sale
+        return (self.transaction_type or '') == 'Capital'
+
+    @property
+    def is_letting(self):
+        return not self.is_sale
+
+    @property
+    def deal_kind(self):
+        return 'sale' if self.is_sale else 'letting'
+
+    @property
+    def party_roles(self):
+        """The two sides of this deal, in order: whose property, then who takes it.
+
+        Returned as (role, stored value, which column holds it) so a page can
+        label the field and read the name that was typed in before without
+        knowing anything about which kind of deal it is looking at.
+        """
+        if self.is_sale:
+            return [('Seller', self.vendor, 'vendor'),
+                    ('Buyer', self.purchaser, 'purchaser')]
+        return [('Landlord', self.landlord, 'landlord'),
+                ('Tenant', self.tenant, 'tenant')]
+
+    @property
+    def owner_side(self):
+        """Whoever owns the property in this deal — the landlord, or the seller."""
+        return self.landlord if self.is_letting else self.vendor
+
+    # ── What the instruction already knows ─────────────────────────────────
+    # These are read, not stored. The floor area of a building is a fact about
+    # the building, and copying it onto every transaction is how one property
+    # ends up with three different sizes. If the instruction is corrected, the
+    # transaction is correct with it.
+
+    @property
+    def listing(self):
+        """The unit this deal is on, where the instruction has one."""
+        if not self.project_id:
+            return None
+        return (Listing.query.filter_by(project_id=self.project_id)
+                .order_by(Listing.id).first())
+
+    @property
+    def size(self):
+        """The floor area, from the unit if there is one, else the building."""
+        unit = self.listing
+        if unit is not None and unit.size:
+            return unit.size
+        prop = self.property
+        return prop.size if prop is not None else None
+
+    @property
+    def size_display(self):
+        return format_size(self.size)
+
+    @property
+    def unit_name(self):
+        unit = self.listing
+        return unit.unit_name if unit is not None else None
+
+    @property
+    def fee_percent_effective(self):
+        """The fee rate: this deal's, or the instruction's where none is set."""
+        if self.fee_percent is not None:
+            return self.fee_percent
+        return self.project.fee_percent if self.project else None
+
+    @property
+    def fixed_fee_effective(self):
+        if self.fixed_fee is not None:
+            return self.fixed_fee
+        return self.project.fee_fixed if self.project else None
+
+    @property
+    def taker_side(self):
+        """Whoever takes it — the tenant, or the buyer."""
+        return self.tenant if self.is_letting else self.purchaser
+
     @property
     def stage(self):
         """How far the transaction has got, apart from the money.
@@ -891,9 +991,10 @@ class Transaction(db.Model):
     def fee_basis_label(self):
         """How the fee is charged, said plainly so the sum is never a mystery."""
         if self.charges_fixed_fee:
-            return f'Fixed {money_gbp(self.fixed_fee)}' if self.fixed_fee else 'Fixed fee'
-        if self.fee_percent:
-            return f'{self.fee_percent:g}%'
+            return (f'Fixed {money_gbp(self.fixed_fee_effective)}'
+                    if self.fixed_fee_effective else 'Fixed fee')
+        if self.fee_percent_effective:
+            return f'{self.fee_percent_effective:g}%'
         return 'No fee entered'
 
 
@@ -971,7 +1072,7 @@ ARCHIVED_STATUSES = ['Archived']
 # without existing twice.
 
 ORG_TYPES = [
-    'Landlord', 'Tenant', 'Applicant', 'Client', 'Vendor', 'Purchaser',
+    'Landlord', 'Tenant', 'Applicant', 'Seller', 'Buyer',
     'Property company', 'Managing agent', 'Solicitor', 'Surveyor',
     'Contractor', 'Supplier', 'Introducer', 'Other',
 ]
@@ -999,14 +1100,22 @@ ORG_HIDDEN_STATUSES = {'Archived'}
 ORG_NO_CONTACT = 'Do Not Contact'
 
 # The relationships an organisation can hold, and what each one attaches to.
+# The four sides of the two deals this office does, plus somebody still
+# looking. "Client" is gone: it said who we invoiced, not what somebody is to a
+# deal, and it made a landlord and a seller look like the same thing. Vendor
+# and Purchaser are now Seller and Buyer, the words the rest of the CRM uses.
 ORG_ROLES = [
-    ('Landlord',  'Landlord of a property'),
-    ('Tenant',    'Tenant or occupier of a property'),
-    ('Client',    'Client on a project or instruction'),
+    ('Landlord',  'Owns the property in a letting'),
+    ('Tenant',    'Takes the property in a letting'),
+    ('Seller',    'Owns the property in a sale'),
+    ('Buyer',     'Takes the property in a sale'),
     ('Applicant', 'Searching for property'),
-    ('Vendor',    'Selling in a sale instruction'),
-    ('Purchaser', 'Buying in a transaction'),
 ]
+
+# What older records were filed under, and what each now means. Nothing is
+# rewritten on sight — a role is only remapped where the deal it belongs to
+# says which it is. See _migrate_retire_client.
+ORG_ROLE_LEGACY = {'Vendor': 'Seller', 'Purchaser': 'Buyer'}
 ORG_ROLE_NAMES = [name for name, _ in ORG_ROLES]
 
 
@@ -1551,6 +1660,47 @@ class Project(db.Model):
     def docs_in_folder(self, folder):
         return [d for d in self.documents if d.folder == folder]
 
+    # ── The deal on this instruction ────────────────────────────────────────
+    # A project says what the property is on the market for. A transaction says
+    # how far the deal has actually got. Both used to be edited separately,
+    # which is how an instruction could still read "Under Offer" after its
+    # transaction had completed. The transaction is the source of truth for
+    # progress now, and everything else reads it from here.
+
+    @property
+    def transactions(self):
+        """Every transaction recorded against this instruction."""
+        return Transaction.query.filter_by(project_id=self.id).all()
+
+    @property
+    def live_transaction(self):
+        """The deal that speaks for this instruction.
+
+        The furthest along, ignoring anything that fell through or was
+        archived — those earned nothing and say nothing about availability. Ties
+        go to the most recent, because a second attempt supersedes the first.
+        """
+        live = [t for t in self.transactions if t.status not in TRANSACTION_EXCLUDED]
+        if not live:
+            return None
+        order = {name: n for n, name in enumerate(TRANSACTION_STAGES)}
+        return max(live, key=lambda t: (order.get(t.stage, -1), t.id))
+
+    @property
+    def deal_stage(self):
+        """How far the deal has got, or None if there is no deal yet."""
+        deal = self.live_transaction
+        return deal.stage if deal else None
+
+    @property
+    def is_sale(self):
+        """Whether this instruction is a sale rather than a letting."""
+        return self.instruction_type == INSTRUCTION_FOR_SALE
+
+    @property
+    def is_letting(self):
+        return self.instruction_type == INSTRUCTION_TO_LET
+
 
 class Listing(db.Model):
     """Website listing for a unit/floor/whole building — managed via a Project instruction."""
@@ -1687,6 +1837,52 @@ class Listing(db.Model):
         if self.listing_price_unit == 'pcm': return n + ' pcm'
         if self.listing_price_unit == 'sale': return n
         return n
+
+    # ── Availability ───────────────────────────────────────────────────────
+    # Whether a unit is still available is a fact about its deal, not a label
+    # somebody remembered to change. Where a transaction exists it answers the
+    # question; the stored listing_status is what is left for a listing that
+    # has no deal against it yet.
+
+    @property
+    def effective_status(self):
+        """What this listing actually is, deal included.
+
+        Reading this rather than listing_status is what stops a unit showing
+        as Under Offer after its transaction completed.
+        """
+        stage = self.project.deal_stage if self.project else None
+        if stage is None:
+            return (self.listing_status or 'available').lower()
+        if stage in TRANSACTION_COMPLETED or stage == 'Completed':
+            return 'sold' if (self.project and self.project.is_sale) else 'let-agreed'
+        if stage in ('Under Offer', 'Terms Agreed', 'Solicitors Instructed'):
+            return 'under-offer'
+        # Draft or in progress is not yet a commitment, so the listing stands
+        # as whatever it was set to.
+        return (self.listing_status or 'available').lower()
+
+    @property
+    def status_label(self):
+        """The availability, written for a person."""
+        return {'available': 'Available', 'under-offer': 'Under Offer',
+                'let-agreed': 'Let Agreed', 'sold': 'Sold',
+                'withdrawn': 'Withdrawn'}.get(self.effective_status,
+                                              (self.effective_status or '').title())
+
+    @property
+    def is_available(self):
+        return self.effective_status == 'available'
+
+    @property
+    def status_is_derived(self):
+        """True when the deal is setting the status rather than the listing.
+
+        The record says so on the page, because otherwise a status that cannot
+        be edited looks like a bug rather than a decision.
+        """
+        return bool(self.project and self.project.deal_stage
+                    and self.effective_status != (self.listing_status or 'available').lower())
 
 
 class ListingPhoto(db.Model):
@@ -2344,13 +2540,17 @@ def _available_listings(instruction_type):
     fields — no new columns — so what is shown always matches the project and
     listing records themselves.
     """
-    return (Listing.query
+    # Availability is filtered in Python rather than in SQL because it is a
+    # question about the listing's transaction, not about a column. A unit
+    # whose deal has completed is not on the market whatever its own status
+    # field still says.
+    rows = (Listing.query
             .join(Project, Listing.project_id == Project.id)
             .filter(Project.instruction_type == instruction_type,
-                    Project.status == 'Active',
-                    db.func.lower(db.func.coalesce(Listing.listing_status, 'available')) == 'available')
+                    Project.status == 'Active')
             .order_by(Listing.id.desc())
             .all())
+    return [l for l in rows if l.is_available]
 
 
 def _projects_of_type(instruction_type, limit=25):
@@ -3494,9 +3694,10 @@ def stock_fee_value():
     # A listing with no instruction behind it is still a unit on the market, so
     # it is counted as stock and reported as unpriced rather than dropped.
     available = [
-        lst for lst in Listing.query.filter(Listing.listing_status == 'available').all()
-        if lst.project is None
-        or lst.project.instruction_type in (INSTRUCTION_FOR_SALE, INSTRUCTION_TO_LET)
+        lst for lst in Listing.query.all()
+        if lst.is_available
+        and (lst.project is None
+             or lst.project.instruction_type in (INSTRUCTION_FOR_SALE, INSTRUCTION_TO_LET))
     ]
     fee_total = asking_total = 0.0
     valued = no_fee = 0
@@ -4396,6 +4597,75 @@ def transaction_document_delete(id, did):
     return redirect(url_for('transaction_detail', id=id))
 
 
+def project_transaction_defaults(project):
+    """Everything a transaction can take from the instruction it belongs to.
+
+    A project already records the property, its size, whether it is to let or
+    for sale, the asking figure, who the client is and what the fee is. Asking
+    for all of it again when a deal is recorded is how the same building ends
+    up with two different floor areas. This reads it once, from the records
+    that already hold it, and nothing is copied that the transaction can look
+    up for itself.
+    """
+    if not project:
+        return {}
+    prop = project.property
+    listing = (Listing.query.filter_by(project_id=project.id)
+               .order_by(Listing.id).first())
+
+    is_sale = project.is_sale
+    asking = listing.listing_price if listing else None
+    asking_unit = listing.listing_price_unit if listing else None
+
+    # The size is the unit's where there is one, the building's otherwise —
+    # a listing for a single floor is not the whole property.
+    size = None
+    if listing and getattr(listing, 'size', None):
+        size = listing.size
+    elif prop is not None:
+        size = prop.size
+
+    owner = project.client_display or (prop.client_display
+                                       if prop is not None and hasattr(prop, 'client_display')
+                                       else None)
+
+    return {
+        'project_id': project.id,
+        'property_id': project.property_id,
+        'address': prop.address if prop is not None else None,
+        'postcode': prop.postcode if prop is not None else None,
+        'unit': (listing.unit_name if listing else None),
+        'size': size,
+        'size_units': 'sq ft' if size else None,
+        'reference': project.project_ref,
+        'instruction_type': project.instruction_type,
+        'transaction_type': 'Capital' if is_sale else 'Leasehold',
+        'deal_kind': 'sale' if is_sale else 'letting',
+        'owner_role': 'Seller' if is_sale else 'Landlord',
+        'taker_role': 'Buyer' if is_sale else 'Tenant',
+        'owner_name': owner,
+        'value': asking if is_sale else None,
+        'rent_pa': (asking if not is_sale and asking_unit in (None, 'pa') else None),
+        'agreed_value': asking,
+        'asking_display': (listing.display_price if listing else None),
+        'fee_type': ('Fixed' if project.fee_fixed else
+                     'Percentage' if project.fee_percent else None),
+        'fee_percent': project.fee_percent,
+        'fixed_fee': project.fee_fixed,
+        'fee_earner_id': project.fee_earner_id,
+        'landlord_name': project.landlord_name,
+        'category': getattr(prop, 'website_category', None) if prop is not None else None,
+        'residential_use': getattr(prop, 'residential_use', None) if prop is not None else None,
+    }
+
+
+@app.route('/api/projects/<int:id>/transaction-defaults')
+def project_transaction_defaults_api(id):
+    """What the form fills in when an instruction is chosen."""
+    project = Project.query.get_or_404(id)
+    return jsonify(project_transaction_defaults(project))
+
+
 @app.route('/transactions/new', methods=['GET', 'POST'])
 def transaction_new():
     properties = Property.query.order_by(Property.address).all()
@@ -4405,9 +4675,29 @@ def transaction_new():
         def parse_float(val):
             return float(val.replace(',', '')) if val and val.strip() else None
 
+        # The instruction is what was chosen, and it carries the property and
+        # the kind of deal with it. Both are read from it rather than taken on
+        # trust from the form, so a letting instruction cannot be saved as a
+        # sale by editing the request.
+        project = None
+        raw_project = request.form.get('project_id')
+        if raw_project:
+            project = Project.query.get(int(raw_project))
+        defaults = project_transaction_defaults(project)
+
+        property_id = defaults.get('property_id') or request.form.get('property_id')
+        if not property_id:
+            flash('Choose the instruction this transaction belongs to.', 'error')
+            return redirect(url_for('transaction_new'))
+
+        kind = defaults.get('transaction_type') or request.form.get('transaction_type')
+        if kind not in ('Capital', 'Leasehold'):
+            kind = 'Leasehold'
+
         t = Transaction(
-            property_id=request.form['property_id'],
-            transaction_type=request.form['transaction_type'],
+            project_id=project.id if project else None,
+            property_id=property_id,
+            transaction_type=kind,
             tenure_type=request.form.get('tenure_type'),
             transaction_date=parse_date(request.form.get('transaction_date')),
             value=parse_float(request.form.get('value')),
@@ -4466,7 +4756,16 @@ def transaction_new():
         flash('Transaction recorded. It now appears as a tenure on the property.', 'success')
         return redirect(url_for('transaction_detail', id=t.id))
     prop_id = request.args.get('property_id')
-    return render_template('transactions/form.html', properties=properties, prop_id=prop_id, trans=None)
+    project_id = request.args.get('project_id')
+    # Only instructions that can produce a deal. A market appraisal has not
+    # been won yet, and an archived one is finished with.
+    projects = (Project.query
+                .filter(Project.instruction_type.in_([INSTRUCTION_FOR_SALE,
+                                                      INSTRUCTION_TO_LET]))
+                .order_by(Project.name).all())
+    return render_template('transactions/form.html', properties=properties,
+                           projects=projects, prop_id=prop_id,
+                           project_id=project_id, trans=None)
 
 
 @app.route('/transactions/<int:id>/edit', methods=['GET', 'POST'])
@@ -7406,8 +7705,7 @@ def property_on_the_market(prop):
         # Where the instruction has a website listing, that listing must still
         # be available — a let-agreed or sold unit is off the market.
         listings = list(pj.project_listings)
-        if listings and not any((l.listing_status or 'available').lower() == 'available'
-                                for l in listings):
+        if listings and not any(l.is_available for l in listings):
             continue
         return pj.instruction_type
     return None
@@ -10469,6 +10767,83 @@ def _migrate_contact_roles():
             app.logger.info('Recorded %s role(s) from existing contact types', seeded)
 
 
+def _migrate_retire_client():
+    """Retire "Client" as a classification, without losing anybody.
+
+    "Client" said who we act for and invoice. It is not what somebody is to a
+    deal, and it hid the difference between a landlord and a seller. The four
+    types the CRM now uses answer that question, so this remaps what it safely
+    can and leaves the rest alone.
+
+    The rule is deliberately narrow. A contact filed as a Client is only
+    remapped where their own instructions all point the same way: every one a
+    letting makes them a Landlord, every one a sale makes them a Seller. A
+    contact with both kinds, or with none, keeps their label and is tagged
+    "Review contact type" so somebody can decide. Nothing is deleted, no
+    relationship is broken, and no contact_type is invented from nothing.
+
+    The same applies to organisation roles: a Client role on a project becomes
+    Landlord or Seller only where the instruction says which. Vendor and
+    Purchaser are renamed to Seller and Buyer outright, because those are the
+    same thing under a different word.
+    """
+    with app.app_context():
+        _add_columns('contacts', [('tags', 'TEXT')])
+        renamed = remapped = flagged = 0
+
+        # Vendor and Purchaser are the old words for Seller and Buyer. Nothing
+        # to work out — the meaning is identical.
+        for old_name, new_name in ORG_ROLE_LEGACY.items():
+            for r in OrganisationRole.query.filter_by(role=old_name).all():
+                r.role = new_name
+                renamed += 1
+
+        # A Client role on a project becomes whichever side of that deal they
+        # were, where the instruction says. Where it does not, it is left.
+        for r in OrganisationRole.query.filter_by(role='Client').all():
+            project = Project.query.get(r.project_id) if r.project_id else None
+            if project and project.instruction_type == INSTRUCTION_TO_LET:
+                r.role, remapped = 'Landlord', remapped + 1
+            elif project and project.instruction_type == INSTRUCTION_FOR_SALE:
+                r.role, remapped = 'Seller', remapped + 1
+
+        # Contacts filed as Client, judged only on their own instructions.
+        for c in Contact.query.filter(Contact.contact_type == 'Client').all():
+            kinds = set()
+            for project in Project.query.filter_by(client_contact_id=c.id).all():
+                if project.instruction_type == INSTRUCTION_TO_LET:
+                    kinds.add('Landlord')
+                elif project.instruction_type == INSTRUCTION_FOR_SALE:
+                    kinds.add('Seller')
+            for prop in Property.query.filter_by(client_contact_id=c.id).all():
+                for project in Project.query.filter_by(property_id=prop.id).all():
+                    if project.instruction_type == INSTRUCTION_TO_LET:
+                        kinds.add('Landlord')
+                    elif project.instruction_type == INSTRUCTION_FOR_SALE:
+                        kinds.add('Seller')
+
+            if len(kinds) == 1:
+                kind = kinds.pop()
+                c.contact_type = kind
+                if not any(role.role == kind and role.is_current
+                           for role in (c.roles or [])):
+                    db.session.add(ContactRole(contact_id=c.id, role=kind,
+                                               notes='From the retired Client type'))
+                remapped += 1
+            else:
+                # Both kinds, or nothing to go on. Their record is untouched
+                # and tagged, because guessing here would be worse than asking.
+                if 'Review contact type' not in (contact_tags(c) or []):
+                    set_contact_tags(c, contact_tags(c) + ['Review contact type'])
+                flagged += 1
+
+        if renamed or remapped or flagged:
+            db.session.commit()
+            app.logger.info(
+                'Retired Client: %s role(s) renamed, %s remapped, %s flagged for review',
+                renamed, remapped, flagged)
+
+
 def _migrate_progression_columns():
     """When to chase a transaction next, and the completion being aimed at.
 
@@ -10542,6 +10917,7 @@ if __name__ == '__main__':
         _migrate_rates_tables()
         _migrate_progression_columns()
         _migrate_contact_roles()
+        _migrate_retire_client()
         _ensure_default_user()
         if Property.query.count() == 0:
             import import_listings  # seeds the 32 website properties

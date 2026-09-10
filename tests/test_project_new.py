@@ -62,7 +62,7 @@ print('1. the create page is built from the record layout')
 
 # ── 2. Both pages come from the same field definitions ──────────────────────
 overview = page(f'/projects/{projid}')
-for box in ['Instruction Detail', 'Client Contact Details']:
+for box in ['Instruction Detail', 'Contact Details']:
     assert box in new, f'{box} missing from the create page'
     assert box in overview, f'{box} missing from the Project Overview'
 # Every field the shared boxes define appears on both. The project name is
