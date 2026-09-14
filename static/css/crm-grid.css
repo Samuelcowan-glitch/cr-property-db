@@ -2442,3 +2442,15 @@ body.pg-open { overflow: hidden; }
   font-size: 12.5px; color: var(--text); cursor: pointer;
 }
 .tickbox input { margin: 0; flex: none; cursor: pointer; }
+
+/* What the instruction already says this party is, offered as one click.
+   Sits above the search rather than replacing it, so choosing somebody else
+   is still a matter of typing. */
+.orgpick-suggest {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; flex-wrap: wrap;
+  margin-bottom: 8px; padding: 8px 10px;
+  border: 1px solid var(--grey-200); border-left: 3px solid var(--orange);
+  border-radius: 3px; background: var(--grey-50);
+}
+.orgpick-suggest-text { font-size: 12.5px; color: var(--text); min-width: 0; }

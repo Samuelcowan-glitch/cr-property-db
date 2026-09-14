@@ -40,7 +40,7 @@ BOOT = [name for name in (
     '_migrate_listings_table_columns', '_migrate_document_columns',
     '_migrate_enquiry_columns', '_migrate_email_columns', '_migrate_crm_columns',
     '_migrate_rates_tables', '_migrate_progression_columns',
-    '_migrate_contact_roles', '_migrate_retire_client',
+    '_migrate_contact_roles', '_migrate_retire_client', '_migrate_transaction_kinds',
     '_migrate_security_columns', '_migrate_diary_tables', '_ensure_default_user',
 ) if f'{name}()' in SERVE]
 
@@ -125,7 +125,7 @@ print('2. querying a contact against it fails, exactly as production did')
 # ─── 3. The whole boot sequence completes anyway ────────────────────────────
 assert BOOT[0] == '_sync_model_columns', \
     'the schema is not brought up to the models before the migrations run'
-assert len(BOOT) >= 14, f'only {len(BOOT)} boot steps found in serve.py'
+assert len(BOOT) >= 15, f'only {len(BOOT)} boot steps found in serve.py'
 with A.app.app_context():
     for name in BOOT:
         step = getattr(A, name)

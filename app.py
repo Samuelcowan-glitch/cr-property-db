@@ -409,7 +409,7 @@ class Property(db.Model):
 
     @property
     def tenures(self):
-        return [t for t in self.transactions if t.transaction_type == 'Leasehold']
+        return [t for t in self.transactions if t.is_letting]
 
     @property
     def client_contact(self):
@@ -518,6 +518,22 @@ def same_property_type(wanted, found):
 
 
 # ── Transactions: the shared vocabulary and the money rules ──────────────────
+
+# What kind of deal a transaction is, in the words the office uses. It used to
+# be stored as "Capital" and "Leasehold", which are the words for a tenure, not
+# for a deal — a letting of a long leasehold is still a letting. Older records
+# are rewritten to these on the next boot; both are read either way in the
+# meantime so nothing is stranded.
+TRANSACTION_KINDS = ['Letting', 'Sale']
+LEGACY_KINDS = {'Capital': 'Sale', 'Leasehold': 'Letting'}
+SALE_KINDS = ('Sale', 'Capital')
+
+
+def transaction_kind(value):
+    """The deal kind, whichever word a record happens to carry."""
+    value = (value or '').strip()
+    return LEGACY_KINDS.get(value, value)
+
 
 TRANSACTION_STATUSES = [
     'Draft', 'In Progress', 'Under Offer', 'Terms Agreed',
@@ -707,7 +723,7 @@ class Transaction(db.Model):
 
     @property
     def parties(self):
-        if self.transaction_type == 'Capital':
+        if self.is_sale:
             parts = []
             if self.vendor:
                 parts.append(f"Vendor: {self.vendor}")
@@ -746,7 +762,7 @@ class Transaction(db.Model):
         if self.agreed_value:
             return float(self.agreed_value)
         sale, rent = float(self.value or 0.0), float(self.rent_pa or 0.0)
-        if self.transaction_type == 'Capital':
+        if self.is_sale:
             return sale or rent
         return rent or sale
 
@@ -758,7 +774,7 @@ class Transaction(db.Model):
         if not self.commission_basis:
             return None
         sale, rent = float(self.value or 0.0), float(self.rent_pa or 0.0)
-        if self.transaction_type == 'Capital':
+        if self.is_sale:
             return 'the sale price' if sale else 'the rent'
         return 'the rent' if rent else 'the sale price'
 
@@ -868,7 +884,7 @@ class Transaction(db.Model):
         if self.project and self.project.instruction_type in (INSTRUCTION_FOR_SALE,
                                                               INSTRUCTION_TO_LET):
             return self.project.is_sale
-        return (self.transaction_type or '') == 'Capital'
+        return transaction_kind(self.transaction_type) == 'Sale'
 
     @property
     def is_letting(self):
@@ -3762,8 +3778,8 @@ def transaction_extras(rows, everyone):
     that fell through, which conversion needs in order to mean anything.
     """
     # ── Value done, split by what kind of deal it was ──
-    sales = [t for t in rows if t.transaction_type == 'Capital']
-    lettings = [t for t in rows if t.transaction_type != 'Capital']
+    sales = [t for t in rows if t.is_sale]
+    lettings = [t for t in rows if t.is_letting]
 
     def summarise(group):
         done = [t for t in group if t.has_completed]
@@ -4258,6 +4274,7 @@ app.jinja_env.globals['ORG_STATUSES'] = ORG_STATUSES
 app.jinja_env.globals['ORG_STATUS_NAMES'] = ORG_STATUS_NAMES
 app.jinja_env.globals['ORG_ROLES'] = ORG_ROLES
 app.jinja_env.globals['ORG_ROLE_NAMES'] = ORG_ROLE_NAMES
+app.jinja_env.globals['TRANSACTION_KINDS'] = TRANSACTION_KINDS
 app.jinja_env.globals['money_gbp'] = money_gbp
 app.jinja_env.globals['money_short'] = money_short
 app.jinja_env.globals['TRANSACTION_STATUSES'] = TRANSACTION_STATUSES
@@ -4619,6 +4636,71 @@ def transaction_document_delete(id, did):
     return redirect(url_for('transaction_detail', id=id))
 
 
+def link_owner_from_project(transaction, project):
+    """Attach the landlord or the seller from the instruction, once.
+
+    The instruction already records who we act for. Making somebody search for
+    them again on the transaction — and pick them out of a list they are
+    already on — is asking a question the CRM can answer itself.
+
+    Only the owner side is filled: an instruction knows whose property it is,
+    and does not know who will take it. Only when nothing is linked already,
+    so it can never overwrite a choice somebody has made. And only where that
+    person belongs to an organisation, because the link is to a company; where
+    they do not, their name is written into the text field instead and the
+    record still reads correctly.
+    """
+    if transaction is None or project is None:
+        return None
+    role = 'Seller' if project.is_sale else 'Landlord'
+    if current_org_link(role, transaction_id=transaction.id):
+        return None                       # somebody has already chosen
+
+    who = project.client_contact
+    if who is None:
+        return None
+
+    if who.organisation_id:
+        link = OrganisationRole(organisation_id=who.organisation_id, role=role,
+                                transaction_id=transaction.id, contact_id=who.id)
+        db.session.add(link)
+        db.session.commit()
+        return link
+
+    # No company to link, so the name goes in the field the record already has.
+    field = 'vendor' if project.is_sale else 'landlord'
+    if not getattr(transaction, field, None):
+        setattr(transaction, field, contact_label(who))
+        db.session.commit()
+    return None
+
+
+def suggested_party(transaction, role):
+    """Who the instruction says this side of the deal is, if nobody is linked.
+
+    Offered rather than written. A transaction recorded before the instruction
+    was linked, or before this existed, should not have a relationship created
+    behind somebody's back while they are reading the page — but nor should
+    they have to search for a name the CRM is already holding.
+    """
+    if transaction is None or not transaction.project_id:
+        return None
+    project = transaction.project
+    if project is None:
+        return None
+    if role != ('Seller' if project.is_sale else 'Landlord'):
+        return None                       # the instruction knows the owner only
+    if current_org_link(role, transaction_id=transaction.id):
+        return None                       # already chosen
+    who = project.client_contact
+    if who is None or not who.organisation_id:
+        return None                       # nothing that could be linked
+    return who
+
+
+app.jinja_env.globals['suggested_party'] = suggested_party
+
+
 def project_transaction_defaults(project):
     """Everything a transaction can take from the instruction it belongs to.
 
@@ -4661,7 +4743,7 @@ def project_transaction_defaults(project):
         'size_units': 'sq ft' if size else None,
         'reference': project.project_ref,
         'instruction_type': project.instruction_type,
-        'transaction_type': 'Capital' if is_sale else 'Leasehold',
+        'transaction_type': 'Sale' if is_sale else 'Letting',
         'deal_kind': 'sale' if is_sale else 'letting',
         'owner_role': 'Seller' if is_sale else 'Landlord',
         'taker_role': 'Buyer' if is_sale else 'Tenant',
@@ -4712,9 +4794,10 @@ def transaction_new():
             flash('Choose the instruction this transaction belongs to.', 'error')
             return redirect(url_for('transaction_new'))
 
-        kind = defaults.get('transaction_type') or request.form.get('transaction_type')
-        if kind not in ('Capital', 'Leasehold'):
-            kind = 'Leasehold'
+        kind = transaction_kind(defaults.get('transaction_type')
+                                or request.form.get('transaction_type'))
+        if kind not in TRANSACTION_KINDS:
+            kind = 'Letting'
 
         t = Transaction(
             project_id=project.id if project else None,
@@ -4775,6 +4858,9 @@ def transaction_new():
             t.status = 'Draft'
         db.session.commit()
         audit('create', entity='Transaction', entity_id=t.id, detail=t.reference)
+        # The instruction knows whose property it is, so the landlord or the
+        # seller is attached now rather than searched for again.
+        link_owner_from_project(t, project)
         flash('Transaction recorded. It now appears as a tenure on the property.', 'success')
         return redirect(url_for('transaction_detail', id=t.id))
     prop_id = request.args.get('property_id')
@@ -7055,7 +7141,7 @@ TRANSACTION_FIELDS = [
     ('status',             'status',             _ftext),
     ('fee_earner',         'fee_earner',         _ftext),
     ('client',             'client',             _ftext),
-    ('transaction_type',   'transaction_type',   _ftext),
+    ('transaction_type',   'transaction_type',   transaction_kind),
     ('tenure_type',        'tenure_type',        _ftext),
     ('transaction_date',   'transaction_date',   _parse_date),
     ('vendor',             'vendor',             _ftext),
@@ -11132,6 +11218,28 @@ def _migrate_contact_roles():
             app.logger.info('Recorded %s role(s) from existing contact types', seeded)
 
 
+def _migrate_transaction_kinds():
+    """Rewrite Capital and Leasehold as Sale and Letting.
+
+    They were the words for a tenure, not for a deal — a letting of a long
+    leasehold is still a letting, and a transaction typed "Capital" told you
+    nothing about whether anybody was buying.
+
+    Only those two values are touched, and only to their exact counterpart.
+    Anything else a record carries is left alone: an unfamiliar word is more
+    likely to be something somebody meant than something to be corrected.
+    """
+    with app.app_context():
+        changed = 0
+        for old_word, new_word in LEGACY_KINDS.items():
+            for t in Transaction.query.filter_by(transaction_type=old_word).all():
+                t.transaction_type = new_word
+                changed += 1
+        if changed:
+            db.session.commit()
+            app.logger.info('Retyped %s transaction(s) as Letting or Sale', changed)
+
+
 def _migrate_retire_client():
     """Retire "Client" as a classification, without losing anybody.
 
@@ -11288,6 +11396,7 @@ if __name__ == '__main__':
         _migrate_progression_columns()
         _migrate_contact_roles()
         _migrate_retire_client()
+        _migrate_transaction_kinds()
         _ensure_default_user()
         if Property.query.count() == 0:
             import import_listings  # seeds the 32 website properties

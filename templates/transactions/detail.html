@@ -190,7 +190,8 @@
         <div class="orgpick-row">
           <div class="orgpick-label">{{ role }}</div>
           <div class="orgpick-field">
-            {{ op.org_picker(role, 'transaction', t.id, legacy) }}
+            {{ op.org_picker(role, 'transaction', t.id, legacy,
+                            suggestion=suggested_party(t, role)) }}
           </div>
         </div>
         {% endfor %}
@@ -199,30 +200,32 @@
       <!-- ── 4. Agreed commercial terms ── -->
       <div class="box box--grid">
         <div class="box-head">4. Agreed commercial terms</div>
-        <div class="frow frow--full">
-          <div class="fcell fcell--label">Agreed value</div>
-          <div class="fcell fcell--edit">
-            <input type="number" step="0.01" name="agreed_value" form="trx-form"
-                   value="{{ num(t.agreed_value) }}"
-                   placeholder="The rent or sale price the fee is charged on">
-          </div>
-        </div>
-        {# A sale has a price. A letting has a rent, a term and a break. Asking
-           a letting for its sale price is asking the wrong question, so only
-           the fields the deal actually has are shown. The other column keeps
-           its value in the record — nothing is cleared by not showing it. #}
+        {# One figure, named for the deal. A sale has a price; a letting has a
+           rent. Asking a letting for its sale price is the wrong question, and
+           asking both pages for an "agreed value" as well only invited the two
+           to disagree.
+
+           The fee is charged on this figure — the commission works it out from
+           whichever of the two the deal actually carries — so nothing had to be
+           entered twice. Where an older record holds a separate agreed value it
+           is shown below, because that is the number the fee was charged on and
+           hiding it would make the commission unexplainable. #}
         {% if t.is_sale %}
         <div class="frow frow--full">
           <div class="fcell fcell--label">Sale price</div>
           <div class="fcell fcell--edit">
-            <input type="number" step="0.01" name="value" form="trx-form" value="{{ num(t.value) }}">
+            <input type="number" step="0.01" name="value" form="trx-form"
+                   value="{{ num(t.value) }}"
+                   placeholder="The agreed price &mdash; the fee is charged on this">
           </div>
         </div>
         {% else %}
         <div class="frow frow--full">
-          <div class="fcell fcell--label">Rent p.a.</div>
+          <div class="fcell fcell--label">Rent per annum</div>
           <div class="fcell fcell--edit">
-            <input type="number" step="0.01" name="rent_pa" form="trx-form" value="{{ num(t.rent_pa) }}">
+            <input type="number" step="0.01" name="rent_pa" form="trx-form"
+                   value="{{ num(t.rent_pa) }}"
+                   placeholder="The agreed rent &mdash; the fee is charged on this">
           </div>
         </div>
         <div class="frow">
@@ -276,6 +279,24 @@
           </div>
         </div>
         {% endif %}
+        {% endif %}
+
+        {# Older records carry a separate agreed value, entered when the page
+           asked for one. It is what the fee was charged on, so it stays
+           visible and editable — clearing it moves the fee onto the figure
+           above, which the line says. #}
+        {% if t.agreed_value %}
+        <div class="frow frow--full">
+          <div class="fcell fcell--label">Agreed value</div>
+          <div class="fcell fcell--edit">
+            <input type="number" step="0.01" name="agreed_value" form="trx-form"
+                   value="{{ num(t.agreed_value) }}">
+            <span class="fcell-hint">
+              Recorded separately before, and what the fee is charged on.
+              Clear it to charge on the {{ 'sale price' if t.is_sale else 'rent' }} above.
+            </span>
+          </div>
+        </div>
         {% endif %}
       </div>
 

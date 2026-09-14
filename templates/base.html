@@ -122,10 +122,12 @@ document.querySelectorAll('.folder-add-toggle').forEach(btn => {
 /* ── Transaction type field toggle ── */
 function toggleTransFields() {
   const type = document.querySelector('input[name="transaction_type"]:checked')?.value;
-  const capitalFields = document.querySelectorAll('.capital-only');
-  const leaseFields   = document.querySelectorAll('.lease-only');
-  capitalFields.forEach(el => el.style.display = type === 'Capital'    ? '' : 'none');
-  leaseFields.forEach(el   => el.style.display = type === 'Leasehold'  ? '' : 'none');
+  // A sale is a sale whichever word the record carries — newer ones say Sale,
+  // older ones said Capital. Anything that is not a sale is a letting, so a
+  // record with no type set still shows one half rather than neither.
+  const isSale = type === 'Sale' || type === 'Capital';
+  document.querySelectorAll('.capital-only').forEach(el => el.style.display = isSale ? '' : 'none');
+  document.querySelectorAll('.lease-only').forEach(el => el.style.display = isSale ? 'none' : '');
 }
 document.querySelectorAll('input[name="transaction_type"]').forEach(r => r.addEventListener('change', toggleTransFields));
 toggleTransFields();

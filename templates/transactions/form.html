@@ -80,12 +80,12 @@
       <div class="form-group span-2">
         <label>Transaction Type *</label>
         <div class="type-toggle" id="type-toggle">
-          <label><input type="radio" name="transaction_type" value="Capital"
-            {{ 'checked' if trans and trans.transaction_type == 'Capital' else '' }}
-            onchange="toggleTransFields()"> Sale</label>
-          <label><input type="radio" name="transaction_type" value="Leasehold"
-            {{ 'checked' if not trans or trans.transaction_type != 'Capital' else '' }}
+          <label><input type="radio" name="transaction_type" value="Letting"
+            {{ 'checked' if not trans or trans.is_letting else '' }}
             onchange="toggleTransFields()"> Letting</label>
+          <label><input type="radio" name="transaction_type" value="Sale"
+            {{ 'checked' if trans and trans.is_sale else '' }}
+            onchange="toggleTransFields()"> Sale</label>
         </div>
         <span class="field-note" id="type-from-project" hidden>
           Set by the instruction.
@@ -514,8 +514,7 @@ function onPropertyChange() { updateAnalysisFields(); }
 
 function updateAnalysisFields() {
   var meta = getSelectedPropMeta();
-  var type = document.querySelector('input[name="transaction_type"]:checked');
-  var isCapital = type && type.value === 'Capital';
+  var isCapital = isSaleSelected();
   var isCom  = meta.category === 'commercial';
   var isResi = meta.category === 'residential' &&
                (meta.ruse === 'HMO' || meta.ruse === 'Residential Investment' || meta.ruse === 'Vacant');
@@ -525,9 +524,17 @@ function updateAnalysisFields() {
   if (ri) ri.style.display = (isCapital && isResi) ? '' : 'none';
 }
 
-function toggleTransFields() {
+/* A sale is a sale whichever word the record carries: newer ones say Sale,
+   older ones said Capital, and an old record opened for editing must still
+   show the right half of the form. */
+function isSaleSelected() {
   var type = document.querySelector('input[name="transaction_type"]:checked');
-  var isCapital = type && type.value === 'Capital';
+  var value = type ? type.value : '';
+  return value === 'Sale' || value === 'Capital';
+}
+
+function toggleTransFields() {
+  var isCapital = isSaleSelected();
   document.querySelectorAll('.capital-only').forEach(function(el){ el.style.display = isCapital ? '' : 'none'; });
   document.querySelectorAll('.lease-only').forEach(function(el){ el.style.display = isCapital ? 'none' : ''; });
   updateAnalysisFields();

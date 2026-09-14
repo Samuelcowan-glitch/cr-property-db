@@ -10,7 +10,8 @@
    so nothing is lost while the two are being reconciled.
 #}
 
-{% macro org_picker(role, target_kind, target_id, legacy_text=None, label=None) %}
+{% macro org_picker(role, target_kind, target_id, legacy_text=None, label=None,
+                    suggestion=None) %}
 {% set link = current_org_link(role, **{target_kind ~ '_id': target_id}) %}
 <div class="orgpick" data-role="{{ role }}" data-target-kind="{{ target_kind }}"
      data-target-id="{{ target_id }}">
@@ -56,6 +57,18 @@
   </div>
 
   <div class="orgpick-choose" {{ 'hidden' if link }}>
+    {# The instruction already records who this is. Offered as one click
+       rather than written behind somebody's back while they read the page. #}
+    {% if suggestion and not link %}
+    <div class="orgpick-suggest"
+         data-org="{{ suggestion.organisation_id }}" data-contact="{{ suggestion.id }}">
+      <span class="orgpick-suggest-text">
+        The instruction says the {{ role|lower }} is
+        <strong>{{ contact_label(suggestion) }}</strong>.
+      </span>
+      <button type="button" class="btn btn-secondary btn-xs orgpick-use">Use them</button>
+    </div>
+    {% endif %}
     <div class="orgpick-search">
       <input type="search" class="orgpick-q" autocomplete="off"
              placeholder="Search name, company number, contact, email or address…"

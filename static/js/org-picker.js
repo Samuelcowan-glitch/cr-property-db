@@ -259,7 +259,21 @@
       var hit = e.target.closest('button');
       if (!hit || !pick.contains(hit)) { return; }
 
-      if (hit.classList.contains('orgpick-change')) {
+      if (hit.classList.contains('orgpick-use')) {
+        // One click to take who the instruction already says this is.
+        var offer = hit.closest('.orgpick-suggest');
+        var body = target(pick);
+        body.organisation_id = offer.dataset.org;
+        body.contact_id = offer.dataset.contact;
+        post('/api/organisations/link', body).then(function (res) {
+          if (res.data && res.data.ok) {
+            offer.remove();
+            showLinked(pick, res.data.link);
+          } else {
+            say(pick, (res.data && res.data.error) || 'Could not link them.', 'bad');
+          }
+        });
+      } else if (hit.classList.contains('orgpick-change')) {
         pick.querySelector('.orgpick-current').hidden = true;
         pick.querySelector('.orgpick-choose').hidden = false;
         if (box) { box.focus(); }

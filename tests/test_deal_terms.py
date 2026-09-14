@@ -83,7 +83,7 @@ page = lambda url: cl.get(url).get_data(as_text=True)
 
 
 def make_transaction(ids, **extra):
-    data = {'project_id': str(ids['project']), 'transaction_type': 'Leasehold'}
+    data = {'project_id': str(ids['project']), 'transaction_type': 'Letting'}
     data.update(extra)
     r = cl.post('/transactions/new', data=data, follow_redirects=True)
     assert r.status_code == 200, r.status_code
@@ -92,12 +92,12 @@ def make_transaction(ids, **extra):
 
 
 # ─── 1. The instruction decides which kind of deal it is ────────────────────
-# Posted as a Leasehold, but the instruction is a sale — the instruction wins.
+# Posted as a Letting, but the instruction is a sale — the instruction wins.
 SALE_T = make_transaction(SALE)
 with A.app.app_context():
     t = A.Transaction.query.get(SALE_T)
     assert t.is_sale and not t.is_letting, t.transaction_type
-    assert t.transaction_type == 'Capital', \
+    assert t.transaction_type == 'Sale', \
         'a sale instruction was saved as a letting because the form said so'
     assert t.project_id == SALE['project']
     assert t.property_id == SALE['prop'], 'the property did not come from the instruction'
@@ -232,13 +232,13 @@ print('10. the commission uses the instruction fee, and a deal fee overrides it'
 
 # ─── 11. Choosing an instruction hands over what it knows ───────────────────
 data = cl.get(f"/api/projects/{LET['project']}/transaction-defaults").get_json()
-assert data['transaction_type'] == 'Leasehold'
+assert data['transaction_type'] == 'Letting'
 assert data['owner_role'] == 'Landlord' and data['taker_role'] == 'Tenant'
 assert data['size'] == 1700 and data['unit'] == 'Unit 3'
 assert data['reference'] and data['fee_percent'] == 10.0
 sale_data = cl.get(f"/api/projects/{SALE['project']}/transaction-defaults").get_json()
 assert sale_data['owner_role'] == 'Seller' and sale_data['taker_role'] == 'Buyer'
-assert sale_data['transaction_type'] == 'Capital'
+assert sale_data['transaction_type'] == 'Sale'
 print('11. choosing an instruction hands over size, type, fee and parties')
 
 
@@ -323,5 +323,208 @@ with A.app.app_context():
                    for l in A._available_listings(A.INSTRUCTION_TO_LET)), \
         'a let-agreed unit is still counted as available'
 print('18. the instruction shows the deal status, and is off the market with it')
+
+# ─── 19. The deal is a Letting or a Sale, in those words ────────────────────
+assert A.TRANSACTION_KINDS == ['Letting', 'Sale'], A.TRANSACTION_KINDS
+form = page('/transactions/new')
+block = form[form.index('name="transaction_type"') - 200:]
+block = block[:block.index('</div>', block.index('type-toggle'))]
+assert 'value="Letting"' in block and 'value="Sale"' in block, block[:200]
+assert 'value="Capital"' not in block and 'value="Leasehold"' not in block, \
+    'the form still offers the tenure words'
+print('19. the form offers Letting and Sale')
+
+
+# ─── 20. Older records are retyped, and read correctly meanwhile ────────────
+with A.app.app_context():
+    old_one = A.Transaction(property_id=LET['prop'], transaction_type='Leasehold',
+                            reference='TR-OLD1')
+    old_sale = A.Transaction(property_id=SALE['prop'], transaction_type='Capital',
+                             reference='TR-OLD2')
+    db.session.add_all([old_one, old_sale]); db.session.commit()
+    OLD_LET, OLD_SALE = old_one.id, old_sale.id
+    # Read correctly before the migration has touched them.
+    assert A.Transaction.query.get(OLD_LET).is_letting, 'an old Leasehold reads as a sale'
+    assert A.Transaction.query.get(OLD_SALE).is_sale, 'an old Capital reads as a letting'
+
+A._migrate_transaction_kinds()
+with A.app.app_context():
+    assert A.Transaction.query.get(OLD_LET).transaction_type == 'Letting'
+    assert A.Transaction.query.get(OLD_SALE).transaction_type == 'Sale'
+    assert A.Transaction.query.get(OLD_LET).is_letting
+    assert A.Transaction.query.get(OLD_SALE).is_sale
+    assert A.Transaction.query.count() >= 4, 'a transaction went missing'
+print('20. Capital and Leasehold are retyped, and read correctly either way')
+
+
+# ─── 21. Running it again changes nothing ───────────────────────────────────
+with A.app.app_context():
+    before = {t.id: t.transaction_type for t in A.Transaction.query.all()}
+A._migrate_transaction_kinds()
+with A.app.app_context():
+    after = {t.id: t.transaction_type for t in A.Transaction.query.all()}
+assert before == after, 'a second run retyped something'
+print('21. running the retype again changes nothing')
+
+
+# ─── 22. A letting asks for rent; a sale asks for a price ───────────────────
+let_page = page(f'/transactions/{LET_T}')
+box4 = let_page[let_page.index('4. Agreed commercial terms'):]
+box4 = box4[:box4.index('8. Important dates')]
+assert 'name="rent_pa"' in box4, 'a letting is not asked for its rent'
+assert 'name="value"' not in box4, 'a letting is being asked for a sale price'
+assert 'Rent per annum' in box4
+
+sale_page = page(f'/transactions/{SALE_T}')
+sbox4 = sale_page[sale_page.index('4. Agreed commercial terms'):]
+sbox4 = sbox4[:sbox4.index('8. Important dates')]
+assert 'name="value"' in sbox4, 'a sale is not asked for its price'
+assert 'name="rent_pa"' not in sbox4, 'a sale is being asked for a rent'
+assert 'Sale price' in sbox4
+print('22. a letting asks for rent, a sale for a price, neither for both')
+
+
+# ─── 23. Agreed value is not asked for unless a record carries one ──────────
+with A.app.app_context():
+    t = A.Transaction.query.get(LET_T)
+    had = t.agreed_value
+    t.agreed_value = None
+    db.session.commit()
+clean = page(f'/transactions/{LET_T}')
+clean4 = clean[clean.index('4. Agreed commercial terms'):]
+clean4 = clean4[:clean4.index('8. Important dates')]
+assert 'name="agreed_value"' not in clean4, \
+    'a letting with no agreed value is still asked for one'
+with A.app.app_context():
+    t = A.Transaction.query.get(LET_T)
+    t.agreed_value = had or 50000
+    db.session.commit()
+kept = page(f'/transactions/{LET_T}')
+kept4 = kept[kept.index('4. Agreed commercial terms'):]
+kept4 = kept4[:kept4.index('8. Important dates')]
+assert 'name="agreed_value"' in kept4, \
+    'a record that carries an agreed value can no longer see or change it'
+print('23. agreed value is shown only where a record actually carries one')
+
+
+# ─── 24. The fee still knows what it is charged on ──────────────────────────
+with A.app.app_context():
+    t = A.Transaction.query.get(LET_T)
+    t.agreed_value = None
+    t.rent_pa = 40000
+    t.fee_percent = 10.0
+    db.session.commit()
+    assert A.Transaction.query.get(LET_T).commission_basis == 40000, \
+        'a letting with no agreed value lost its commission basis'
+    assert A.Transaction.query.get(LET_T).net_commission == 4000.0
+
+    s2 = A.Transaction.query.get(SALE_T)
+    s2.agreed_value = None
+    s2.value = 900000
+    s2.fee_percent = 1.0
+    db.session.commit()
+    assert A.Transaction.query.get(SALE_T).commission_basis == 900000
+    assert A.Transaction.query.get(SALE_T).net_commission == 9000.0
+print('24. hiding agreed value did not take the commission basis with it')
+
+
+# ─── 25. The landlord comes from the instruction ────────────────────────────
+with A.app.app_context():
+    org = A.Organisation(name='Hurlingham Holdings Ltd', fee_earner='Benjamin Cowan')
+    db.session.add(org); db.session.commit()
+    who = A.Contact(first_name='Phillipa', last_name='Smith', contact_type='Landlord',
+                    organisation_id=org.id)
+    db.session.add(who); db.session.commit()
+    A.Project.query.get(LET['project']).client_contact_id = who.id
+    db.session.commit()
+    ORG, WHO = org.id, who.id
+
+new_t = make_transaction(LET)
+with A.app.app_context():
+    link = A.current_org_link('Landlord', transaction_id=new_t)
+    assert link is not None, 'the landlord was not taken from the instruction'
+    assert link.organisation_id == ORG
+    assert link.contact_id == WHO, 'the person was not carried across'
+    assert A.current_org_link('Tenant', transaction_id=new_t) is None, \
+        'a tenant was invented from the instruction'
+print('25. a new transaction takes its landlord from the instruction')
+
+
+# ─── 26. Which shows as a card, not a search box ────────────────────────────
+body = page(f'/transactions/{new_t}')
+assert 'orgpick-card' in body, 'the linked landlord is not shown as a card'
+assert 'Hurlingham Holdings Ltd' in body
+assert 'orgpick-change' in body, 'there is no way to change it'
+landlord_block = body[body.index('data-role="Landlord"'):]
+landlord_block = landlord_block[:landlord_block.index('data-role="Tenant"')]
+assert 'orgpick-current' in landlord_block
+assert 'hidden' in landlord_block.split('orgpick-choose')[1][:40], \
+    'the search box is still showing for a party that is already chosen'
+print('26. a chosen party is a card with a Change option, and no search box')
+
+
+# ─── 27. The tenant, which nothing knows yet, still offers a search ─────────
+tenant_block = body[body.index('data-role="Tenant"'):]
+tenant_block = tenant_block[:tenant_block.index('</div>', tenant_block.index('orgpick-search'))]
+assert 'orgpick-q' in tenant_block, 'a party nobody has chosen has no way to choose one'
+print('27. a party nobody has chosen still offers the search')
+
+
+# ─── 28. An existing transaction is offered it rather than written to ───────
+with A.app.app_context():
+    orphan = A.Transaction(property_id=LET['prop'], project_id=LET['project'],
+                           transaction_type='Letting', reference='TR-ORPH')
+    db.session.add(orphan); db.session.commit()
+    ORPHAN = orphan.id
+    assert A.suggested_party(A.Transaction.query.get(ORPHAN), 'Landlord') is not None
+    assert A.suggested_party(A.Transaction.query.get(ORPHAN), 'Tenant') is None, \
+        'a tenant was suggested from an instruction that cannot know one'
+
+body = page(f'/transactions/{ORPHAN}')
+assert 'orgpick-suggest' in body, 'the instruction knows, and the page does not offer it'
+assert 'Use them' in body
+with A.app.app_context():
+    assert A.current_org_link('Landlord', transaction_id=ORPHAN) is None, \
+        'reading the page created a relationship on its own'
+print('28. an older transaction is offered its landlord, not quietly given one')
+
+
+# ─── 29. And a party already chosen is never overridden ─────────────────────
+with A.app.app_context():
+    other = A.Organisation(name='Somebody Else Ltd', fee_earner='Benjamin Cowan')
+    db.session.add(other); db.session.commit()
+    db.session.add(A.OrganisationRole(organisation_id=other.id, role='Landlord',
+                                      transaction_id=ORPHAN))
+    db.session.commit()
+    A.link_owner_from_project(A.Transaction.query.get(ORPHAN),
+                              A.Project.query.get(LET['project']))
+    link = A.current_org_link('Landlord', transaction_id=ORPHAN)
+    assert link.organisation_id == other.id, 'a choice somebody made was overwritten'
+    assert A.suggested_party(A.Transaction.query.get(ORPHAN), 'Landlord') is None, \
+        'it is still suggesting someone when a choice has been made'
+print('29. a party somebody chose is never overwritten or second-guessed')
+
+
+# ─── 30. A sale takes its seller the same way ───────────────────────────────
+with A.app.app_context():
+    seller_org = A.Organisation(name='Vendor Holdings Ltd', fee_earner='Benjamin Cowan')
+    db.session.add(seller_org); db.session.commit()
+    seller = A.Contact(first_name='Sara', last_name='Okelo', contact_type='Seller',
+                       organisation_id=seller_org.id)
+    db.session.add(seller); db.session.commit()
+    A.Project.query.get(SALE['project']).client_contact_id = seller.id
+    db.session.commit()
+    SELLER_ORG = seller_org.id
+
+sale_t = make_transaction(SALE)
+with A.app.app_context():
+    link = A.current_org_link('Seller', transaction_id=sale_t)
+    assert link is not None and link.organisation_id == SELLER_ORG, \
+        'a sale did not take its seller from the instruction'
+    assert A.current_org_link('Landlord', transaction_id=sale_t) is None, \
+        'a sale was given a landlord'
+    assert A.current_org_link('Buyer', transaction_id=sale_t) is None
+print('30. a sale takes its seller the same way, and is given no landlord')
+
 
 print('\nDEAL TERMS: ALL CHECKS PASSED')
