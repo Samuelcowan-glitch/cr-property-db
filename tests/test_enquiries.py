@@ -365,4 +365,86 @@ assert started is False, 'the poller started without credentials'
 print(f'18. the mail poller is off while MS credentials are unset '
       f'(configured={configured}) — this, not the parser, is what stops Zoopla')
 
+
+# ─── 19. A portal message arrives whole ─────────────────────────────────────
+# It used to arrive as its first line and nothing else. The label matcher takes
+# one line — right for a name or a number, wrong for a message, which runs to
+# several lines and usually says what the applicant actually wants in the ones
+# that were being dropped.
+LONG = """
+You have a new enquiry from Zoopla.
+
+Name: Sara Okelo
+Email: sara.okelo@example.co.uk
+Telephone: 07700 900123
+
+Property: 1 Stanley Bridge Studios, London SW6 2AD
+Reference: CR-%d
+
+Message:
+I would like to arrange a viewing this week if possible. Is the unit still
+available, and what is the service charge?
+
+We are a small design studio, currently in Parsons Green, and need about
+900 sq ft with parking for two cars.
+
+This email was sent by Zoopla Limited. Do not reply to this address.
+""" % IDS['proj']
+
+parsed = portal_leads.parse_lead(
+    'New enquiry for 1 Stanley Bridge Studios', LONG, 'noreply@mail.zoopla.co.uk')
+message = parsed['message']
+assert 'service charge' in message, f'the message was cut short: {message!r}'
+assert '900 sq ft' in message, 'the second paragraph was dropped'
+assert 'parking for two cars' in message, 'the last line was dropped'
+assert message.count('\n\n') == 1, f'a blank line was invented: {message!r}'
+assert not message.startswith('\n') and not message.endswith('\n')
+print('19. a message of several paragraphs arrives whole')
+
+
+# ─── 20. And stops where the message stops ──────────────────────────────────
+# The portal's own footer and the next labelled field are not the applicant's
+# words and must not be filed as though they were.
+for unwanted in ('Zoopla Limited', 'Do not reply', 'Telephone:', 'Reference:',
+                 'sara.okelo@example.co.uk'):
+    assert unwanted not in message, f'{unwanted!r} was filed as the message'
+print('20. the portal footer and the other fields are not part of the message')
+
+
+# ─── 21. Every shape of message ─────────────────────────────────────────────
+shapes = {
+    'on its own line': ('Message:\nA viewing please.\nIs it still available?\n',
+                        'A viewing please.\nIs it still available?'),
+    'after the label': ('Message: Send the particulars.\nAny afternoon suits.\n',
+                        'Send the particulars.\nAny afternoon suits.'),
+    'up to a field':   ('Message:\nIs parking included?\nTelephone: 07700 900123\n',
+                        'Is parking included?'),
+    'no label at all': ('Could you confirm the rent is exclusive of business rates?\n',
+                        'Could you confirm the rent is exclusive of business rates?'),
+}
+for name, (body, expected) in shapes.items():
+    got = portal_leads._message(body)
+    assert got == expected, f'{name}: got {got!r}, expected {expected!r}'
+assert portal_leads._message('Name: Nobody\n') is None, \
+    'a message was invented where there was none'
+print(f'21. all {len(shapes)} shapes of message read correctly, and none reads as blank')
+
+
+# ─── 22. The whole message reaches the enquiry record ───────────────────────
+with A.app.app_context():
+    made = email_sync._ingest_portal_lead(
+        db, A.Contact, A.Enquiry, A.EnquiryNote, parsed,
+        'New enquiry for 1 Stanley Bridge Studios', LONG,
+        'zoopla-long-1', datetime.utcnow())
+    db.session.commit()
+    assert made, 'the lead did not file'
+    saved = A.Enquiry.query.get(made.id)
+    notes = ' '.join(n.body or '' for n in
+                     A.EnquiryNote.query.filter_by(enquiry_id=saved.id).all())
+    stored = ' '.join(f'{saved.notes or ""} {notes}'.split())
+    assert 'service charge' in stored, 'the record still holds only the first line'
+    assert '900 sq ft' in stored, 'the second paragraph never reached the record'
+print('22. the whole message is on the enquiry record, not just its first line')
+
+
 print('\nENQUIRIES: ALL CHECKS PASSED')

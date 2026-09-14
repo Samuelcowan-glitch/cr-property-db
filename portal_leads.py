@@ -137,12 +137,60 @@ def _applicant_phone(text):
     return phone
 
 
+# Lines that mean the message has ended: the portal's own footer, or the start
+# of another labelled field. Anything after one of these belongs to the email,
+# not to what the applicant wrote.
+_MESSAGE_ENDS = re.compile(
+    r'(?im)^\s*(?:'
+    r'this (?:e-?mail|message) was sent'
+    r'|do not reply|please do not reply'
+    r'|sent (?:by|from) (?:zoopla|rightmove|onthemarket)'
+    r'|(?:zoopla|rightmove|onthemarket) (?:limited|ltd)'
+    r'|unsubscribe|view (?:this )?(?:property|listing)|manage your'
+    r'|kind regards|regards,|best wishes'
+    r'|(?:name|email|e-?mail|telephone|phone|mobile|property|address'
+    r'|reference|ref|listing|enquiry type|received)\s*[:\-–]'
+    r')')
+
+_MESSAGE_LABEL = re.compile(
+    r'(?im)^[ \t]*(?:message|comments?|their message|enquiry(?: details)?|note)'
+    r'[ \t]*[:\-–]?[ \t]*(.*)$')
+
+
 def _message(text):
-    labelled = _labelled(text, ['message', 'comments?', 'their message',
-                                'enquiry(?: details)?', 'note'], same_line_only=False)
-    if labelled and len(labelled) > 3:
-        return labelled
-    # Fall back to the longest sentence-like line that is not a labelled field
+    """What the applicant actually wrote, all of it.
+
+    This used to take a single line. The label matcher captures one line by
+    design — right for a name or a telephone number, wrong for a message, which
+    runs to several lines and a paragraph or two. Every enquiry that arrived
+    was therefore cut off at its first line break, losing the half that usually
+    says what they actually want.
+
+    So the message is read as a block: everything from the label until the
+    portal's footer, another labelled field, or the end of the email.
+    """
+    found = _MESSAGE_LABEL.search(text)
+    if found:
+        lines = []
+        first = (found.group(1) or '').strip()
+        if first:
+            lines.append(first)
+        rest = text[found.end():]
+        if rest.startswith('\n'):
+            rest = rest[1:]
+        for line in rest.splitlines():
+            if _MESSAGE_ENDS.match(line):
+                break
+            lines.append(line.rstrip())
+        # Trailing blank lines are the gap before the footer, not the message.
+        while lines and not lines[-1].strip():
+            lines.pop()
+        block = '\n'.join(lines).strip()
+        if len(block) > 3:
+            return block
+
+    # No label at all. The longest sentence-like line is the best guess, and
+    # anything following it that is not a field or a footer belongs with it.
     candidates = [ln for ln in text.splitlines()
                   if len(ln) > 40 and ':' not in ln[:20] and not _EMAIL.search(ln)]
     return max(candidates, key=len) if candidates else None
