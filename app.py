@@ -3633,8 +3633,21 @@ def transaction_dashboard(rows=None):
         return sum(t.net_commission for t in billed_rows
                    if _in_month(t.invoice_date, m))
 
-    billed_total = sum(t.net_commission for t in billed_rows)
-    received_total = sum(t.commission_received for t in billed_rows)
+    # Two different sums, in two different units, and they must not be mixed.
+    #
+    # What the firm EARNS is its fee, net of VAT — that is the income figure,
+    # and the card says so.
+    #
+    # What a client OWES is the invoice, VAT included, because that is the
+    # figure on the invoice and the figure they pay. Outstanding is therefore
+    # invoice minus received, per transaction, exactly as the record page and
+    # the table footer already work it out.
+    #
+    # It used to be billed(net) − received(gross), which understated what was
+    # owed by the whole of the VAT on everything billed.
+    billed_total = sum(t.net_commission for t in billed_rows)        # net
+    invoiced_total = sum(t.total_invoice for t in billed_rows)       # gross
+    received_total = sum(t.commission_received for t in rows)        # gross
     completed_now = completed_in(this_month)
     completed_before = completed_in(last_month)
     billed_now = billed_in(this_month)
@@ -3649,7 +3662,10 @@ def transaction_dashboard(rows=None):
         'billed_month':     round(billed_now, 2),
         'billed_change':    _change(billed_now, billed_in(last_month)),
         'received_total':   round(received_total, 2),
-        'outstanding_total': round(billed_total - received_total, 2),
+        'invoiced_total':   round(invoiced_total, 2),
+        # Summed per transaction rather than as two grand totals, so this card
+        # can never disagree with the Outstanding column beneath it.
+        'outstanding_total': round(sum(t.outstanding for t in billed_rows), 2),
         'overdue_total':    round(sum(t.outstanding for t in billed_rows
                                       if t.is_overdue), 2),
         'value_total':      round(sum(t.commission_basis for t in rows), 2),

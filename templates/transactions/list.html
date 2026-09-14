@@ -81,6 +81,7 @@
     <div class="kpi {{ 'is-warning' if dash.outstanding_total > 0 }}">
       <span class="kpi-label">Commission outstanding</span>
       <span class="kpi-figure is-small">{{ money_gbp(dash.outstanding_total) }}</span>
+      <span class="kpi-sub">Invoiced inc. VAT, less payments received</span>
       <span class="kpi-sub">
         {%- if dash.overdue_total > 0 -%}
           {{ money_gbp(dash.overdue_total) }} past its due date

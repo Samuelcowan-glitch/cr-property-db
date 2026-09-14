@@ -172,14 +172,28 @@ with app.app_context():
 print('7. completed needs both a completion date and a completed status')
 
 
-# ─── 8. Billing uses net commission, not the invoice total ───────────────────
+# ─── 8. Billed is net; outstanding is what is actually owed ──────────────────
+# Two figures in two units, and the summary used to mix them. What the firm
+# EARNS is its fee, net of VAT. What a client OWES is the invoice, VAT
+# included. Outstanding is invoice minus received — so it can never be worked
+# out by subtracting a net total from a gross one.
 with app.app_context():
     dash = transaction_dashboard()
     near(dash['billed_total'], 16500, 'billed total')
     assert dash['billed_total'] != 19800, 'billed total wrongly included VAT'
     near(dash['received_total'], 12000, 'received is only what was paid')
-    near(dash['outstanding_total'], 4500, 'outstanding is billed minus received')
-print('8. commission billed is net of VAT; received is only money recorded in')
+
+    billed_rows = [t for t in counting_transactions() if t.is_billed]
+    truth = round(sum(t.outstanding for t in billed_rows), 2)
+    near(dash['outstanding_total'], truth, 'outstanding does not match the rows')
+    assert dash['outstanding_total'] != 4500, \
+        'outstanding is still net billed minus gross received'
+
+    # And it respects each transaction's own VAT rate rather than assuming one:
+    # one of these is invoiced at 0%, so the gross total is not billed x 1.2.
+    assert round(sum(t.total_invoice for t in billed_rows), 2) != 19800, \
+        'a single VAT rate was assumed across every transaction'
+print('8. commission billed is net; outstanding is the invoice, VAT and all')
 
 
 # ─── 9. Average commission is per completed transaction ──────────────────────
@@ -535,5 +549,80 @@ for name, body in (('list', src), ('detail', detail_src)):
     money = [m for m in re.findall(r'£[\d,]+\.?\d*', body) if m != '£0']
     assert not money, f'the {name} template has figures written into it: {money}'
 print('33. no figure is written into either template')
+
+# ─── 34. The summary card agrees with the column under it ───────────────────
+# This is the fault TR0003 exposed: the record said £3,420 outstanding and the
+# card at the top said £1,708.50, because the card subtracted a net total from
+# a gross one and so lost the whole of the VAT. The card is now summed from the
+# same per-transaction figure the column shows, and the two are compared here
+# so they cannot drift apart again.
+with app.app_context():
+    rows = counting_transactions()
+    billed_rows = [t for t in rows if t.is_billed]
+    dash = transaction_dashboard()
+
+    per_row = round(sum(t.outstanding for t in billed_rows), 2)
+    near(dash['outstanding_total'], per_row,
+         'the card does not match the sum of the rows')
+
+    # The old formula, kept here as the thing it must NOT be whenever VAT is
+    # in play anywhere.
+    wrong = round(dash['billed_total'] - dash['received_total'], 2)
+    if any(t.vat_amount > 0.005 for t in billed_rows):
+        assert abs(dash['outstanding_total'] - wrong) > 0.005, \
+            'the card is still net billed minus gross received'
+
+    # One transaction, on its own, must reconcile exactly.
+    for t in billed_rows:
+        assert abs(t.outstanding
+                   - (t.net_commission + t.vat_amount - t.commission_received)) < 0.005, \
+            f'{t.reference} does not reconcile: invoice less receipts'
+print('34. the outstanding card is the sum of the outstanding column, VAT and all')
+
+
+# ─── 35. A part payment moves both figures by the same amount ───────────────
+with app.app_context():
+    before = transaction_dashboard()
+    target = next(t for t in counting_transactions()
+                  if t.is_billed and t.outstanding > 100)
+    ref, was = target.reference, target.outstanding
+    db.session.add(TransactionPayment(transaction_id=target.id, amount=100.0,
+                                      received_on=THIS))
+    db.session.commit()
+
+    after = transaction_dashboard()
+    now = get(target.id).outstanding
+    near(now, was - 100, f'{ref} did not fall by the payment')
+    near(after['outstanding_total'], before['outstanding_total'] - 100,
+         'the card did not fall by the payment')
+    near(after['received_total'], before['received_total'] + 100,
+         'received did not rise by the payment')
+    # The fee earned does not change because a client paid their bill.
+    near(after['billed_total'], before['billed_total'], 'billing moved on a payment')
+print('35. a payment moves the record and the card by the same amount')
+
+
+# ─── 36. Every summary figure traces to the rows ────────────────────────────
+with app.app_context():
+    rows = counting_transactions()
+    completed = [t for t in rows if t.has_completed]
+    billed_rows = [t for t in rows if t.is_billed]
+    dash = transaction_dashboard()
+    checks = {
+        'billed_total': sum(t.net_commission for t in billed_rows),
+        'received_total': sum(t.commission_received for t in rows),
+        'outstanding_total': sum(t.outstanding for t in billed_rows),
+        'overdue_total': sum(t.outstanding for t in billed_rows if t.is_overdue),
+        'value_total': sum(t.commission_basis for t in rows),
+        'value_completed': sum(t.commission_basis for t in completed),
+    }
+    for key, expected in checks.items():
+        near(dash[key], round(expected, 2), f'{key} does not trace to the rows')
+    assert dash['completed_count'] == len(completed)
+    assert dash['total_count'] == len(rows)
+    # Nothing that fell through or was archived is in any of it.
+    assert all(t.counts_towards_totals for t in rows)
+print('36. every figure in the summary traces to the transactions behind it')
+
 
 print('\nTRANSACTIONS: ALL CHECKS PASSED')
