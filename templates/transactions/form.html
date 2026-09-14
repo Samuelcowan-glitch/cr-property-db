@@ -29,12 +29,12 @@
          recorded on the transaction, but it is read from the instruction
          rather than picked separately, so the two can never disagree. #}
       <div class="form-group span-2">
-        <label for="project_id">Project / Instruction *</label>
+        <label for="project_id">Project *</label>
         <div class="pick-row">
           <select id="project_id" name="project_id" required
-                  data-search data-placeholder="Search instructions…"
+                  data-search data-placeholder="Search projects…"
                   onchange="onProjectChange()">
-            <option value="">&mdash; Select instruction &mdash;</option>
+            <option value="">&mdash; Select the project &mdash;</option>
             {% for pj in projects %}
             <option value="{{ pj.id }}"
               {{ 'selected' if (trans and trans.project_id == pj.id) or (project_id and project_id|int == pj.id) else '' }}>
@@ -54,7 +54,7 @@
       <div class="form-group span-3 project-summary" id="project-summary" hidden>
         <div class="ps-grid">
           <div><span class="ps-label">Property</span><span class="ps-value" data-ps="address">&mdash;</span></div>
-          <div><span class="ps-label">Unit</span><span class="ps-value" data-ps="unit">&mdash;</span></div>
+          <div><span class="ps-label">Postcode</span><span class="ps-value" data-ps="postcode">&mdash;</span></div>
           <div><span class="ps-label">Size</span><span class="ps-value" data-ps="size">&mdash;</span></div>
           <div><span class="ps-label">Instruction</span><span class="ps-value" data-ps="instruction_type">&mdash;</span></div>
           <div><span class="ps-label">Asking</span><span class="ps-value" data-ps="asking_display">&mdash;</span></div>
@@ -63,7 +63,7 @@
           <div><span class="ps-label">Reference</span><span class="ps-value" data-ps="reference">&mdash;</span></div>
         </div>
         <p class="ps-note">
-          Read from the instruction. Change it there and it changes here.
+          Read from the project. Change it there and it changes here.
         </p>
       </div>
 
@@ -142,17 +142,31 @@
         </div>
         <div class="form-group">
           <label>Seller</label>
-          <input type="text" name="vendor" value="{{ trans.vendor or '' }}"
-                 placeholder="Who is selling"
-                 data-people="Seller" list="people-seller" autocomplete="off">
-          <datalist id="people-seller"></datalist>
+          <div class="partypick" data-party="Seller" data-field="vendor">
+            <div class="partypick-card" hidden>
+              <span class="partypick-who"></span>
+              <button type="button" class="btn btn-outline btn-xs partypick-change">Change</button>
+            </div>
+            <input type="search" class="partypick-q" autocomplete="off"
+                   placeholder="Search sellers by name or company&hellip;">
+            <div class="partypick-results" hidden></div>
+            <input type="hidden" name="vendor" value="{{ trans.vendor or '' }}">
+            <input type="hidden" name="vendor_contact_id" value="">
+          </div>
         </div>
         <div class="form-group">
           <label>Buyer</label>
-          <input type="text" name="purchaser" value="{{ trans.purchaser or '' }}"
-                 placeholder="Who is buying"
-                 data-people="Buyer" list="people-buyer" autocomplete="off">
-          <datalist id="people-buyer"></datalist>
+          <div class="partypick" data-party="Buyer" data-field="purchaser">
+            <div class="partypick-card" hidden>
+              <span class="partypick-who"></span>
+              <button type="button" class="btn btn-outline btn-xs partypick-change">Change</button>
+            </div>
+            <input type="search" class="partypick-q" autocomplete="off"
+                   placeholder="Search buyers by name or company&hellip;">
+            <div class="partypick-results" hidden></div>
+            <input type="hidden" name="purchaser" value="{{ trans.purchaser or '' }}">
+            <input type="hidden" name="purchaser_contact_id" value="">
+          </div>
         </div>
         <div class="form-group span-2">
           <label>Property Description (for comparable evidence)</label>
@@ -244,15 +258,37 @@
       <div class="form-grid cols-3" style="margin-bottom:14px">
         <div class="form-group">
           <label>Landlord</label>
-          <input type="text" name="landlord" value="{{ trans.landlord or '' }}" placeholder="Landlord name"
-                 data-people="Landlord" list="people-landlord" autocomplete="off">
-          <datalist id="people-landlord"></datalist>
+          <div class="partypick" data-party="Landlord" data-field="landlord">
+            {# The chosen person, as a card. The search underneath is put away
+               once somebody is selected, and brought back by Change. #}
+            <div class="partypick-card" hidden>
+              <span class="partypick-who"></span>
+              <button type="button" class="btn btn-outline btn-xs partypick-change">Change</button>
+            </div>
+            <input type="search" class="partypick-q" autocomplete="off"
+                   placeholder="Search landlords by name or company&hellip;">
+            <div class="partypick-results" hidden></div>
+            {# The name is what the record stores; the id links the person. #}
+            <input type="hidden" name="landlord" value="{{ trans.landlord or '' }}">
+            <input type="hidden" name="landlord_contact_id" value="">
+          </div>
         </div>
         <div class="form-group">
           <label>Tenant</label>
-          <input type="text" name="tenant" value="{{ trans.tenant or '' }}" placeholder="Tenant name"
-                 data-people="Tenant" list="people-tenant" autocomplete="off">
-          <datalist id="people-tenant"></datalist>
+          <div class="partypick" data-party="Tenant" data-field="tenant">
+            {# The chosen person, as a card. The search underneath is put away
+               once somebody is selected, and brought back by Change. #}
+            <div class="partypick-card" hidden>
+              <span class="partypick-who"></span>
+              <button type="button" class="btn btn-outline btn-xs partypick-change">Change</button>
+            </div>
+            <input type="search" class="partypick-q" autocomplete="off"
+                   placeholder="Search tenants by name or company&hellip;">
+            <div class="partypick-results" hidden></div>
+            {# The name is what the record stores; the id links the person. #}
+            <input type="hidden" name="tenant" value="{{ trans.tenant or '' }}">
+            <input type="hidden" name="tenant_contact_id" value="">
+          </div>
         </div>
         <div class="form-group">
           <label>Tenant Covenant</label>
@@ -700,7 +736,7 @@ calcLeaseLength();
             : d.fee_percent ? d.fee_percent + '%' : '—';
     var text = {
       address: d.address || '—',
-      unit: d.unit || 'Whole building',
+      postcode: d.postcode || '—',
       size: d.size ? Number(d.size).toLocaleString('en-GB') + ' sq ft' : '—',
       instruction_type: d.instruction_type || '—',
       asking_display: d.asking_display || '—',
@@ -744,6 +780,7 @@ calcLeaseLength();
     }
     var feeType = document.querySelector('[name="fee_type"]');
     if (feeType && !feeType.value && d.fee_type) feeType.value = d.fee_type;
+    if (window.fillOwnerFromProject) { window.fillOwnerFromProject(d); }
     show(d);
   }
   function load() {
@@ -768,41 +805,115 @@ calcLeaseLength();
 }());
 </script>
 
+
 <script>
 /*
-   Suggest people of the right type as a party is typed.
+   Choosing the two sides of the deal.
 
-   A Landlord box offers landlords and a Tenant box offers tenants — the same
-   rule the record page's picker follows, so the two pages cannot disagree
-   about who is eligible. It stays a plain text field: linking a party to an
-   organisation happens on the record, and this only saves somebody having to
-   remember a name exactly.
+   A landlord field searches landlords and a tenant field searches tenants —
+   the same rule the record page follows. Once somebody is chosen the search is
+   put away and the person is shown as a card, because a filled field that
+   still looks like an empty search box reads as though nothing happened.
+   Change brings the search back.
+
+   The owner side — landlord on a letting, seller on a sale — is filled from
+   the project, which already records whose property it is. The other side is
+   nobody the project can know, so it stays a search.
 */
 (function () {
   'use strict';
-  document.querySelectorAll('[data-people]').forEach(function (input) {
-    var list = document.getElementById(input.getAttribute('list'));
-    if (!list) return;
+
+  function card(pick, name, company) {
+    var label = company ? name + ' (' + company + ')' : name;
+    pick.querySelector('.partypick-who').textContent = label;
+    pick.querySelector('.partypick-card').hidden = false;
+    pick.querySelector('.partypick-q').hidden = true;
+    pick.querySelector('.partypick-results').hidden = true;
+  }
+
+  function clear(pick) {
+    pick.querySelector('.partypick-card').hidden = true;
+    var box = pick.querySelector('.partypick-q');
+    box.hidden = false;
+    box.value = '';
+    box.focus();
+    pick.querySelector('.partypick-results').hidden = true;
+    pick.querySelector('[name$="_contact_id"]').value = '';
+  }
+
+  function choose(pick, row) {
+    pick.querySelector('[name="' + pick.dataset.field + '"]').value =
+      row.company ? row.name + ' (' + row.company + ')' : row.name;
+    pick.querySelector('[name$="_contact_id"]').value = row.id;
+    card(pick, row.name, row.company);
+  }
+
+  function show(pick, rows) {
+    var box = pick.querySelector('.partypick-results');
+    box.innerHTML = '';
+    if (!rows.length) {
+      box.appendChild(Object.assign(document.createElement('div'),
+        { className: 'partypick-none',
+          textContent: 'No ' + pick.dataset.party.toLowerCase() + 's match that.' }));
+    }
+    rows.forEach(function (row) {
+      var hit = document.createElement('button');
+      hit.type = 'button';
+      hit.className = 'partypick-hit';
+      hit.innerHTML = '<strong></strong><span></span>';
+      hit.querySelector('strong').textContent = row.name;
+      hit.querySelector('span').textContent =
+        [row.company, row.email].filter(Boolean).join(' · ');
+      hit.addEventListener('click', function () { choose(pick, row); });
+      box.appendChild(hit);
+    });
+    box.hidden = false;
+  }
+
+  document.querySelectorAll('.partypick').forEach(function (pick) {
+    var box = pick.querySelector('.partypick-q');
     var timer = null;
-    input.addEventListener('input', function () {
-      var q = input.value.trim();
+
+    // A record being edited already has a name in it.
+    var already = pick.querySelector('[name="' + pick.dataset.field + '"]').value;
+    if (already) { card(pick, already, ''); }
+
+    box.addEventListener('input', function () {
+      var q = box.value.trim();
       clearTimeout(timer);
-      if (q.length < 2) { list.innerHTML = ''; return; }
+      if (q.length < 2) {
+        pick.querySelector('.partypick-results').hidden = true;
+        return;
+      }
       timer = setTimeout(function () {
-        fetch('/api/contacts?type=' + encodeURIComponent(input.dataset.people)
+        fetch('/api/contacts?type=' + encodeURIComponent(pick.dataset.party)
               + '&q=' + encodeURIComponent(q), { credentials: 'same-origin' })
           .then(function (r) { return r.ok ? r.json() : []; })
-          .then(function (rows) {
-            list.innerHTML = '';
-            rows.forEach(function (row) {
-              list.appendChild(new Option(row.company
-                ? row.name + ' — ' + row.company : row.name));
-            });
-          })
-          .catch(function () { /* typing still works without suggestions */ });
+          .then(function (rows) { show(pick, rows); })
+          .catch(function () { /* the field still takes a typed name */ });
       }, 180);
     });
+
+    pick.querySelector('.partypick-change').addEventListener('click', function () {
+      clear(pick);
+    });
   });
+
+  /* The project knows whose property it is. */
+  window.fillOwnerFromProject = function (d) {
+    var role = d.owner_role || 'Landlord';
+    document.querySelectorAll('.partypick').forEach(function (pick) {
+      if (pick.dataset.party !== role) { return; }
+      var name = pick.querySelector('[name="' + pick.dataset.field + '"]');
+      if (name.value) { return; }            // never over-write a choice
+      if (!d.owner_name) { return; }
+      name.value = d.owner_name;
+      if (d.owner_contact_id) {
+        pick.querySelector('[name$="_contact_id"]').value = d.owner_contact_id;
+      }
+      card(pick, d.owner_name, d.owner_company || '');
+    });
+  };
 }());
 </script>
 {% endblock %}

@@ -2454,3 +2454,34 @@ body.pg-open { overflow: hidden; }
   border-radius: 3px; background: var(--grey-50);
 }
 .orgpick-suggest-text { font-size: 12.5px; color: var(--text); min-width: 0; }
+
+/* ── Choosing a party on the transaction form ───────────────────────────────
+   A search until somebody is chosen, then a card. A filled field that still
+   looks like an empty search box reads as though nothing happened. */
+.partypick { position: relative; min-width: 0; }
+.partypick-card {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  min-height: var(--ctl-h); padding: 0 6px 0 9px;
+  border: 1px solid var(--grey-200); border-left: 3px solid var(--navy);
+  border-radius: 3px; background: var(--white);
+}
+.partypick-who {
+  font-size: 12.5px; color: var(--text); min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.partypick-results {
+  position: absolute; left: 0; right: 0; top: calc(var(--ctl-h) + 2px); z-index: 20;
+  max-height: 260px; overflow-y: auto;
+  border: 1px solid var(--grey-200); border-radius: 3px; background: var(--white);
+  box-shadow: 0 4px 14px rgba(14, 31, 68, .12);
+}
+.partypick-hit {
+  display: flex; flex-direction: column; gap: 1px; width: 100%;
+  padding: 7px 10px; border: 0; border-bottom: 1px solid var(--cell-line);
+  background: none; text-align: left; cursor: pointer; font: inherit;
+}
+.partypick-hit:last-child { border-bottom: 0; }
+.partypick-hit:hover, .partypick-hit:focus-visible { background: var(--grey-50); }
+.partypick-hit strong { font-size: 12.5px; font-weight: var(--w-heading); color: var(--text); }
+.partypick-hit span { font-size: 11.5px; color: var(--grey-600); }
+.partypick-none { padding: 9px 10px; font-size: 12.5px; color: var(--grey-600); }

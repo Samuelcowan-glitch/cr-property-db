@@ -242,11 +242,17 @@ assert sale_data['transaction_type'] == 'Sale'
 print('11. choosing an instruction hands over size, type, fee and parties')
 
 
-# ─── 12. The form asks for the instruction, not the property ────────────────
+# ─── 12. One thing to choose: the project ───────────────────────────────────
 form = page('/transactions/new')
-assert 'Project / Instruction' in form, 'the form still asks for a property'
-assert 'name="project_id"' in form
-assert 'id="project-summary"' in form, 'the instruction detail is not shown'
+assert 'name="project_id"' in form, 'the form does not ask for a project'
+assert 'id="project-summary"' in form, 'what the project holds is not shown'
+# Nothing else to pick. The property and the kind of deal come from it.
+selects = re.findall(r'<select[^>]*name="([^"]+)"', form)
+for unwanted in ('property_id', 'instruction_type'):
+    assert unwanted not in selects, f'the form still has a {unwanted} selector'
+# And the project's details are shown rather than asked for.
+for shown in ('Property', 'Postcode', 'Size'):
+    assert f'>{shown}<' in form, f'{shown} is not shown from the project'
 prop_field = re.search(r'<input[^>]*name="property_id"[^>]*>', form)
 assert prop_field and 'type="hidden"' in prop_field.group(0), \
     'the property is still picked by hand'
@@ -525,6 +531,114 @@ with A.app.app_context():
         'a sale was given a landlord'
     assert A.current_org_link('Buyer', transaction_id=sale_t) is None
 print('30. a sale takes its seller the same way, and is given no landlord')
+
+
+# ─── 31. The transaction status reaches the website ─────────────────────────
+# The reported fault: a transaction Under Offer, and the website listing still
+# saying Available. The CRM knew; the feed did not read it.
+def feed_status(listing_id):
+    rows = cl.get('/api/listings').get_json()
+    rows = rows.get('listings', rows) if isinstance(rows, dict) else rows
+    for row in rows:
+        if row.get('id') == f'cr-lst-{listing_id}':
+            return row.get('listingStatus')
+    return None
+
+
+with A.app.app_context():
+    t = A.Transaction.query.get(LET_T)
+    t.status = 'In Progress'
+    db.session.commit()
+assert feed_status(LET['listing']) == 'available', feed_status(LET['listing'])
+
+with A.app.app_context():
+    t = A.Transaction.query.get(LET_T)
+    t.status = 'Under Offer'
+    db.session.commit()
+assert feed_status(LET['listing']) == 'under-offer', \
+    f'the website still says {feed_status(LET["listing"])!r} on an Under Offer deal'
+print('31. a transaction going Under Offer puts its listing under offer on the site')
+
+
+# ─── 32. Completed reads as let on a letting, sold on a sale ────────────────
+with A.app.app_context():
+    t = A.Transaction.query.get(LET_T)
+    t.status = 'Completed'
+    db.session.commit()
+assert feed_status(LET['listing']) == 'let-agreed', feed_status(LET['listing'])
+
+with A.app.app_context():
+    t = A.Transaction.query.get(SALE_T)
+    t.status = 'Completed'
+    db.session.commit()
+assert feed_status(SALE['listing']) == 'sold', feed_status(SALE['listing'])
+print('32. a completed letting reads as let agreed; a completed sale as sold')
+
+
+# ─── 33. Every status the website understands, and only those ───────────────
+UNDERSTOOD = {'available', 'under-offer', 'let-agreed', 'sold', 'sold-stc', 'withdrawn'}
+for status in A.TRANSACTION_STATUSES:
+    with A.app.app_context():
+        t = A.Transaction.query.get(LET_T)
+        t.status = status
+        db.session.commit()
+    shown = feed_status(LET['listing'])
+    assert shown in UNDERSTOOD, f'{status} produced {shown!r}, which the website cannot render'
+print(f'33. all {len(A.TRANSACTION_STATUSES)} statuses map to something the website renders')
+
+
+# ─── 34. A deal that fell through puts it back on the market ────────────────
+with A.app.app_context():
+    t = A.Transaction.query.get(LET_T)
+    t.status = 'Fallen Through'
+    db.session.commit()
+assert feed_status(LET['listing']) == 'available', \
+    'a deal that fell through is still holding the listing off the market'
+print('34. a deal that falls through puts the listing back on the market')
+
+
+# ─── 35. The stored field is never rewritten ────────────────────────────────
+# The deal is the source of truth. Writing it onto the listing as well would
+# give two places to disagree, which is the fault this replaced.
+with A.app.app_context():
+    t = A.Transaction.query.get(LET_T)
+    t.status = 'Under Offer'
+    db.session.commit()
+    assert (A.Listing.query.get(LET['listing']).listing_status or 'available') == 'available', \
+        'the deal status was copied onto the listing'
+    assert A.Listing.query.get(LET['listing']).effective_status == 'under-offer'
+print('35. the listing keeps its own field; the deal is simply read')
+
+
+# ─── 36. A listing with no instruction still follows its deal ───────────────
+with A.app.app_context():
+    lone = A.Property(address='1 Stanley Bridge Studios, London SW6 2AD',
+                      postcode='SW6 2AD', property_type='Office', size=900)
+    db.session.add(lone); db.session.commit()
+    l = A.Listing(property_id=lone.id, listing_price=30000, listing_price_unit='pa',
+                  listing_status='available', website_listed=True)
+    db.session.add(l); db.session.commit()
+    LONE = l.id
+    assert A.Listing.query.get(LONE).effective_status == 'available'
+    db.session.add(A.Transaction(property_id=lone.id, transaction_type='Letting',
+                                 status='Under Offer', reference='TR-LONE'))
+    db.session.commit()
+    assert A.Listing.query.get(LONE).effective_status == 'under-offer', \
+        'a listing with no instruction does not follow the deal on its property'
+print('36. a listing with no instruction still follows the deal on its property')
+
+
+# ─── 37. Unless the property has several listings ───────────────────────────
+# A deal on one unit says nothing about the others, and there is no instruction
+# to tell them apart.
+with A.app.app_context():
+    l2 = A.Listing(property_id=A.Listing.query.get(LONE).property_id,
+                   listing_price=25000, listing_price_unit='pa',
+                   listing_status='available', website_listed=True)
+    db.session.add(l2); db.session.commit()
+    assert A.Listing.query.get(LONE).effective_status == 'available', \
+        'one unit\'s deal was applied to a building with several listings'
+print('37. a deal is not applied to a building whose units it cannot tell apart')
 
 
 print('\nDEAL TERMS: ALL CHECKS PASSED')

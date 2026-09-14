@@ -204,11 +204,16 @@ print('11. an organisation whose people are untyped still offers them')
 form = cl.get('/transactions/new').get_data(as_text=True)
 for field, kind in (('landlord', 'Landlord'), ('tenant', 'Tenant'),
                     ('vendor', 'Seller'), ('purchaser', 'Buyer')):
-    box = re.search(rf'<input[^>]*name="{field}"[^>]*>', form)
-    assert box, f'{field} is not on the add form'
-    assert f'data-people="{kind}"' in box.group(0), \
-        f'the {field} box does not ask for {kind}s: {box.group(0)[:110]}'
-print('12. each party box on the add form asks for its own kind of person')
+    pick = re.search(rf'<div class="partypick" data-party="([^"]+)" data-field="{field}"',
+                     form)
+    assert pick, f'{field} has no picker on the add form'
+    assert pick.group(1) == kind, \
+        f'the {field} picker asks for {pick.group(1)}s, not {kind}s'
+    assert f'name="{field}_contact_id"' in form, \
+        f'{field} does not carry the chosen person'
+assert 'partypick-change' in form, 'there is no way to change a chosen party'
+assert 'partypick-card' in form, 'a chosen party is not shown as a card'
+print('12. each party picker on the add form asks for its own kind of person')
 
 
 # ─── 13. Nothing that was recorded has changed ──────────────────────────────

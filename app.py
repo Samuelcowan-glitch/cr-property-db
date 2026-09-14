@@ -1868,17 +1868,42 @@ class Listing(db.Model):
     # has no deal against it yet.
 
     @property
+    def deal(self):
+        """The transaction that speaks for this listing, if there is one.
+
+        Normally through the instruction. Where a listing has no instruction
+        behind it, a deal on the same property counts — but only when that
+        property has this one listing, because a deal on one unit of a building
+        says nothing about the others.
+        """
+        if self.project is not None:
+            return self.project.live_transaction
+        if not self.property_id:
+            return None
+        if Listing.query.filter_by(property_id=self.property_id).count() != 1:
+            return None
+        live = [t for t in Transaction.query.filter_by(property_id=self.property_id).all()
+                if t.status not in TRANSACTION_EXCLUDED]
+        if not live:
+            return None
+        order = {name: n for n, name in enumerate(TRANSACTION_STAGES)}
+        return max(live, key=lambda t: (order.get(t.stage, -1), t.id))
+
+    @property
     def effective_status(self):
         """What this listing actually is, deal included.
 
         Reading this rather than listing_status is what stops a unit showing
-        as Under Offer after its transaction completed.
+        as Under Offer after its transaction completed — and what puts it
+        under offer on the website the moment the transaction says so.
         """
-        stage = self.project.deal_stage if self.project else None
+        deal = self.deal
+        stage = deal.stage if deal is not None else None
         if stage is None:
             return (self.listing_status or 'available').lower()
         if stage in TRANSACTION_COMPLETED or stage == 'Completed':
-            return 'sold' if (self.project and self.project.is_sale) else 'let-agreed'
+            is_sale = self.project.is_sale if self.project is not None else deal.is_sale
+            return 'sold' if is_sale else 'let-agreed'
         if stage in ('Under Offer', 'Terms Agreed', 'Solicitors Instructed'):
             return 'under-offer'
         # Draft or in progress is not yet a commitment, so the listing stands
@@ -1904,7 +1929,7 @@ class Listing(db.Model):
         The record says so on the page, because otherwise a status that cannot
         be edited looks like a bug rather than a decision.
         """
-        return bool(self.project and self.project.deal_stage
+        return bool(self.deal is not None
                     and self.effective_status != (self.listing_status or 'available').lower())
 
 
@@ -4749,6 +4774,10 @@ def project_transaction_defaults(project):
         'owner_role': 'Seller' if is_sale else 'Landlord',
         'taker_role': 'Buyer' if is_sale else 'Tenant',
         'owner_name': owner,
+        'owner_contact_id': project.client_contact_id,
+        'owner_company': (project.client_contact.organisation.name
+                          if project.client_contact
+                          and project.client_contact.organisation else None),
         'value': asking if is_sale else None,
         'rent_pa': (asking if not is_sale and asking_unit in (None, 'pa') else None),
         'agreed_value': asking,
@@ -4859,8 +4888,25 @@ def transaction_new():
             t.status = 'Draft'
         db.session.commit()
         audit('create', entity='Transaction', entity_id=t.id, detail=t.reference)
-        # The instruction knows whose property it is, so the landlord or the
-        # seller is attached now rather than searched for again.
+        # Anybody chosen on the form is linked to the transaction, so the
+        # record holds a relationship and not just a name.
+        for field, role in (('landlord', 'Landlord'), ('tenant', 'Tenant'),
+                            ('vendor', 'Seller'), ('purchaser', 'Buyer')):
+            raw = (request.form.get(f'{field}_contact_id') or '').strip()
+            if not raw.isdigit():
+                continue
+            who = Contact.query.get(int(raw))
+            if who is None or not who.organisation_id:
+                continue                    # no company, so the name stands alone
+            if current_org_link(role, transaction_id=t.id):
+                continue
+            db.session.add(OrganisationRole(organisation_id=who.organisation_id,
+                                            role=role, transaction_id=t.id,
+                                            contact_id=who.id))
+        db.session.commit()
+
+        # And where the form named nobody, the instruction still knows whose
+        # property it is.
         link_owner_from_project(t, project)
         flash('Transaction recorded. It now appears as a tenure on the property.', 'success')
         return redirect(url_for('transaction_detail', id=t.id))
@@ -10282,7 +10328,11 @@ def api_listings():
                 'featured':      bool(l.featured),
                 'category':      l.website_category or 'commercial',
                 'status':        'sale' if unit == 'sale' else 'let',
-                'listingStatus': l.listing_status or 'available',
+                # The deal decides this, not a field somebody has to remember
+                # to change. A transaction that goes Under Offer takes its
+                # listing with it, on the website, without anybody touching
+                # the listing at all.
+                'listingStatus': l.effective_status,
                 'type':          p.property_type or 'Property',
                 'use':           l.use_class or 'office',
                 'title':         title,
