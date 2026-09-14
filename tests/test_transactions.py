@@ -625,4 +625,70 @@ with app.app_context():
 print('36. every figure in the summary traces to the transactions behind it')
 
 
+# ─── 37. The break is a date, on both pages ─────────────────────────────────
+# Box 4 asked for the break as free text while the Add page asked for a date,
+# using a column that already existed. Two pages, one fact, two answers.
+with app.app_context():
+    t = get(A)
+    t.transaction_type = 'Leasehold'
+    t.project_id = None                    # nothing overriding the kind
+    t.next_break_date = None
+    t.no_break = False
+    t.break_clause = 'Fifth anniversary, six months notice'
+    db.session.commit()
+    assert get(A).is_letting, 'the record under test is not a letting'
+
+rec = page(f'/transactions/{A}')
+box4 = rec[rec.index('4. Agreed commercial terms'):]
+box4 = box4[:box4.index('8. Important dates')]
+assert 'type="date"' in box4 and 'name="next_break_date"' in box4, \
+    'the break is still not a date field in Box 4'
+field = re.search(r'<input[^>]*name="next_break_date"[^>]*>', box4)
+assert field and 'type="date"' in field.group(0), field and field.group(0)[:110]
+
+# The Add page asks the same way.
+form = page('/transactions/new')
+field = re.search(r'<input[^>]*name="next_break_date"[^>]*>', form)
+assert field and 'type="date"' in field.group(0), 'the add page lost its date field'
+print('37. the break is a date picker on the record and on the add page')
+
+
+# ─── 38. It saves, and comes back ───────────────────────────────────────────
+cl.post(f'/transactions/{A}/save', data={'next_break_date': '2029-03-25'},
+        follow_redirects=True)
+with app.app_context():
+    t = get(A)
+    assert t.next_break_date == date(2029, 3, 25), t.next_break_date
+    assert t.break_clause == 'Fifth anniversary, six months notice', \
+        'saving the date destroyed what was already written'
+rec = page(f'/transactions/{A}')
+assert '2029-03-25' in rec, 'the saved break date is not shown back'
+print('38. the break date saves and reads back, keeping what was there before')
+
+
+# ─── 39. Free text already recorded is kept and shown ───────────────────────
+# "Fifth anniversary, six months notice" is not a date. Throwing it away to
+# tidy the field would lose what somebody actually wrote down.
+assert 'Break terms' in rec, 'the text already recorded is no longer shown'
+assert 'Fifth anniversary' in rec, 'the text already recorded was dropped'
+with app.app_context():
+    assert 'break_clause' in {c.name for c in Transaction.__table__.columns}, \
+        'the free-text column was dropped, taking what was in it'
+print('39. free text recorded before is kept, shown, and still editable')
+
+
+# ─── 40. No break can be ticked, and unticked again ─────────────────────────
+# An unticked box sends nothing, so without the hidden companion field it
+# could be turned on and never off.
+cl.post(f'/transactions/{A}/save', data={'no_break': '1'}, follow_redirects=True)
+with app.app_context():
+    assert get(A).no_break is True, 'no break did not tick'
+cl.post(f'/transactions/{A}/save', data={'no_break': ''}, follow_redirects=True)
+with app.app_context():
+    assert get(A).no_break is False, 'no break could be ticked but not unticked'
+    assert get(A).next_break_date == date(2029, 3, 25), \
+        'the break date was lost when the tickbox changed'
+print('40. no break ticks and unticks, without disturbing the date')
+
+
 print('\nTRANSACTIONS: ALL CHECKS PASSED')

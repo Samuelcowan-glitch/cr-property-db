@@ -235,12 +235,47 @@
             <input type="date" name="lease_end" form="trx-form" value="{{ d(t.lease_end) }}">
           </div>
         </div>
-        <div class="frow frow--full">
-          <div class="fcell fcell--label">Break clause</div>
+        {# A break is a date, and there was already a column for it — the one
+           the Add page has always used. This box asked for free text instead,
+           so the two pages disagreed about the same fact. It asks for the date
+           now, with the same picker as every other date on the record.
+
+           Anything already typed as free text is kept and shown underneath,
+           because "5th anniversary, 6 months' notice" is not a date and
+           throwing it away to make the field tidy would lose what somebody
+           actually recorded. #}
+        <div class="frow">
+          <div class="fcell fcell--label">Break date</div>
           <div class="fcell fcell--edit">
-            <input name="break_clause" form="trx-form" value="{{ t.break_clause or '' }}">
+            <input type="date" name="next_break_date" form="trx-form"
+                   value="{{ d(t.next_break_date) }}"
+                   {{ 'disabled' if t.no_break }}>
+          </div>
+          <div class="fcell fcell--label">No break</div>
+          <div class="fcell fcell--edit">
+            {# The hidden field keeps the key present when the box is unticked,
+               so it can be turned off as well as on. #}
+            <input type="hidden" name="no_break" value="" form="trx-form">
+            <label class="tickbox">
+              <input type="checkbox" name="no_break" value="1" form="trx-form"
+                     {{ 'checked' if t.no_break }}>
+              <span>The lease has no break</span>
+            </label>
           </div>
         </div>
+        {% if t.break_clause %}
+        <div class="frow frow--full">
+          <div class="fcell fcell--label">Break terms</div>
+          <div class="fcell fcell--edit">
+            <input name="break_clause" form="trx-form" value="{{ t.break_clause }}">
+            <span class="fcell-hint">
+              Recorded before the break was a date. Put the date above and
+              leave anything here that the date does not say &mdash; notice
+              periods, conditions.
+            </span>
+          </div>
+        </div>
+        {% endif %}
         {% endif %}
       </div>
 

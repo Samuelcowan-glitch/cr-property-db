@@ -365,16 +365,20 @@
           <div id="lease-length-display" style="font-size:10.5px;color:#5f6368;margin-top:3px"></div>
         </div>
         <div class="form-group">
-          <label>Next Break Date</label>
+          <label>Break date</label>
           <input type="date" name="next_break_date"
                  value="{{ trans.next_break_date.strftime('%Y-%m-%d') if trans and trans.next_break_date else '' }}"
                  onchange="calcNetRate()">
         </div>
-        <div class="form-group" style="justify-content:flex-end;padding-top:22px">
-          <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:normal">
-            <input type="checkbox" name="no_break" value="1" {{ 'checked' if trans and trans.no_break else '' }}>
-            No Break
-          </label>
+        <div class="form-group">
+          <label>No break</label>
+          <div>
+            <label class="tickbox">
+              <input type="checkbox" name="no_break" value="1"
+                     {{ 'checked' if trans and trans.no_break else '' }}>
+              <span>The lease has no break</span>
+            </label>
+          </div>
         </div>
         <div class="form-group">
           <label>Next Review Date</label>

@@ -2433,3 +2433,12 @@ body.pg-open { overflow: hidden; }
   font-size: 12.5px; line-height: 1.5;
 }
 .br-stale a { color: #7a4b12; text-decoration: underline; }
+
+/* A tickbox sitting in a record cell: the box and its words on one line, at
+   the same height as the fields either side of it. */
+.tickbox {
+  display: inline-flex; align-items: center; gap: 7px;
+  min-height: var(--ctl-h);
+  font-size: 12.5px; color: var(--text); cursor: pointer;
+}
+.tickbox input { margin: 0; flex: none; cursor: pointer; }

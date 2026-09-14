@@ -6957,6 +6957,16 @@ def _ftext(v):
     return v or None
 
 
+def _fbool(v):
+    """A tickbox. Anything that reads as off is off.
+
+    An unticked box sends nothing at all, so the page pairs it with a hidden
+    field of the same name — otherwise apply_form_fields would skip the key
+    and the box could be ticked but never unticked.
+    """
+    return str(v or '').strip().lower() in ('1', 'true', 'on', 'yes')
+
+
 def apply_form_fields(obj, form, fields):
     """Write form values onto a record, skipping anything the form did not send.
 
@@ -7070,6 +7080,8 @@ TRANSACTION_FIELDS = [
     ('lease_start',        'lease_start',        _parse_date),
     ('lease_end',          'lease_end',          _parse_date),
     ('break_clause',       'break_clause',       _ftext),
+    ('next_break_date',    'next_break_date',    _parse_date),
+    ('no_break',           'no_break',           _fbool),
     ('client_solicitor',       'client_solicitor',       _ftext),
     ('client_solicitor_firm',  'client_solicitor_firm',  _ftext),
     ('client_solicitor_email', 'client_solicitor_email', _ftext),
