@@ -143,12 +143,16 @@
         <div class="form-group">
           <label>Seller</label>
           <input type="text" name="vendor" value="{{ trans.vendor or '' }}"
-                 placeholder="Who is selling">
+                 placeholder="Who is selling"
+                 data-people="Seller" list="people-seller" autocomplete="off">
+          <datalist id="people-seller"></datalist>
         </div>
         <div class="form-group">
           <label>Buyer</label>
           <input type="text" name="purchaser" value="{{ trans.purchaser or '' }}"
-                 placeholder="Who is buying">
+                 placeholder="Who is buying"
+                 data-people="Buyer" list="people-buyer" autocomplete="off">
+          <datalist id="people-buyer"></datalist>
         </div>
         <div class="form-group span-2">
           <label>Property Description (for comparable evidence)</label>
@@ -240,11 +244,15 @@
       <div class="form-grid cols-3" style="margin-bottom:14px">
         <div class="form-group">
           <label>Landlord</label>
-          <input type="text" name="landlord" value="{{ trans.landlord or '' }}" placeholder="Landlord name">
+          <input type="text" name="landlord" value="{{ trans.landlord or '' }}" placeholder="Landlord name"
+                 data-people="Landlord" list="people-landlord" autocomplete="off">
+          <datalist id="people-landlord"></datalist>
         </div>
         <div class="form-group">
           <label>Tenant</label>
-          <input type="text" name="tenant" value="{{ trans.tenant or '' }}" placeholder="Tenant name">
+          <input type="text" name="tenant" value="{{ trans.tenant or '' }}" placeholder="Tenant name"
+                 data-people="Tenant" list="people-tenant" autocomplete="off">
+          <datalist id="people-tenant"></datalist>
         </div>
         <div class="form-group">
           <label>Tenant Covenant</label>
@@ -746,6 +754,44 @@ calcLeaseLength();
   window.onProjectChange = load;
   sel.addEventListener('change', load);
   if (sel.value) load();
+}());
+</script>
+
+<script>
+/*
+   Suggest people of the right type as a party is typed.
+
+   A Landlord box offers landlords and a Tenant box offers tenants — the same
+   rule the record page's picker follows, so the two pages cannot disagree
+   about who is eligible. It stays a plain text field: linking a party to an
+   organisation happens on the record, and this only saves somebody having to
+   remember a name exactly.
+*/
+(function () {
+  'use strict';
+  document.querySelectorAll('[data-people]').forEach(function (input) {
+    var list = document.getElementById(input.getAttribute('list'));
+    if (!list) return;
+    var timer = null;
+    input.addEventListener('input', function () {
+      var q = input.value.trim();
+      clearTimeout(timer);
+      if (q.length < 2) { list.innerHTML = ''; return; }
+      timer = setTimeout(function () {
+        fetch('/api/contacts?type=' + encodeURIComponent(input.dataset.people)
+              + '&q=' + encodeURIComponent(q), { credentials: 'same-origin' })
+          .then(function (r) { return r.ok ? r.json() : []; })
+          .then(function (rows) {
+            list.innerHTML = '';
+            rows.forEach(function (row) {
+              list.appendChild(new Option(row.company
+                ? row.name + ' — ' + row.company : row.name));
+            });
+          })
+          .catch(function () { /* typing still works without suggestions */ });
+      }, 180);
+    });
+  });
 }());
 </script>
 {% endblock %}

@@ -5825,6 +5825,12 @@ def api_contacts():
     if len(q) < 2:
         return jsonify([])
     like = f'%{q}%'
+
+    # A landlord field looks for landlords. Left blank it searches everybody,
+    # which is what a general contact box wants.
+    kind = (request.args.get('type') or '').strip()
+    if kind not in CONTACT_TYPES:
+        kind = None
     found = {c.id: c for c in Contact.query.filter(db.or_(
         Contact.first_name.ilike(like), Contact.last_name.ilike(like),
         Contact.email.ilike(like), Contact.phone.ilike(like),
@@ -5846,6 +5852,9 @@ def api_contacts():
             if digits in joined:
                 found.setdefault(person.id, person)
 
+    if kind:
+        found = {i: c for i, c in found.items() if (c.contact_type or '') == kind}
+
     rows = list(found.values())[:25]
     return jsonify([{
         'id': c.id,
@@ -5857,6 +5866,45 @@ def api_contacts():
         'phone': c.phone or c.mobile,
         'url': url_for('contact_detail', id=c.id),
     } for c in rows])
+
+
+def organisation_holds(org, role):
+    """Whether this organisation is a landlord, a tenant, a seller or a buyer.
+
+    Three ways of saying the same thing have accumulated, and any of them
+    counts — being strict about which signal to read would hide organisations
+    that plainly hold the role:
+
+      - a role recorded against a property, project or transaction
+      - the type ticked on the organisation itself
+      - a contact there whose own type says so
+
+    What it is not is generous about the role itself. A tenant search returns
+    tenants.
+    """
+    if not role:
+        return True
+    if any(r.role == role for r in (org.roles or [])):
+        return True
+    if role in (org.type_names or []):
+        return True
+    return any((c.contact_type or '') == role for c in (org.contacts or []))
+
+
+def contacts_for_role(org, role):
+    """The people at this organisation who hold the role, or all of them.
+
+    Falling back to everybody matters: a landlord company whose contacts have
+    not been typed yet would otherwise offer nobody to speak to, and the field
+    would look broken rather than merely empty.
+    """
+    people = list(org.contacts or [])
+    if not role:
+        return people
+    return [c for c in people if (c.contact_type or '') == role] or people
+
+
+app.jinja_env.globals['contacts_for_role'] = contacts_for_role
 
 
 @app.route('/api/organisations')
@@ -5872,6 +5920,14 @@ def api_organisations():
     if len(q) < 2:
         return jsonify([])
     like = f'%{q}%'
+
+    # Which side of a deal this field is filling. Without it the Landlord box
+    # and the Tenant box searched the same thing — everything — which is why a
+    # tenant search brought back clients, and a landlord search brought back
+    # whatever happened to match the letters typed.
+    role = (request.args.get('role') or '').strip()
+    if role not in ORG_ROLE_NAMES:
+        role = None
     found = {o.id: o for o in Organisation.query.filter(db.or_(
         Organisation.name.ilike(like), Organisation.trading_name.ilike(like),
         Organisation.legal_name.ilike(like), Organisation.company_number.ilike(like),
@@ -5895,6 +5951,9 @@ def api_organisations():
             text_value = f'{link.project.name} {link.project.project_ref or ""}'
         if target and q.lower() in text_value.lower():
             found[link.organisation_id] = link.organisation
+
+    if role:
+        found = {i: o for i, o in found.items() if organisation_holds(o, role)}
 
     return jsonify([{
         'id': o.id, 'name': o.name, 'trading_name': o.trading_name,
@@ -6019,12 +6078,19 @@ def _link_json(link):
 
 @app.route('/api/organisations/<int:id>/contacts')
 def api_organisation_contacts(id):
-    """Who works at this organisation, for the relationship-contact box."""
+    """Who works at this organisation, for the relationship-contact box.
+
+    Narrowed to the role the field is filling where one is given, so the
+    person offered as the tenant contact is a tenant. Everybody is offered
+    when none of them is typed, rather than nobody.
+    """
     org = Organisation.query.get_or_404(id)
+    role = (request.args.get('role') or '').strip() or None
     return jsonify([{'id': c.id, 'name': c.full_name,
                      'job_title': c.job_title,
+                     'contact_type': c.contact_type,
                      'is_main': c.id == org.main_contact_id}
-                    for c in org.contacts])
+                    for c in contacts_for_role(org, role)])
 
 
 @app.route('/api/organisations/quick', methods=['POST'])

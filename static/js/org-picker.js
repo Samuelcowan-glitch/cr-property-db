@@ -101,7 +101,9 @@
     choose.hidden = true;
 
     /* Fill the contact list from the organisation itself. */
-    fetch('/api/organisations/' + link.organisation_id + '/contacts')
+    var forRole = pick.dataset.role || '';
+    fetch('/api/organisations/' + link.organisation_id + '/contacts'
+          + (forRole ? '?role=' + encodeURIComponent(forRole) : ''))
       .then(function (r) { return r.json(); })
       .then(function (people) {
         people.forEach(function (p) {
@@ -162,7 +164,12 @@
     var q = pick.querySelector('.orgpick-q').value.trim();
     var box = pick.querySelector('.orgpick-results');
     if (q.length < 2) { box.hidden = true; return; }
-    fetch('/api/organisations?q=' + encodeURIComponent(q))
+    // The field knows which side of the deal it is: a Landlord box searches
+    // landlords, a Tenant box searches tenants. Without this both searched
+    // everything and returned each other's results.
+    var role = pick.dataset.role || '';
+    fetch('/api/organisations?q=' + encodeURIComponent(q)
+          + (role ? '&role=' + encodeURIComponent(role) : ''))
       .then(function (r) { return r.json(); })
       .then(function (rows) { results(pick, rows); })
       .catch(function () { say(pick, 'Could not search just now.', 'bad'); });

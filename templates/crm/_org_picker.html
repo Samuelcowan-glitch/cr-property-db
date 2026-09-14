@@ -36,7 +36,7 @@
                 {{ link.organisation.main_contact.full_name }} (main contact)
               {%- else -%}Not set{%- endif -%}
             </option>
-            {% for c in link.organisation.contacts %}
+            {% for c in contacts_for_role(link.organisation, role) %}
             <option value="{{ c.id }}" {{ 'selected' if link.contact_id == c.id }}>
               {{ c.full_name }}{% if c.contact_type %} — {{ c.contact_type }}{% endif %}
             </option>
