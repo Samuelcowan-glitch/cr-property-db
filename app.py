@@ -1846,9 +1846,10 @@ class Listing(db.Model):
             addr = self.project.property.address
         elif self.prop:
             addr = self.prop.address
-        if not addr:
-            return self.unit_name or 'Listing'
-        return _normalise_address(addr, self.unit_name)
+        # The address, as it is recorded. The unit name used to be pasted on
+        # the front, which is what repeated it for any address that already
+        # carried the unit somewhere other than the very start.
+        return _normalise_address(addr) or 'Listing'
 
     @property
     def display_price(self):
@@ -10038,7 +10039,6 @@ def _save_listing_from_form(form, l):
             if v.lower() == pc.lower():
                 v = ''
         return v or None
-    setf('unit_name', 'unit_name', lambda v: v.strip() or None)
     l.website_listed = bool(form.get('website_listed'))
     if 'listing_status' in form:
         l.listing_status = form.get('listing_status') or 'available'
@@ -10265,9 +10265,9 @@ def api_listings():
             p = l.prop
             if p is None:
                 continue
-            # Big text = the address. Only prepend the unit name when the address
-            # doesn't already start with it (avoids "Unit 2, Unit 2, Marlin House").
-            title = _normalise_address(p.address, l.unit_name)
+            # The address as recorded. Nothing is pasted in front of it — a
+            # unit number that matters is part of the address itself.
+            title = _normalise_address(p.address)
             price = l.listing_price or 0
             unit  = l.listing_price_unit or 'poa'
             # Gallery: absolute URLs to each uploaded photo, served from this
@@ -11218,6 +11218,71 @@ def _migrate_contact_roles():
             app.logger.info('Recorded %s role(s) from existing contact types', seeded)
 
 
+def _migrate_fold_unit_names():
+    """Retire the unit name, without losing a genuine unit number.
+
+    A listing carried a unit name that was pasted in front of the property
+    address to make the website title. The guard only skipped it when the
+    address STARTED with it, so "10 New Kings Road, Unit 3" with a unit name of
+    "Unit 3" came out as "Unit 3, 10 New Kings Road, Unit 3". That is the
+    repetition on the site.
+
+    The field is going. But some unit names are the only record of which unit a
+    listing is — an address of "10 New Kings Road" with a unit name of "Unit 3"
+    says something the address does not. Dropping those would take a real unit
+    number off the website to fix a cosmetic repeat.
+
+    So each listing is judged on its own:
+
+      - The unit name already appears in the address: pure repetition. Nothing
+        to keep, and the title stops repeating the moment it is no longer
+        pasted on.
+      - It does not, and the property has only this one listing: the unit name
+        is folded into the property's address, so the address itself carries
+        it and the title is right from the address alone.
+      - It does not, and the property has several listings: left alone and
+        logged. Folding one unit's name onto an address several listings share
+        would put "Unit 3" on all of them, which is worse than the repeat.
+
+    The column is not dropped and nothing is deleted. Whatever was typed stays
+    on the record.
+    """
+    with app.app_context():
+        folded = already = ambiguous = 0
+        per_property = {}
+        for l in Listing.query.filter(Listing.unit_name.isnot(None)).all():
+            if l.property_id:
+                per_property.setdefault(l.property_id, []).append(l)
+
+        for property_id, listings in per_property.items():
+            prop = Property.query.get(property_id)
+            if prop is None:
+                continue
+            for l in listings:
+                unit = ' '.join((l.unit_name or '').split()).strip()
+                if not unit:
+                    continue
+                address = ' '.join((prop.address or '').split()).strip()
+                if unit.lower() in address.lower():
+                    already += 1                      # the address says it already
+                elif len(listings) == 1:
+                    prop.address = f'{unit}, {address}' if address else unit
+                    folded += 1
+                else:
+                    ambiguous += 1
+                    app.logger.warning(
+                        'Listing %s keeps unit name %r: property %s has %s '
+                        'listings, so it cannot be folded into the address',
+                        l.id, unit, property_id, len(listings))
+
+        if folded:
+            db.session.commit()
+        if folded or already or ambiguous:
+            app.logger.info(
+                'Unit names: %s folded into the address, %s already there, '
+                '%s left for review', folded, already, ambiguous)
+
+
 def _migrate_transaction_kinds():
     """Rewrite Capital and Leasehold as Sale and Letting.
 
@@ -11397,6 +11462,7 @@ if __name__ == '__main__':
         _migrate_contact_roles()
         _migrate_retire_client()
         _migrate_transaction_kinds()
+        _migrate_fold_unit_names()
         _ensure_default_user()
         if Property.query.count() == 0:
             import import_listings  # seeds the 32 website properties

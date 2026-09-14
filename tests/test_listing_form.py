@@ -92,7 +92,7 @@ EXPECTED = {
     'rateable_value', 'rateable_value_na', 'rent_from', 'rent_inclusive',
     'rent_qualifier', 'rent_to', 'repair_insuring', 'service_charge',
     'service_charge_na', 'size', 'strapline', 'tenure', 'transaction',
-    'unit_name', 'use_class', 'website_category', 'website_listed',
+    'use_class', 'website_category', 'website_listed',
     'zoopla_listed',
 }
 lost = EXPECTED - set(names)
@@ -127,6 +127,8 @@ assert '.box--grid .frow { display: contents; }' in open(f'{root}/static/css/crm
 print('7. the commercial / residential / sale toggles still have rows to act on')
 
 # ── 8. The listing still saves ─────────────────────────────────────────────
+# The unit name is posted deliberately: it is no longer a field, and a value
+# arriving from an old page or a crafted request must not be written.
 r = cl.post(f'/listings/{lid}/edit', data={
     'unit_name': 'Ground Floor', 'website_category': 'commercial', 'use_class': 'office',
     'listing_status': 'available', 'size': '1450', 'measurement_type': 'NIA',
@@ -138,7 +140,9 @@ r = cl.post(f'/listings/{lid}/edit', data={
 assert r.status_code == 200
 with app.app_context():
     l = Listing.query.get(lid)
-    assert l.unit_name == 'Ground Floor' and l.use_class == 'office'
+    assert l.use_class == 'office'
+    assert l.unit_name != 'Ground Floor', \
+        'the unit name was written from a field that no longer exists'
     assert l.size == 1450 and l.measurement_type == 'NIA'
     assert l.listing_price == 32000 and l.price_display == 'OIRO £32,000'
     assert l.area == 'Parsons Green' and l.blurb == 'A bright corner unit.'
@@ -149,7 +153,7 @@ print('8. every kind of field on the listing still saves')
 
 # ── 9. The values come back on the page ───────────────────────────────────
 form = listing_form(page())
-for shown in ['Ground Floor', '1450', '32000', 'OIRO £32,000', 'Parsons Green',
+for shown in ['1450', '32000', 'OIRO £32,000', 'Parsons Green',
               'A bright corner unit.', 'New FRI lease', 'Moments from the Green.']:
     assert shown in form, f'{shown} is not shown after saving'
 print('9. saved values are displayed again when the page is reopened')

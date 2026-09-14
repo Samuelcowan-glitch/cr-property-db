@@ -223,7 +223,7 @@
         {{ pr.property_row(
              url_for('project_detail', id=l.project_id),
              l.photos[0] if l.photos else none,
-             (l.unit_name ~ ', ' if l.unit_name else '') ~ (l.prop.address if l.prop else l.area or 'Property'),
+             (l.prop.address if l.prop else l.area or 'Property'),
              (l.price_display or format_rent(l.listing_price, 'sale')) ~ ' · ' ~ format_size(l.size),
              'For Sale – Available' ~ (' · ' ~ l.prop.postcode if l.prop and l.prop.postcode else '')) }}
         {% else %}
@@ -243,7 +243,7 @@
         {{ pr.property_row(
              url_for('project_detail', id=l.project_id),
              l.photos[0] if l.photos else none,
-             (l.unit_name ~ ', ' if l.unit_name else '') ~ (l.prop.address if l.prop else l.area or 'Property'),
+             (l.prop.address if l.prop else l.area or 'Property'),
              (l.price_display or format_rent(l.listing_price, l.listing_price_unit)) ~ ' · ' ~ format_size(l.size),
              'To Let – Available' ~ (' · ' ~ l.prop.postcode if l.prop and l.prop.postcode else '')) }}
         {% else %}
