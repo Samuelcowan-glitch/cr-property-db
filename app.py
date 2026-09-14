@@ -10799,6 +10799,85 @@ def _seed_project_listings():
     db.session.commit()
 
 
+def _sync_model_columns():
+    """Add any column the models have that the database has not.
+
+    This exists because of a fault that took production down twice.
+
+    A migration adds its columns and then queries the model. But a SELECT built
+    from a SQLAlchemy model names EVERY column the model has, not just the ones
+    that migration cared about. So a migration that runs early and queries
+    Contact will ask Postgres for columns that a later migration has not added
+    yet, and the query fails before it can reach them. On a fresh SQLite
+    database create_all() makes every column up front, so nothing shows locally;
+    on a Postgres database that already has the table, create_all() adds
+    nothing and boot dies.
+
+    Ordering the migrations more carefully would fix it until the next column
+    is added and somebody puts it in the wrong one. So instead this brings
+    every table up to its model before any migration runs, and the individual
+    migrations become a no-op for their columns.
+
+    Deliberately conservative:
+
+      - It only ever ADDS. It never drops a column, never changes a type, and
+        never touches a row. A column in the database that the model no longer
+        has is left exactly where it is.
+      - Every column is added NULLABLE regardless of what the model says,
+        because adding a NOT NULL column to a table that already has rows
+        fails, and there is no safe value to invent for the rows already there.
+      - Each column is added on its own statement. Postgres aborts a whole
+        transaction on one bad statement, so a batch would lose every later
+        column to one failure — and this runs at boot, so it would take the
+        CRM down to fix a schema drift.
+    """
+    from sqlalchemy import inspect as _inspect, text as _text
+    added = []
+    with app.app_context():
+        dialect = db.engine.dialect
+        inspector = _inspect(db.engine)
+        try:
+            tables = set(inspector.get_table_names())
+        except Exception:
+            app.logger.exception('Could not read the database schema')
+            return added
+
+        for mapper in db.Model.registry.mappers:
+            table = mapper.local_table
+            if table is None or table.name not in tables:
+                continue                      # create_all() will make it
+            try:
+                existing = {c['name'] for c in inspector.get_columns(table.name)}
+            except Exception:
+                app.logger.exception('Could not read the columns of %s', table.name)
+                continue
+
+            for column in table.columns:
+                if column.name in existing:
+                    continue
+                try:
+                    kind = column.type.compile(dialect)
+                except Exception:
+                    app.logger.exception('No database type for %s.%s',
+                                         table.name, column.name)
+                    continue
+                clause = f'ALTER TABLE {table.name} ADD COLUMN {column.name} {kind}'
+                default = getattr(column, 'server_default', None)
+                if default is not None and getattr(default, 'arg', None) is not None:
+                    clause += f' DEFAULT {default.arg}'
+                try:
+                    with db.engine.begin() as conn:
+                        conn.execute(_text(clause))
+                    added.append(f'{table.name}.{column.name}')
+                except Exception:
+                    app.logger.exception('Could not add %s.%s',
+                                         table.name, column.name)
+
+    if added:
+        app.logger.info('Schema brought up to the models: %s', ', '.join(added))
+    return added
+
+
 def _add_columns(table, columns):
     """Add missing columns to a table that already exists.
 
@@ -11117,6 +11196,9 @@ def _migrate_crm_columns():
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
+        # See serve.py: every table is brought up to its model before any
+        # migration queries one.
+        _sync_model_columns()
         _migrate_project_columns()
         _migrate_listing_columns()
         _migrate_listings_table_columns()

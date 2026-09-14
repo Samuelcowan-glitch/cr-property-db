@@ -3,11 +3,16 @@ from waitress import serve
 from app import (app, db, _migrate_project_columns, _migrate_listing_columns,
                  _migrate_listings_table_columns, _migrate_email_columns,
                  _migrate_enquiry_columns, _migrate_document_columns,
-                 _migrate_crm_columns, _migrate_rates_tables, _migrate_progression_columns, _migrate_contact_roles, _migrate_retire_client, _migrate_security_columns, _migrate_diary_tables, _ensure_default_user, _seed_project_listings,
+                 _migrate_crm_columns, _migrate_rates_tables, _migrate_progression_columns, _migrate_contact_roles, _migrate_retire_client, _sync_model_columns, _migrate_security_columns, _migrate_diary_tables, _ensure_default_user, _seed_project_listings,
                  Property, Contact, Enquiry, EnquiryNote)
 
 with app.app_context():
     db.create_all()
+    # Before anything queries a model: bring every existing table up to its
+    # model. A migration's SELECT names every column the model has, so a
+    # column added by a later migration has to exist before an earlier one
+    # runs. This is what stopped the deploys of 10-14 September.
+    _sync_model_columns()
     _migrate_project_columns()
     _migrate_listing_columns()
     _migrate_listings_table_columns()
