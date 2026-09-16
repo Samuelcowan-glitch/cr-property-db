@@ -909,6 +909,63 @@ class Transaction(db.Model):
                 ('Tenant', self.tenant, 'tenant')]
 
     @property
+    def is_settled(self):
+        """Done and paid for: completed, invoiced, and nothing outstanding.
+
+        The point at which a deal stops being work in progress and becomes a
+        record of what happened — which is when its details are worth showing
+        beside the paperwork rather than only on the transaction.
+        """
+        return bool(self.has_completed and self.is_billed
+                    and self.outstanding <= 0.005)
+
+    @property
+    def summary_lines(self):
+        """The deal, in the handful of facts somebody opening the file wants.
+
+        Read from the record every time. Nothing here is stored a second time,
+        so a figure corrected on the transaction is corrected here.
+        """
+        owner_role, taker_role = (r for r, _, _ in self.party_roles)
+        money = lambda v: money_gbp(v) if v else None
+
+        def party(role, typed):
+            """Who held that side. The linked organisation first — that is the
+            record — falling back to whatever was typed before they were linked."""
+            link = current_org_link(role, transaction_id=self.id)
+            if link is None:
+                return typed
+            who = link.contact or link.organisation.main_contact
+            name = link.organisation.display_name
+            return f'{name} ({who.full_name})' if who else name
+
+        out = [
+            ('Reference', self.reference),
+            ('Kind', transaction_kind(self.transaction_type)),
+            ('Status', self.status),
+            (owner_role, party(owner_role, self.owner_side)),
+            (taker_role, party(taker_role, self.taker_side)),
+            ('Sale price' if self.is_sale else 'Rent per annum',
+             money(self.value if self.is_sale else self.rent_pa)),
+            ('Commission', money(self.net_commission)),
+            ('VAT', money(self.vat_amount)),
+            ('Invoice total', money(self.total_invoice)),
+            ('Received', money(self.commission_received)),
+            ('Invoice number', self.invoice_number),
+            ('Invoiced', self.invoice_date.strftime('%d %b %Y') if self.invoice_date else None),
+            ('Completed', self.completion_date.strftime('%d %b %Y')
+             if self.completion_date else None),
+        ]
+        if self.is_letting:
+            out += [('Lease start', self.lease_start.strftime('%d %b %Y')
+                     if self.lease_start else None),
+                    ('Lease end', self.lease_end.strftime('%d %b %Y')
+                     if self.lease_end else None),
+                    ('Break', self.next_break_date.strftime('%d %b %Y')
+                     if self.next_break_date else ('No break' if self.no_break else None))]
+        return [(label, value) for label, value in out if value]
+
+    @property
     def owner_side(self):
         """Whoever owns the property in this deal — the landlord, or the seller."""
         return self.landlord if self.is_letting else self.vendor
@@ -1713,6 +1770,28 @@ class Project(db.Model):
         """How far the deal has got, or None if there is no deal yet."""
         deal = self.live_transaction
         return deal.stage if deal else None
+
+    @property
+    def transaction_documents(self):
+        """Every document filed against a deal on this instruction.
+
+        The two were kept in separate places, so the paperwork for a letting
+        sat on the transaction and the paperwork for the instruction sat on the
+        project, and neither view showed the other. They are still stored apart
+        — a document belongs to the thing it was filed against — but each view
+        now reads both, so opening either shows the whole file.
+        """
+        out = []
+        for deal in self.transactions:
+            for doc in deal.documents:
+                out.append((deal, doc))
+        return sorted(out, key=lambda pair: pair[1].uploaded_at or datetime.min,
+                      reverse=True)
+
+    @property
+    def settled_transactions(self):
+        """Deals that are done and paid for."""
+        return [t for t in self.transactions if t.is_settled]
 
     @property
     def is_sale(self):
@@ -6227,6 +6306,8 @@ def api_organisation_contacts(id):
     return jsonify([{'id': c.id, 'name': c.full_name,
                      'job_title': c.job_title,
                      'contact_type': c.contact_type,
+                     'email': c.email,
+                     'phone': c.mobile or c.phone,
                      'is_main': c.id == org.main_contact_id}
                     for c in contacts_for_role(org, role)])
 

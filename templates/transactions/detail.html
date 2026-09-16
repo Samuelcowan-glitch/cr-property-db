@@ -610,7 +610,44 @@
           {% else %}
           <div class="empty" style="padding:12px 11px">No documents yet.</div>
           {% endfor %}
+
+          {# The instruction's own paperwork. Filed against the project, shown
+             here because it is the same file — the heads of terms and the
+             brochure belong with the deal they produced. Read-only: it is
+             managed where it was filed. #}
+          {% if t.project and t.project.documents %}
+          <div class="trx-doc-from">
+            From the instruction
+            <a href="{{ url_for('project_detail', id=t.project.id) }}#tab-documents">manage</a>
+          </div>
+          {% for d in t.project.documents %}
+          <div class="trx-doc">
+            <span class="kd">{{ d.folder|replace('_', ' ')|title if d.folder else 'Document' }}</span>
+            {% if d.file_data %}
+            <a class="nm" href="{{ url_for('document_download', id=d.id) }}">{{ d.document_name }}</a>
+            {% else %}
+            <span class="nm">{{ d.document_name }}</span>
+            {% endif %}
+            <span class="sz">
+              {%- if d.file_size %}{{ (d.file_size / 1024)|round|int }} KB{% endif -%}
+            </span>
+          </div>
+          {% endfor %}
+          {% endif %}
         </div>
+
+        {% if t.is_settled %}
+        {# Done and paid for. The details sit with the paperwork so that opening
+           the file a year later tells you what the deal was. #}
+        <div class="deal-done">
+          <div class="deal-done-head"><strong>Completed and paid in full</strong></div>
+          <dl class="deal-done-facts">
+            {% for label, value in t.summary_lines %}
+            <div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>
+            {% endfor %}
+          </dl>
+        </div>
+        {% endif %}
         <div class="box--grid" style="border:0;border-top:1px solid var(--grey-200)">
           <div class="frow">
             <div class="fcell fcell--label">Kind</div>

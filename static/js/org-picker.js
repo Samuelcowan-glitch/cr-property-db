@@ -242,6 +242,44 @@
     });
   }
 
+  /* Show the chosen person's name, email and telephone on the card. Read from
+     their contact record each time, so nothing here is a copy that can go
+     stale. */
+  function showReach(pick, orgId, contactId) {
+    var line = pick.querySelector('[data-reach]');
+    if (!line) { return; }
+    var role = pick.dataset.role || '';
+    fetch('/api/organisations/' + orgId + '/contacts'
+          + (role ? '?role=' + encodeURIComponent(role) : ''),
+          { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : []; })
+      .then(function (people) {
+        var who = people.filter(function (p) {
+          return String(p.id) === String(contactId);
+        })[0] || people.filter(function (p) { return p.is_main; })[0];
+        line.innerHTML = '';
+        if (!who) { return; }
+        var name = el('a', 'orgpick-person', who.name);
+        name.href = '/contacts/' + who.id;
+        line.appendChild(name);
+        [['\u2709', who.email, 'mailto:' + who.email],
+         ['\u260E', who.phone, 'tel:' + String(who.phone || '').replace(/ /g, '')]
+        ].forEach(function (bit) {
+          if (!bit[1]) { return; }
+          var a = el('a', 'orgpick-bit', '');
+          a.href = bit[2];
+          a.appendChild(el('span', 'ic', bit[0]));
+          a.appendChild(document.createTextNode(bit[1]));
+          line.appendChild(a);
+        });
+        if (!who.email && !who.phone) {
+          line.appendChild(el('span', 'orgpick-bit is-missing',
+                              'No email or telephone on their record'));
+        }
+      })
+      .catch(function () { /* the card still shows who it is */ });
+  }
+
   function wire(pick) {
     var box = pick.querySelector('.orgpick-q');
     var timer = null;
@@ -307,9 +345,14 @@
       body.organisation_id = (card.getAttribute('href') || '').split('/').pop();
       body.contact_id = e.target.value;
       post('/api/organisations/link', body).then(function (res) {
-        say(pick, res.data && res.data.ok ? 'Contact saved.' : 'That could not be saved.',
-            res.data && res.data.ok ? 'good' : 'bad');
+        var ok = res.data && res.data.ok;
+        say(pick, ok ? 'Contact saved.' : 'That could not be saved.', ok ? 'good' : 'bad');
         setTimeout(function () { say(pick, ''); }, 2500);
+        // The email and telephone shown belong to whoever was just chosen, so
+        // they follow the choice rather than waiting for the page to be
+        // reloaded — otherwise the card shows one person and their
+        // predecessor's number.
+        if (ok) { showReach(pick, body.organisation_id, body.contact_id); }
       });
     });
   }

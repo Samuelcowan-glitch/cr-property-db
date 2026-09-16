@@ -2486,3 +2486,57 @@ body.pg-open { overflow: hidden; }
 .partypick-hit strong { font-size: 12.5px; font-weight: var(--w-heading); color: var(--text); }
 .partypick-hit span { font-size: 11.5px; color: var(--grey-600); }
 .partypick-none { padding: 9px 10px; font-size: 12.5px; color: var(--grey-600); }
+
+/* How to reach the person on the other side of a deal, on the card itself.
+   Read from their contact record, never copied onto the transaction. */
+.orgpick-reach {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px;
+  margin-top: 6px; padding-top: 6px;
+  border-top: 1px solid var(--cell-line);
+  font-size: 12.5px; min-width: 0;
+}
+.orgpick-person { font-weight: var(--w-heading); color: var(--blue); }
+.orgpick-bit {
+  display: inline-flex; align-items: center; gap: 5px;
+  color: var(--grey-600); text-decoration: none; min-width: 0;
+}
+.orgpick-bit:hover { color: var(--blue); text-decoration: underline; }
+.orgpick-bit .ic { font-size: 11px; opacity: .8; flex: none; }
+.orgpick-bit.is-missing { color: var(--grey-400); font-style: italic; }
+
+/* A deal that is done and paid for, shown with its paperwork so that opening
+   the file later tells you what happened without going to look for it. */
+.deal-done {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--cell-line);
+  background: #f2f8f4;
+}
+.deal-done-head {
+  font-size: 12.5px; color: #14653a; margin-bottom: 8px;
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+}
+.deal-done-head a { color: var(--blue); font-size: 11.5px; }
+.deal-done-facts {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 8px 18px; margin: 0;
+}
+.deal-done-facts > div { min-width: 0; }
+.deal-done-facts dt {
+  font-size: 11px; font-weight: var(--w-heading); text-transform: uppercase;
+  letter-spacing: .5px; color: var(--grey-600);
+}
+.deal-done-facts dd {
+  margin: 1px 0 0; font-size: 13px; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* The heading above paperwork that belongs to the instruction rather than the
+   transaction, so it is clear which is which. */
+.trx-doc-from {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+  padding: 8px 11px 4px;
+  font-size: 11px; font-weight: var(--w-heading); text-transform: uppercase;
+  letter-spacing: .5px; color: var(--grey-600);
+  border-top: 1px solid var(--cell-line);
+}
+.trx-doc-from a { font-size: 11px; text-transform: none; letter-spacing: 0; }

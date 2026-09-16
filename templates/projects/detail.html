@@ -844,6 +844,61 @@
 
   <!-- LEFT: documents grouped by folder -->
   <div>
+    {# The paperwork filed against a deal on this instruction. It is stored on
+       the transaction, because that is what it belongs to, but it is part of
+       the same file and belongs in the same place when somebody opens it.
+
+       Once a deal is done and paid for, its details come with it: opening the
+       documents a year later should tell you what the deal was without going
+       looking for the transaction. #}
+    {% set deal_docs = project.transaction_documents %}
+    {% set settled = project.settled_transactions %}
+    {% if deal_docs or settled %}
+    <div class="card" style="margin-bottom:14px;overflow:hidden">
+      <div style="background:#0e1f44;color:#fff;padding:10px 16px;font-size:13px;font-weight:700">
+        📁 Transaction
+        {% if deal_docs %}<span style="opacity:.6;font-weight:500">({{ deal_docs|length }})</span>{% endif %}
+      </div>
+
+      {% for deal in settled %}
+      <div class="deal-done">
+        <div class="deal-done-head">
+          <strong>{{ deal.reference or 'Transaction' }}</strong> &mdash; completed and paid in full
+          <a href="{{ url_for('transaction_detail', id=deal.id) }}">Open the transaction</a>
+        </div>
+        <dl class="deal-done-facts">
+          {% for label, value in deal.summary_lines %}
+          <div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>
+          {% endfor %}
+        </dl>
+      </div>
+      {% endfor %}
+
+      <div>
+        {% for deal, d in deal_docs %}
+        <div style="display:flex;align-items:center;gap:12px;padding:11px 16px;border-bottom:1px solid #f1f3f4">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:600;color:#0e1f44;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ d.filename }}</div>
+            <div style="font-size:11px;color:#9aa0a6">
+              {{ d.kind or 'Document' }}
+              {%- if d.size %} &middot; {{ (d.size / 1024)|round|int }} KB{% endif -%}
+              {%- if d.uploaded_at %} &middot; {{ d.uploaded_at.strftime('%d %b %Y') }}{% endif -%}
+              &middot; from {{ deal.reference or 'the transaction' }}
+            </div>
+          </div>
+          <a href="{{ url_for('transaction_document_download', id=deal.id, did=d.id) }}"
+             class="btn btn-sm btn-outline">Download</a>
+        </div>
+        {% endfor %}
+        {% if not deal_docs %}
+        <div class="empty" style="padding:12px 16px">
+          Nothing filed against the transaction yet.
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
     {% if project.documents %}
       {% for key, label in folder_labels.items() %}
         {% set fdocs = project.documents | selectattr('folder', 'equalto', key) | list %}
@@ -867,7 +922,7 @@
         </div>
         {% endif %}
       {% endfor %}
-    {% else %}
+    {% elif not deal_docs and not settled %}
       <div class="card" style="padding:48px 24px;text-align:center;color:#9aa0a6">
         <div style="font-size:34px;margin-bottom:10px">📂</div>
         <div style="font-size:14px;color:#5f6368">No documents yet</div>

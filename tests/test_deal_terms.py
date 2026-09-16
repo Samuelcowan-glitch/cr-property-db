@@ -764,4 +764,105 @@ with A.app.app_context():
 print('43. the break switch behaves the same way, both directions')
 
 
+# ─── 44. The two sides of the deal carry their details ──────────────────────
+with A.app.app_context():
+    org = A.Organisation(name='Okelo Retail Ltd', fee_earner='Benjamin Cowan')
+    db.session.add(org); db.session.commit()
+    who = A.Contact(first_name='Sara', last_name='Okelo', contact_type='Tenant',
+                    organisation_id=org.id, email='sara@okeloretail.co.uk',
+                    mobile='07700 900456')
+    db.session.add(who); db.session.commit()
+    TENANT_C = who.id
+    db.session.add(A.OrganisationRole(organisation_id=org.id, role='Tenant',
+                                      transaction_id=LET_T, contact_id=who.id))
+    db.session.commit()
+
+rec = page(f'/transactions/{LET_T}')
+tenant_block = rec[rec.index('data-role="Tenant"'):]
+tenant_block = tenant_block[:tenant_block.index('</div>', tenant_block.index('orgpick-act'))]
+assert 'Sara Okelo' in tenant_block, 'the tenant contact is not named'
+assert 'sara@okeloretail.co.uk' in tenant_block, 'the tenant email is not shown'
+assert '07700 900456' in tenant_block, 'the tenant telephone is not shown'
+assert 'mailto:sara@okeloretail.co.uk' in tenant_block, 'the email is not clickable'
+assert 'tel:07700900456' in tenant_block, 'the telephone is not clickable'
+print('44. a linked party shows its contact name, email and telephone')
+
+
+# ─── 45. Read from the record, never copied ─────────────────────────────────
+with A.app.app_context():
+    c = A.Contact.query.get(TENANT_C)      # by id: the fixture holds more than one Okelo
+    c.email = 'sara.okelo@newaddress.co.uk'
+    db.session.commit()
+rec = page(f'/transactions/{LET_T}')
+assert 'sara.okelo@newaddress.co.uk' in rec, 'the details are a stale copy'
+assert 'sara@okeloretail.co.uk' not in rec, 'the old address is still shown'
+print('45. correcting the contact corrects what the transaction shows')
+
+
+# ─── 46. A settled deal carries its details with the paperwork ──────────────
+with A.app.app_context():
+    t = A.Transaction.query.get(LET_T)
+    t.status, t.completion_date = 'Completed', A.date.today()
+    t.invoice_date = A.date.today()
+    t.fee_percent, t.agreed_value = 10.0, 50000
+    db.session.commit()
+    t = A.Transaction.query.get(LET_T)
+    assert not t.is_settled, 'an unpaid deal reads as settled'
+    db.session.add(A.TransactionPayment(transaction_id=t.id,
+                                        amount=t.total_invoice,
+                                        received_on=A.date.today()))
+    db.session.commit()
+    t = A.Transaction.query.get(LET_T)
+    assert t.is_settled, 'a completed, invoiced, fully paid deal does not read as settled'
+    facts = dict(t.summary_lines)
+    for wanted in ('Reference', 'Kind', 'Landlord', 'Tenant', 'Commission',
+                   'Invoice total', 'Received', 'Completed'):
+        assert wanted in facts, f'{wanted} is missing from the summary'
+    assert facts['Kind'] == 'Letting'
+
+rec = page(f'/transactions/{LET_T}')
+assert 'Completed and paid in full' in rec, 'the record does not show it is settled'
+assert 'deal-done-facts' in rec
+proj = page(f"/projects/{LET['project']}")
+assert 'completed and paid in full' in proj.lower(), \
+    'the instruction does not carry the settled deal with its documents'
+assert 'Open the transaction' in proj, 'there is no way through to the deal'
+print('46. a settled deal shows its details with the paperwork, on both pages')
+
+
+# ─── 47. An unsettled deal shows no such summary ────────────────────────────
+with A.app.app_context():
+    t = A.Transaction.query.get(LET_T)
+    t.invoice_date = None
+    db.session.commit()
+    assert not A.Transaction.query.get(LET_T).is_settled
+assert 'Completed and paid in full' not in page(f'/transactions/{LET_T}'), \
+    'a deal with no invoice still reads as settled'
+print('47. a deal that is not settled shows no summary')
+
+
+# ─── 48. Each view shows the other's paperwork ──────────────────────────────
+with A.app.app_context():
+    t = A.Transaction.query.get(LET_T)
+    db.session.add(A.TransactionDocument(transaction_id=t.id, kind='Invoice',
+                                         filename='invoice-0042.pdf', size=2048,
+                                         data=b'x'))
+    db.session.add(A.ProjectDocument(project_id=LET['project'], folder='key_documents',
+                                     document_name='heads-of-terms.pdf',
+                                     file_data=b'y', file_size=1024))
+    db.session.commit()
+
+rec = page(f'/transactions/{LET_T}')
+assert 'invoice-0042.pdf' in rec, 'the transaction does not show its own document'
+assert 'heads-of-terms.pdf' in rec, \
+    "the transaction does not show the instruction's paperwork"
+assert 'From the instruction' in rec, 'it is not clear which came from where'
+
+proj = page(f"/projects/{LET['project']}")
+assert 'heads-of-terms.pdf' in proj, 'the instruction lost its own document'
+assert 'invoice-0042.pdf' in proj, \
+    "the instruction does not show the transaction's paperwork"
+print('48. the transaction and the instruction each show the whole file')
+
+
 print('\nDEAL TERMS: ALL CHECKS PASSED')
