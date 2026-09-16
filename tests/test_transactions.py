@@ -694,4 +694,75 @@ with app.app_context():
 print('40. no break ticks and unticks, without disturbing the date')
 
 
+# ─── 41. Nothing is outstanding until the invoice goes out ──────────────────
+# A deal working through terms agreed and solicitors has a fee coming, but the
+# client owes nothing yet. Saying otherwise overstates the books and shows a
+# debt nobody has been asked for.
+#
+# A record of its own, because the ones above have payments against them.
+BILL = make(reference='TR-0100', status='Terms Agreed', client='Invoice Test Ltd',
+            agreed_value=50000, fee_type='Percentage', fee_percent=10.0)
+with app.app_context():
+    t = get(BILL)
+    assert t.net_commission == 5000.0, t.net_commission
+    assert not t.is_billed, 'a transaction with no invoice reads as billed'
+    assert t.commission_received == 0
+
+for stage in ('In Progress', 'Under Offer', 'Terms Agreed',
+              'Solicitors Instructed', 'Completed'):
+    with app.app_context():
+        t = get(BILL)
+        t.status = stage
+        t.invoice_date = None
+        db.session.commit()
+        assert not get(BILL).is_billed, f'{stage} counted as invoiced'
+        billed_ids = [x.id for x in counting_transactions() if x.is_billed]
+        assert BILL not in billed_ids, f'{stage} put the fee into the outstanding total'
+    rec = page(f'/transactions/{BILL}')
+    assert 'not yet invoiced' in rec, f'{stage}: the record does not say it is uninvoiced'
+    header = rec[:rec.index('1. Transaction overview')]
+    assert 'outstanding' not in header.lower(), \
+        f'{stage}: the record still says something is outstanding'
+print('41. no stage of the deal makes the commission outstanding on its own')
+
+
+# ─── 42. Sending the invoice is what makes it outstanding ───────────────────
+with app.app_context():
+    before = transaction_dashboard()['outstanding_total']
+    t = get(BILL)
+    t.status = 'Commission Billed'
+    t.invoice_date = THIS
+    db.session.commit()
+    t = get(BILL)
+    assert t.is_billed, 'an invoiced transaction does not read as billed'
+    near(t.outstanding, t.total_invoice, 'the whole invoice is outstanding')
+    after = transaction_dashboard()['outstanding_total']
+    near(after - before, t.total_invoice, 'the summary did not pick up the invoice')
+rec = page(f'/transactions/{BILL}')
+assert 'outstanding' in rec.lower(), 'an invoiced fee does not read as outstanding'
+assert 'not yet invoiced' not in rec
+print('42. sending the invoice is what puts the fee into outstanding')
+
+
+# ─── 43. And a payment settles it ───────────────────────────────────────────
+with app.app_context():
+    t = get(BILL)
+    db.session.add(TransactionPayment(transaction_id=t.id, amount=t.total_invoice,
+                                      received_on=THIS))
+    db.session.commit()
+    near(get(BILL).outstanding, 0, 'a fully paid invoice is not settled')
+assert 'Settled in full' in page(f'/transactions/{BILL}')
+print('43. paying the invoice settles it')
+
+
+# ─── 44. A draft is never billed, dated or not ──────────────────────────────
+with app.app_context():
+    t = get(BILL)
+    t.status = 'Draft'
+    db.session.commit()
+    assert not get(BILL).is_billed, 'a draft with an invoice date counted as billed'
+    assert get(BILL).invoice_date is not None, 'the date was cleared rather than ignored'
+print('44. a draft is never billed, whatever date it carries')
+
+
 print('\nTRANSACTIONS: ALL CHECKS PASSED')

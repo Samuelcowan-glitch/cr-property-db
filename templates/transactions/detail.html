@@ -52,10 +52,18 @@
     </div>
     <div class="rec-tags">
       <span class="st {{ status_class(t.status) }}">{{ t.status or 'Not set' }}</span>
+      {# Nothing is outstanding until an invoice has gone out. A deal working
+         its way through terms agreed and solicitors has a fee coming, but the
+         client owes nothing yet and saying they do misstates the books. #}
       {% if t.net_commission %}
-      <span class="st {{ 'st-fallen' if t.outstanding > 0.005 else 'st-paid' }}">
-        {% if t.outstanding > 0.005 %}{{ money_gbp(t.outstanding) }} outstanding{% else %}Settled in full{% endif %}
-      </span>
+        {% if t.is_billed %}
+        <span class="st {{ 'st-fallen' if t.outstanding > 0.005 else 'st-paid' }}">
+          {% if t.outstanding > 0.005 %}{{ money_gbp(t.outstanding) }} outstanding
+          {%- else %}Settled in full{% endif %}
+        </span>
+        {% else %}
+        <span class="st st-hold">{{ money_gbp(t.net_commission) }} fee, not yet invoiced</span>
+        {% endif %}
       {% endif %}
       {% if t.is_overdue %}<span class="st st-fallen">Payment overdue</span>{% endif %}
     </div>
@@ -485,10 +493,19 @@
           <span class="lbl">Received<span class="how">{{ payments|length }} payment{{ '' if payments|length == 1 else 's' }}</span></span>
           <span class="val">{{ money_gbp(t.commission_received) }}</span>
         </div>
+        {% if t.is_billed %}
         <div class="calc-row is-total {{ 'is-owing' if t.outstanding > 0.005 else 'is-settled' }}">
           <span class="lbl">Outstanding balance</span>
           <span class="val">{{ money_gbp(t.outstanding) }}</span>
         </div>
+        {% else %}
+        <div class="calc-row is-total">
+          <span class="lbl">Outstanding balance
+            <span class="how">nothing is owed until the invoice goes out</span>
+          </span>
+          <span class="val">&mdash;</span>
+        </div>
+        {% endif %}
       </div>
 
       <!-- ── 6. Invoice and payment ── -->

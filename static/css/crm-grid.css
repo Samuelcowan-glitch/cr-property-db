@@ -917,6 +917,7 @@ table.rec-table td.actions { white-space: nowrap; text-align: right; }
 .st-part        { background: #fdeec9; color: #8a4a12; }   /* orange */
 .st-paid        { background: #dff0e4; color: #14653a; }
 .st-fallen      { background: #fce8e6; color: #b3463c; }
+.st-hold        { background: #eef1f6; color: #45506a; }
 .st-archived    { background: #e8eaed; color: #5f6368; }
 
 /* ── Transaction record page ─────────────────────────────────────────────── */
