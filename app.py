@@ -6124,6 +6124,60 @@ def contacts_for_role(org, role):
 app.jinja_env.globals['contacts_for_role'] = contacts_for_role
 
 
+def party_person(transaction, role):
+    """Who to ring for one side of a deal, and how the CRM worked it out.
+
+    Most transactions on the record name their parties as text typed into the
+    field, from before an organisation could be linked at all. Those names are
+    very often somebody the CRM already holds a record for, so the details are
+    there to be shown — they were only ever unreachable because nothing joined
+    the two up.
+
+    Returns (contact, how) or (None, None). `how` says where the person came
+    from, because a name matched by text is not the same claim as a party
+    somebody linked on purpose, and the page should not pretend otherwise.
+
+    Matching is deliberately strict: a whole name, ignoring case and
+    surrounding space, and never a partial or fuzzy one. Showing the wrong
+    person's mobile number beside a deal is far worse than showing none.
+    """
+    if transaction is None or not role:
+        return None, None
+
+    link = current_org_link(role, transaction_id=transaction.id)
+    if link is not None:
+        who = link.contact or link.organisation.main_contact
+        if who is not None:
+            return who, 'linked'
+
+    typed = dict((r, value) for r, value, _ in transaction.party_roles).get(role)
+    typed = (typed or '').strip()
+    if not typed:
+        return None, None
+    wanted = typed.lower()
+
+    # An organisation of that name: the person is whoever holds the role there.
+    for org in Organisation.query.all():
+        names = [org.name, org.trading_name, org.legal_name]
+        if any((n or '').strip().lower() == wanted for n in names):
+            people = contacts_for_role(org, role)
+            who = org.main_contact or (people[0] if len(people) == 1 else None)
+            if who is not None:
+                return who, 'matched'
+            return None, None
+
+    # Failing that, a person of that name. Only where there is exactly one, so
+    # two people sharing a name never resolve to a guess.
+    people = [c for c in Contact.query.all()
+              if (c.full_name or '').strip().lower() == wanted]
+    if len(people) == 1:
+        return people[0], 'matched'
+    return None, None
+
+
+app.jinja_env.globals['party_person'] = party_person
+
+
 @app.route('/api/organisations')
 def api_organisations():
     """The searchable picker behind every Landlord / Tenant / Client field.

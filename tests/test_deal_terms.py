@@ -865,4 +865,84 @@ assert 'invoice-0042.pdf' in proj, \
 print('48. the transaction and the instruction each show the whole file')
 
 
+# ─── 49. A party that was only ever typed in still shows its details ────────
+# This is what almost every transaction on the record looks like: the names
+# were typed into the field, long before an organisation could be linked at
+# all. The details were there the whole time — nothing joined the two up.
+with A.app.app_context():
+    org = A.Organisation(name='Sloane Estates Ltd', fee_earner='Benjamin Cowan')
+    db.session.add(org); db.session.commit()
+    helen = A.Contact(first_name='Helen', last_name='Sloane', contact_type='Landlord',
+                      organisation_id=org.id, email='helen@sloane.co.uk',
+                      mobile='07700 900111')
+    raj = A.Contact(first_name='Raj', last_name='Patel', contact_type='Tenant',
+                    email='raj@patelcoffee.co.uk', phone='020 7946 0000')
+    db.session.add_all([helen, raj]); db.session.commit()
+    typed = A.Transaction(project_id=LET['project'], property_id=LET['prop'],
+                          transaction_type='Letting', reference='TR0099',
+                          landlord='Sloane Estates Ltd', tenant='Raj Patel')
+    db.session.add(typed); db.session.commit()
+    TYPED_T = typed.id
+    assert not A.OrganisationRole.query.filter_by(transaction_id=TYPED_T).count(), \
+        'the fixture linked an organisation, so this proves nothing'
+
+rec = page(f'/transactions/{TYPED_T}')
+assert 'helen@sloane.co.uk' in rec, 'a landlord typed in as a company name shows no email'
+assert '07700 900111' in rec, 'no telephone for the landlord'
+assert 'raj@patelcoffee.co.uk' in rec, 'a tenant typed in by name shows no email'
+assert '020 7946 0000' in rec, 'no telephone for the tenant'
+assert 'Matched to this record' in rec, \
+    'a matched name is presented as though somebody had linked it'
+print('49. parties that were only typed in show their details, marked as matched')
+
+
+# ─── 50. It never guesses ───────────────────────────────────────────────────
+# A wrong mobile number beside a deal is worse than none at all.
+with A.app.app_context():
+    db.session.add(A.Contact(first_name='Raj', last_name='Patel',
+                             email='different.raj@elsewhere.co.uk'))
+    db.session.add(A.Contact(first_name='Nigel', last_name='Farrow',
+                             email='nigel@farrow.co.uk'))
+    db.session.commit()
+    t = A.Transaction.query.get(TYPED_T)
+    t.tenant = 'Raj Patel'                      # now two people of that name
+    db.session.commit()
+rec = page(f'/transactions/{TYPED_T}')
+assert 'raj@patelcoffee.co.uk' not in rec and 'different.raj@elsewhere.co.uk' not in rec, \
+    'two people share that name and it picked one'
+assert 'helen@sloane.co.uk' in rec, 'the landlord was lost along with the tenant'
+
+with A.app.app_context():
+    t = A.Transaction.query.get(TYPED_T)
+    t.tenant = 'Farrow'                         # part of a name, not a name
+    db.session.commit()
+assert 'nigel@farrow.co.uk' not in page(f'/transactions/{TYPED_T}'), \
+    'a partial name matched somebody'
+
+with A.app.app_context():
+    t = A.Transaction.query.get(TYPED_T)
+    t.tenant = 'Somebody With No Record'
+    db.session.commit()
+rec = page(f'/transactions/{TYPED_T}')
+assert 'Matched to this record' in rec, 'the landlord stopped matching too'
+assert rec.count('orgpick-reach') == 1, 'a party with no record showed details anyway'
+print('50. a shared name, a partial name and an unknown name all match nobody')
+
+
+# ─── 51. A linked party still wins, and is not called a match ───────────────
+with A.app.app_context():
+    org = A.Organisation.query.filter_by(name='Sloane Estates Ltd').first()
+    other = A.Contact(first_name='Dominic', last_name='Sloane', contact_type='Landlord',
+                      organisation_id=org.id, email='dominic@sloane.co.uk')
+    db.session.add(other); db.session.commit()
+    db.session.add(A.OrganisationRole(organisation_id=org.id, role='Landlord',
+                                      transaction_id=TYPED_T, contact_id=other.id))
+    db.session.commit()
+rec = page(f'/transactions/{TYPED_T}')
+assert 'dominic@sloane.co.uk' in rec, 'the linked person is not the one shown'
+assert 'helen@sloane.co.uk' not in rec, 'the matched guess outranked the real link'
+assert 'Matched to this record' not in rec, 'a linked party is described as a match'
+print('51. linking somebody replaces the match, and is not hedged')
+
+
 print('\nDEAL TERMS: ALL CHECKS PASSED')

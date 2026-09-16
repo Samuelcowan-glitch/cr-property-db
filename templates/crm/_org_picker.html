@@ -10,8 +10,38 @@
    so nothing is lost while the two are being reconciled.
 #}
 
+{% macro reach(who, how='linked') %}
+{# How to reach somebody, without opening their record. Everything is read from
+   their contact record — nothing is copied onto the transaction, so a number
+   corrected once is corrected everywhere. #}
+<div class="orgpick-reach" data-reach>
+  <a class="orgpick-person" href="{{ url_for('contact_detail', id=who.id) }}">
+    {{ who.full_name }}
+  </a>
+  {% if who.email %}
+  <a class="orgpick-bit" href="mailto:{{ who.email }}">
+    <span class="ic">&#9993;</span>{{ who.email }}
+  </a>
+  {% endif %}
+  {% set tel = who.mobile or who.phone %}
+  {% if tel %}
+  <a class="orgpick-bit" href="tel:{{ tel|replace(' ', '') }}">
+    <span class="ic">&#128222;</span>{{ tel }}
+  </a>
+  {% endif %}
+  {% if not who.email and not tel %}
+  <span class="orgpick-bit is-missing">No email or telephone on their record</span>
+  {% endif %}
+  {% if how == 'matched' %}
+  {# Said plainly: this is a name matched to a record, not a party somebody
+     linked. Link them and it stops being a guess. #}
+  <span class="orgpick-bit is-matched">Matched to this record &mdash; link them to be sure</span>
+  {% endif %}
+</div>
+{% endmacro %}
+
 {% macro org_picker(role, target_kind, target_id, legacy_text=None, label=None,
-                    suggestion=None) %}
+                    suggestion=None, person=None, person_how=None) %}
 {% set link = current_org_link(role, **{target_kind ~ '_id': target_id}) %}
 <div class="orgpick" data-role="{{ role }}" data-target-kind="{{ target_kind }}"
      data-target-id="{{ target_id }}">
@@ -45,34 +75,8 @@
           </select>
         </div>
 
-        {# How to reach them, without opening their record. The person here is
-           the one chosen for this relationship; where nobody has been chosen
-           it is the organisation's main contact, because that is who the
-           dropdown above is already showing. Everything is read from their
-           contact record — nothing is copied onto the transaction, so a
-           number corrected once is corrected everywhere. #}
         {% set who = link.contact or link.organisation.main_contact %}
-        {% if who %}
-        <div class="orgpick-reach" data-reach>
-          <a class="orgpick-person" href="{{ url_for('contact_detail', id=who.id) }}">
-            {{ who.full_name }}
-          </a>
-          {% if who.email %}
-          <a class="orgpick-bit" href="mailto:{{ who.email }}">
-            <span class="ic">&#9993;</span>{{ who.email }}
-          </a>
-          {% endif %}
-          {% set tel = who.mobile or who.phone %}
-          {% if tel %}
-          <a class="orgpick-bit" href="tel:{{ tel|replace(' ', '') }}">
-            <span class="ic">&#128222;</span>{{ tel }}
-          </a>
-          {% endif %}
-          {% if not who.email and not tel %}
-          <span class="orgpick-bit is-missing">No email or telephone on their record</span>
-          {% endif %}
-        </div>
-        {% endif %}
+        {% if who %}{{ reach(who) }}{% endif %}
       </div>
       <div class="orgpick-act">
         <button type="button" class="btn btn-outline btn-xs orgpick-change">Change</button>
@@ -98,6 +102,11 @@
       <button type="button" class="btn btn-secondary btn-xs orgpick-use">Use them</button>
     </div>
     {% endif %}
+    {# A party typed in before organisations could be linked is still somebody
+       the CRM holds a record for. The details are shown from that record
+       rather than left unreachable behind a search box. #}
+    {% if person and not link %}{{ reach(person, person_how or 'matched') }}{% endif %}
+
     <div class="orgpick-search">
       <input type="search" class="orgpick-q" autocomplete="off"
              placeholder="Search name, company number, contact, email or address…"

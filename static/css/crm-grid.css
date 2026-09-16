@@ -2540,3 +2540,6 @@ body.pg-open { overflow: hidden; }
   border-top: 1px solid var(--cell-line);
 }
 .trx-doc-from a { font-size: 11px; text-transform: none; letter-spacing: 0; }
+
+/* A name matched to a record rather than linked to one. Said quietly, but said. */
+.orgpick-bit.is-matched { color: var(--grey-600); font-style: italic; }

@@ -198,8 +198,10 @@
         <div class="orgpick-row">
           <div class="orgpick-label">{{ role }}</div>
           <div class="orgpick-field">
+            {% set found, how = party_person(t, role) %}
             {{ op.org_picker(role, 'transaction', t.id, legacy,
-                            suggestion=suggested_party(t, role)) }}
+                            suggestion=suggested_party(t, role),
+                            person=found, person_how=how) }}
           </div>
         </div>
         {% endfor %}
