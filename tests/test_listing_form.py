@@ -92,7 +92,7 @@ EXPECTED = {
     'rateable_value', 'rateable_value_na', 'rent_from', 'rent_inclusive',
     'rent_qualifier', 'rent_to', 'repair_insuring', 'service_charge',
     'service_charge_na', 'size', 'strapline', 'tenure', 'transaction',
-    'use_class', 'website_category', 'website_listed',
+    '_listing_switches', 'use_class', 'website_category', 'website_listed',
     'zoopla_listed',
 }
 lost = EXPECTED - set(names)

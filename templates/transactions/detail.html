@@ -256,11 +256,9 @@
           </div>
           <div class="fcell fcell--label">No break</div>
           <div class="fcell fcell--edit">
-            {# The hidden field keeps the key present when the box is unticked,
-               so it can be turned off as well as on. #}
-            <input type="hidden" name="no_break" value="" form="trx-form">
             <label class="tickbox">
-              <input type="checkbox" name="no_break" value="1" form="trx-form"
+              <input type="hidden" name="_break_switch" value="1" form="trx-form">
+            <input type="checkbox" name="no_break" value="1" form="trx-form"
                      {{ 'checked' if t.no_break }}>
               <span>The lease has no break</span>
             </label>

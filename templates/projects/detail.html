@@ -697,6 +697,7 @@
              the three labels wrap a word at a time. #}
           <div class="lst-publish">
             <label class="pub-check">
+              <input type="hidden" name="_listing_switches" value="1" form="project-form">
               <input type="checkbox" name="website_listed" value="1" {{ 'checked' if lst.website_listed else '' }} form="project-form"> Show on website
             </label>
             <label class="pub-check">

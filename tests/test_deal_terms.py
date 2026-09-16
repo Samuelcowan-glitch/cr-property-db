@@ -641,4 +641,127 @@ with A.app.app_context():
 print('37. a deal is not applied to a building whose units it cannot tell apart')
 
 
+# ─── 38. The listing page says Under Offer ──────────────────────────────────
+# The transaction showed Under Offer and the Website Listing Details did not.
+with A.app.app_context():
+    t = A.Transaction.query.get(LET_T)
+    t.status = 'Under Offer'
+    db.session.commit()
+
+r = cl.get(f"/listings/{LET['listing']}/edit", follow_redirects=True)
+assert r.status_code == 200, r.status_code
+listing_page = r.get_data(as_text=True)
+assert 'Listing Details' in listing_page, 'that was not the listing page'
+assert 'Under Offer' in listing_page, \
+    'the listing page does not show the status its transaction is setting'
+print('38. the listing page shows the Under Offer its transaction set')
+
+
+# ─── 39. Only one field can set it ──────────────────────────────────────────
+# There used to be two selects named listing_status in the one form, one in
+# the commercial half and one in the residential. A field hidden with
+# display:none is still submitted, so both were sent and the server read
+# whichever came first — which is how editing a listing put it back to
+# Available.
+import re as _re
+form_src = open(os.path.join(ROOT, 'templates/projects/listing_form.html')).read()
+# Inside a single branch of the if/else, never two live at once.
+rendered = cl.get(f"/projects/{LET['project']}", follow_redirects=True).get_data(as_text=True)
+assert rendered.count('name="listing_status"') <= 1, \
+    f'{rendered.count(chr(34).join(["name=", "listing_status", ""]))} status fields on one page'
+print('39. exactly one field can set the availability, so nothing overwrites it')
+
+
+# ─── 40. Saving the listing does not undo the deal ──────────────────────────
+with A.app.app_context():
+    before = A.Listing.query.get(LET['listing']).effective_status
+assert before == 'under-offer', before
+# A save posting the stale value the page used to show, with the switches
+# marked as the page marks them.
+cl.post(f"/listings/{LET['listing']}/edit",
+        data={'listing_status': 'available', 'website_category': 'commercial',
+              '_listing_switches': '1', 'website_listed': '1'},
+        follow_redirects=True)
+with A.app.app_context():
+    l = A.Listing.query.get(LET['listing'])
+    assert l.effective_status == 'under-offer', \
+        f'saving the listing reverted it to {l.effective_status}'
+    assert (l.listing_status or 'available') == 'available', \
+        'the stored fallback was rewritten rather than left alone'
+print('40. saving the listing does not revert what the transaction set')
+
+
+# ─── 41. And the website agrees, throughout ─────────────────────────────────
+assert feed_status(LET['listing']) == 'under-offer', \
+    f'the website says {feed_status(LET["listing"])!r} after the listing was saved'
+with A.app.app_context():
+    t = A.Transaction.query.get(LET_T)
+    t.status = 'Completed'
+    db.session.commit()
+assert feed_status(LET['listing']) == 'let-agreed', \
+    'completing the deal did not reach the website'
+with A.app.app_context():
+    assert A.Listing.query.get(LET['listing']).status_label == 'Let Agreed'
+print('41. transaction, listing page and website all say the same thing')
+
+
+# ─── 42. A switch turns on and off, and a partial save leaves it alone ──────
+# An unticked box sends nothing, so a switch cannot be guarded on its own name.
+# Pairing it with a hidden field of the same name does not work either: two
+# fields of one name are read first-wins, so the hidden one wins and the box
+# can never be ticked. The form says once that it owns them.
+def listing_flags():
+    with A.app.app_context():
+        l = A.Listing.query.get(LET['listing'])
+        return bool(l.website_listed), bool(l.zoopla_listed)
+
+
+def save_listing(**extra):
+    data = {'website_category': 'commercial'}
+    data.update(extra)
+    cl.post(f"/listings/{LET['listing']}/edit", data=data, follow_redirects=True)
+
+
+save_listing(_listing_switches='1', website_listed='1', zoopla_listed='1')
+assert listing_flags() == (True, True), listing_flags()
+
+# Unticked: the marker arrives, the boxes do not.
+save_listing(_listing_switches='1')
+assert listing_flags() == (False, False), \
+    f'unticking did not turn them off: {listing_flags()}'
+
+# Ticked again, to prove the hidden-field trap is gone.
+save_listing(_listing_switches='1', website_listed='1', zoopla_listed='1')
+assert listing_flags() == (True, True), \
+    f'a switch could be turned off but not back on: {listing_flags()}'
+
+# A save that never mentions them leaves them alone.
+save_listing(listing_status='available')
+assert listing_flags() == (True, True), \
+    'a save that said nothing about the switches turned them off'
+print('42. a publish switch turns on, turns off, and survives a partial save')
+
+
+# ─── 43. The same for the break on a transaction ────────────────────────────
+cl.post(f'/transactions/{LET_T}/save',
+        data={'_break_switch': '1', 'no_break': '1'}, follow_redirects=True)
+with A.app.app_context():
+    assert A.Transaction.query.get(LET_T).no_break is True, 'no break did not tick'
+cl.post(f'/transactions/{LET_T}/save',
+        data={'_break_switch': '1'}, follow_redirects=True)
+with A.app.app_context():
+    assert A.Transaction.query.get(LET_T).no_break is False, 'it could not be unticked'
+cl.post(f'/transactions/{LET_T}/save',
+        data={'_break_switch': '1', 'no_break': '1'}, follow_redirects=True)
+with A.app.app_context():
+    assert A.Transaction.query.get(LET_T).no_break is True, \
+        'it could be turned off but not back on'
+cl.post(f'/transactions/{LET_T}/save', data={'status': 'Completed'},
+        follow_redirects=True)
+with A.app.app_context():
+    assert A.Transaction.query.get(LET_T).no_break is True, \
+        'a save about something else turned the break switch off'
+print('43. the break switch behaves the same way, both directions')
+
+
 print('\nDEAL TERMS: ALL CHECKS PASSED')

@@ -4563,6 +4563,11 @@ def transaction_save(id):
 
     before = (t.status, t.completion_date, t.net_commission)
     apply_form_fields(t, form, TRANSACTION_FIELDS)
+    # The break switch, for the same reason the listing switches are handled
+    # apart: an unticked box sends nothing, so the page says once that it owns
+    # the field and the save reads it only then.
+    if '_break_switch' in form:
+        t.no_break = _fbool(form.get('no_break'))
     if not t.reference:
         t.reference = next_transaction_reference()
     db.session.commit()
@@ -7214,7 +7219,7 @@ TRANSACTION_FIELDS = [
     ('lease_end',          'lease_end',          _parse_date),
     ('break_clause',       'break_clause',       _ftext),
     ('next_break_date',    'next_break_date',    _parse_date),
-    ('no_break',           'no_break',           _fbool),
+
     ('client_solicitor',       'client_solicitor',       _ftext),
     ('client_solicitor_firm',  'client_solicitor_firm',  _ftext),
     ('client_solicitor_email', 'client_solicitor_email', _ftext),
@@ -10085,11 +10090,32 @@ def _save_listing_from_form(form, l):
             if v.lower() == pc.lower():
                 v = ''
         return v or None
-    l.website_listed = bool(form.get('website_listed'))
+    # An unticked box sends nothing, so a switch cannot be presence-guarded on
+    # its own name — a save that meant to turn it off looks exactly like a save
+    # that never mentioned it. Pairing it with a hidden field of the same name
+    # does not work either: two fields of one name are read first-wins, so the
+    # hidden one would always win and the box could never be ticked.
+    #
+    # So the form says once, in its own field, that it owns these switches.
+    # A form that carries the marker sets all three; a save that does not
+    # mention them leaves them exactly as they are.
+    if '_listing_switches' in form:
+        l.website_listed = _fbool(form.get('website_listed'))
+        l.zoopla_listed = _fbool(form.get('zoopla_listed'))
+        l.featured = _fbool(form.get('featured'))
     if 'listing_status' in form:
-        l.listing_status = form.get('listing_status') or 'available'
-    l.featured = bool(form.get('featured'))
-    l.zoopla_listed = bool(form.get('zoopla_listed'))
+        # A transaction on this instruction decides availability, so a status
+        # arriving from the form is not written over it. Without this, opening
+        # a listing and saving it — changing nothing — would put the stored
+        # field back to whatever the page happened to show, and the two would
+        # be out of step again the moment the deal ended.
+        #
+        # The stored value is what a listing falls back to when it has no deal,
+        # so it is still worth keeping accurate; it is simply not the form's to
+        # change while a deal is running.
+        if not l.status_is_derived:
+            l.listing_status = form.get('listing_status') or 'available'
+
     if 'website_category' in form:
         l.website_category = form.get('website_category') or None
     setf('use_class', 'use_class')

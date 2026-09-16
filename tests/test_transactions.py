@@ -680,10 +680,13 @@ print('39. free text recorded before is kept, shown, and still editable')
 # ─── 40. No break can be ticked, and unticked again ─────────────────────────
 # An unticked box sends nothing, so without the hidden companion field it
 # could be turned on and never off.
-cl.post(f'/transactions/{A}/save', data={'no_break': '1'}, follow_redirects=True)
+cl.post(f'/transactions/{A}/save',
+        data={'_break_switch': '1', 'no_break': '1'}, follow_redirects=True)
 with app.app_context():
     assert get(A).no_break is True, 'no break did not tick'
-cl.post(f'/transactions/{A}/save', data={'no_break': ''}, follow_redirects=True)
+# An unticked box sends nothing but the marker, which is how it turns off.
+cl.post(f'/transactions/{A}/save',
+        data={'_break_switch': '1'}, follow_redirects=True)
 with app.app_context():
     assert get(A).no_break is False, 'no break could be ticked but not unticked'
     assert get(A).next_break_date == date(2029, 3, 25), \

@@ -81,6 +81,7 @@
   </label>
   <div style="margin-left:auto;display:flex;align-items:center;gap:14px">
     <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;font-weight:600;color:#e0303f">
+      <input type="hidden" name="_listing_switches" value="1">
       <input type="checkbox" name="website_listed" value="1" {{ 'checked' if not l or l.website_listed else '' }} style="accent-color:#e0303f;width:16px;height:16px">
       Publish on website
     </label>
@@ -96,11 +97,59 @@
   </div>
 </div>
 
+{#
+   Availability, said once.
+
+   This used to be two selects — one in the commercial half of the form, one in
+   the residential half — both named listing_status. A field hidden with
+   display:none is still submitted, so both were sent on every save and the
+   server read whichever came first. Editing a residential listing therefore
+   wrote the commercial half's default over whatever had been chosen, which is
+   how a listing reverted to Available after being edited.
+
+   And where a transaction says what this listing is, the transaction says it.
+   Offering a box that can disagree with the deal is what put the CRM and the
+   website out of step in the first place.
+#}
+<div style="display:grid;grid-template-columns:200px 1fr;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #f1f3f4">
+  <label style="font-size:13px;color:#374151">Availability</label>
+  {% if l and l.status_is_derived %}
+  <div>
+    <strong style="font-size:14px;color:#0e1f44">{{ l.status_label }}</strong>
+    <div style="font-size:11.5px;color:#5f6368;margin-top:3px">
+      Set by
+      {%- set deal = l.deal %}
+      {% if deal %}
+        <a href="{{ url_for('transaction_detail', id=deal.id) }}"
+           style="color:#0e1f44">transaction {{ deal.reference or deal.id }}</a>
+        ({{ deal.status }}){% else %}the transaction{% endif %}.
+      Change it there and this follows, here and on the website.
+    </div>
+    {# Kept so a save cannot blank what is stored underneath. #}
+    <input type="hidden" name="listing_status" value="{{ l.listing_status or 'available' }}">
+  </div>
+  {% else %}
+  <div>
+    <select name="listing_status"
+            style="width:100%;font-size:13px;padding:7px 10px;border:1px solid #d1d5db;border-radius:5px;background:#fff">
+      {% for value, label in [('available','Available'), ('under-offer','Under Offer'),
+                              ('let-agreed','Let Agreed'), ('sold','Sold'),
+                              ('sold-stc','Sold STC'), ('withdrawn','Withdrawn')] %}
+      <option value="{{ value }}"
+        {{ 'selected' if ((l.listing_status or 'available') if l else 'available') == value }}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <div style="font-size:11.5px;color:#5f6368;margin-top:3px">
+      A transaction on this instruction overrides this while it is running.
+    </div>
+  </div>
+  {% endif %}
+</div>
+
 <!-- ══ COMMERCIAL ══ -->
 <div class="cat-com" style="{{ 'display:none' if is_residential else '' }}">
 
 {{ sec('key-attributes', 'Key Attributes') }}
-{{ sel('Availability Status', 'listing_status', ['Available','Under Offer','Let Agreed','Sold','For Sale','Withdrawn'], val=(l.listing_status or 'Available') if l else 'Available') }}
 {{ sel('Property Type', 'property_type_detail', [{'group':'OFFICE','opts':['Office','Serviced Office','Business Park']},{'group':'INDUSTRIAL','opts':['Industrial','Warehouse','Distribution','Light Industrial']},{'group':'RETAIL','opts':['Retail','Showroom','Restaurant','Leisure']},{'group':'OTHER','opts':['Land','Hotel','Mixed Use','Other']}], val='') }}
 {{ sel('Use Class', 'use_class', ['E (Office)','E (Retail)','E (Leisure/Cafe)','B2 (Industrial)','B8 (Storage/Distribution)','C1 (Hotel)','Sui Generis','Mixed'], val=(l.use_class or '') if l else '') }}
 {{ sel('Availability Reason', 'availability_reason', ['Newly Available','Reduced Price','Relocation','New Build','Refurbished','Lease Expiry','Sublease','Assignment'], val=(l.availability_reason or '') if l else '') }}
@@ -229,7 +278,6 @@
 <!-- ══ RESIDENTIAL ══ -->
 <div class="cat-res" style="{{ 'display:none' if is_commercial else '' }}">
 {{ sec('resi-key', 'Key Attributes') }}
-{{ sel('Listing Status', 'listing_status', ['Available','Under Offer','Sold STC','Let Agreed','Withdrawn'], val=(l.listing_status or 'Available') if l else 'Available') }}
 {{ sel('Property Type', 'property_type_detail', ['Apartment','Flat','Maisonette','Terraced House','Semi-Detached','Detached','Mews House','Town House','Garden Flat','Studio','Penthouse','HMO'], val='') }}
 {{ sel('Suitable For', 'residential_use', ['Owner Occupied','HMO','Residential Investment','Vacant Possession'], val=(l.residential_use or '') if l else '') }}
 {{ sel('Tenure', 'lease_type', ['Freehold','Leasehold','Share of Freehold','Virtual Freehold'], val=(l.lease_type or '') if l else '') }}
