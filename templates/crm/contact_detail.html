@@ -14,10 +14,19 @@
   <span class="current">{{ contact.full_name }}</span>
 </div>
 
-{% set status_colors = {
-  'New Enquiry': '#1c3160', 'Active Requirement': '#1a7f4b', 'Prospect': '#3a6ea5',
-  'Under Offer': '#c9820a', 'Current Tenant': '#0e5a34', 'Requirement Satisfied': '#5b6675',
-  'Inactive': '#8a939f', 'Archived': '#5f6368' } %}
+{# A status is shown with the badge the rest of the CRM uses for that meaning,
+   rather than with a colour written into this page. Eight hex values lived
+   here, none of them from the palette, so the one badge at the top of a
+   contact was the only thing on the record coloured by itself. #}
+{% set status_badges = {
+  'New Enquiry':           'badge-portal',
+  'Prospect':              'badge-portal',
+  'Active Requirement':    'badge-active',
+  'Current Tenant':        'badge-complete',
+  'Requirement Satisfied': 'badge-complete',
+  'Under Offer':           'badge-hold',
+  'Inactive':              'badge-muted',
+  'Archived':              'badge-muted' } %}
 
 <!-- ── Record toolbar ── -->
 <form id="contact-form" method="post" action="{{ url_for('contact_edit', id=contact.id) }}" data-inline-edit>
@@ -41,7 +50,7 @@
   <h2>{{ contact.full_name }}
     <span class="sub">&nbsp;{{ contact.contact_type or 'Contact' }}{% if contact.created_at %} &middot; registered {{ contact.created_at.strftime('%d/%m/%Y') }}{% endif %}</span>
   </h2>
-  <span class="badge" style="background:{{ status_colors.get(contact.status, '#5f6368') }};color:#fff">{{ contact.status or '—' }}</span>
+  <span class="badge {{ status_badges.get(contact.status, 'badge-muted') }}">{{ contact.status or '—' }}</span>
 </div>
 
 <div class="rec-cols">
@@ -129,15 +138,17 @@
 
     <div class="box box--grid">
       <div class="box-head">Contact Details</div>
+      {# Paired on purpose rather than by flow. The two numbers share a line
+         because they are the same kind of thing; the address takes the width
+         because it is long. Written out, it stays that way when a field is
+         added. #}
       <div class="frow">
         <div class="fcell fcell--label">Mobile</div>
         <div class="fcell fcell--edit"><input type="text" name="mobile" value="{{ contact.mobile or '' }}" placeholder="Not added"></div>
-      </div>
-      <div class="frow">
         <div class="fcell fcell--label">Telephone</div>
         <div class="fcell fcell--edit"><input type="text" name="phone" value="{{ contact.phone or '' }}" placeholder="Not added"></div>
       </div>
-      <div class="frow">
+      <div class="frow frow--full">
         <div class="fcell fcell--label">E-mail</div>
         <div class="fcell fcell--edit"><input type="text" name="email" value="{{ contact.email or '' }}" placeholder="Not added"></div>
       </div>
@@ -191,7 +202,7 @@
         property or on its instruction. Nothing here is suggested or matched.
       </p>
       {% else %}
-      <div class="empty" style="padding:14px 12px">No linked properties</div>
+      <div class="empty">No linked properties</div>
       {% endif %}
     </div>
     {% endif %}
@@ -230,8 +241,8 @@
         <div class="fcell fcell--edit">
           <input type="text" name="body" form="log-form" placeholder="Log a call, email or meeting…" required>
         </div>
-        <div class="fcell" style="flex:0 0 74px;justify-content:center">
-          <button class="btn btn-sm btn-primary" form="log-form" style="width:100%">Log</button>
+        <div class="fcell fcell--end">
+          <button class="btn btn-sm btn-primary" form="log-form">Log</button>
         </div>
       </div>
     </div>
@@ -245,10 +256,15 @@
         </span>
       </div>
       {% for e in contact.enquiries %}
+      {# The subject and what kind of enquiry it is belong together, so they
+         are one cell with the type beneath. As a column of its own it lined
+         up with nothing above or below it. #}
       <div class="frow">
-        <div class="fcell grow-2"><a href="{{ url_for('enquiry_detail', id=e.id) }}">{{ e.subject }}</a></div>
-        <div class="fcell">{{ e.enquiry_type or '—' }}</div>
-        <div class="fcell" style="flex:0 0 96px">
+        <div class="fcell fcell--stack">
+          <a href="{{ url_for('enquiry_detail', id=e.id) }}">{{ e.subject }}</a>
+          <span class="fsub">{{ e.enquiry_type or '—' }}</span>
+        </div>
+        <div class="fcell fcell--end">
           <span class="badge {{ 'badge-active' if e.status == 'Open' else 'badge-complete' if e.status == 'Won' else 'badge-hold' }}">{{ e.status }}</span>
         </div>
       </div>
@@ -263,8 +279,8 @@
         <div class="fcell fcell--edit grow-2">
           <input type="text" name="body" form="note-form" placeholder="Add a note…" required>
         </div>
-        <div class="fcell" style="flex:0 0 74px;justify-content:center">
-          <button class="btn btn-sm btn-outline" form="note-form" style="width:100%">Add</button>
+        <div class="fcell fcell--end">
+          <button class="btn btn-sm btn-outline" form="note-form">Add</button>
         </div>
       </div>
       {% for a in contact.activities %}
@@ -277,7 +293,7 @@
             {{ a.body }}
           {% endif %}
         </div>
-        <div class="fcell" style="flex:0 0 92px;color:#9aa0a6;font-size:11.5px">{{ a.author or '—' }}</div>
+        <div class="fcell fcell--meta fcell--top">{{ a.author or '—' }}</div>
       </div>
       {% else %}
       <div class="empty">No activity recorded yet.</div>

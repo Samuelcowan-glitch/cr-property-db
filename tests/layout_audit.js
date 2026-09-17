@@ -11,6 +11,8 @@
      - overflow: anything wider than what contains it, or a page that scrolls
        sideways
      - gaps: spacing between siblings that is nearly-but-not-quite equal
+     - rules: a divider inside a box that falls where nothing else in the
+       column does, which is a width written into one row by hand
 
    Run the server first:  python tests/layout_server.py 8099
    Then:  node tests/layout_audit.js [--json]
@@ -30,6 +32,8 @@ const PAGES = [
   ['contacts by type', '/contacts?type=Landlord'],
   ['contact record', '/contacts/1'],
   ['tenant record', '/contacts/2'],
+  ['buyer record', '/contacts/3'],
+  ['seller record', '/contacts/4'],
   ['add contact', '/contacts/new'],
   ['organisations', '/organisations'],
   ['organisation record', '/organisations/1'],
@@ -82,7 +86,7 @@ function measure() {
   const sel = (what) => HOLDERS.map((h) => h + ' ' + what).join(', ');
   const PAGE_BODY = sel('*');
 
-  const out = { edges: [], controls: [], overflow: [], gaps: [], bands: [] };
+  const out = { edges: [], controls: [], overflow: [], gaps: [], bands: [], rules: [] };
   const seen = (el) => {
     const r = el.getBoundingClientRect();
     const s = getComputedStyle(el);
@@ -241,6 +245,65 @@ function measure() {
     }
   }
 
+  // ── Boxes down a column rule their edges in the same places ───────────────
+  // Every box in a column is the same width, so the dividers inside them fall
+  // on the same few positions. One that turns up in a single row, where the
+  // rest of the column agrees on another, is a width written into that row by
+  // hand rather than taken from the system. Three boxes each ruling their own
+  // right-hand edge — 74px, 92px and 96px — is what "the boxes do not line up"
+  // turned out to mean once it was measured.
+  //
+  // A row inside a .box--grid is display: contents and has no rectangle of its
+  // own, so the cells are measured and the row is only named.
+  for (const col of document.querySelectorAll(sel('.rec-col'))) {
+    if (!seen(col)) continue;
+    const tally = new Map();
+    const rows = [];
+    for (const row of col.querySelectorAll('.frow')) {
+      const cells = [...row.children].filter((c) => seen(c) && !placedOnPurpose(c));
+      if (cells.length < 2) continue;
+      const edges = cells.slice(0, -1)
+        .map((c) => Math.round(c.getBoundingClientRect().right));
+      rows.push({ row, edges });
+      edges.forEach((e) => tally.set(e, (tally.get(e) || 0) + 1));
+    }
+    // Fewer than three rows is too little for the column to have agreed on
+    // anything worth measuring against.
+    if (rows.length < 3) continue;
+
+    // A box laid out on a grid has agreed column boundaries, and a divider on
+    // one of them is in the right place even if only a single row happens to
+    // reach it. What is wrong is a divider at a width of its own — which is
+    // what a flex row with an inline pixel width produces, and what a grid
+    // track never is.
+    const tracks = new Map();
+    const boundaries = (box) => {
+      if (tracks.has(box)) return tracks.get(box);
+      let out2 = [];
+      const s = getComputedStyle(box);
+      if (s.display === 'grid') {
+        const r = box.getBoundingClientRect();
+        let x = r.left + parseFloat(s.borderLeftWidth) + parseFloat(s.paddingLeft);
+        for (const t of s.gridTemplateColumns.split(/\s+/)) {
+          const n = parseFloat(t);
+          if (!isNaN(n)) { x += n; out2.push(Math.round(x)); }
+        }
+      }
+      tracks.set(box, out2);
+      return out2;
+    };
+
+    for (const { row, edges } of rows) {
+      const box = row.closest('.box') || col;
+      const onTrack = boundaries(box);
+      const lonely = edges.filter((e) => tally.get(e) === 1 &&
+        !onTrack.some((t) => Math.abs(t - e) <= 1));
+      if (lonely.length) {
+        out.rules.push({ row: name(row), box: name(box), at: lonely.join(', ') });
+      }
+    }
+  }
+
   out.counted = document.querySelectorAll(PAGE_BODY).length;
   return out;
 }
@@ -283,7 +346,8 @@ function measure() {
       }
       totalSeen += found.counted;
       const total = found.edges.length + found.controls.length +
-                    found.overflow.length + found.bands.length;
+                    found.overflow.length + found.bands.length +
+                    found.rules.length;
       if (total) report.push({ page: label, size, ...found });
     }
   }
@@ -322,6 +386,11 @@ function measure() {
       n++;
       console.log(`   BAND   ${b.band} in ${b.box} stops short of the box ` +
         `(${b.left}px left, ${b.right}px right)`);
+    }
+    for (const c of r.rules || []) {
+      n++;
+      console.log(`   RULE   ${c.row} in ${c.box} divides at ${c.at}, ` +
+        `where nothing else in the column does`);
     }
   }
   console.log(`\n${n} problem(s) across ${report.length} page/width combinations.`);

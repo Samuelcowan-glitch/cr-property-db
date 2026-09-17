@@ -608,6 +608,23 @@ table.rec-table td.actions { white-space: nowrap; text-align: right; }
 .box--grid > .frow > .fcell { border-bottom: 1px solid var(--cell-line); }
 .box--grid > .frow:last-child > .fcell { border-bottom: 0; }
 
+/* A row is a row.
+   The cells dissolve into the box's grid, and without this they simply flow:
+   a box of three label-and-value rows came out as two lines, the third row
+   leaving two empty columns beside it, and adding a field re-paired every row
+   after it. What is written as a row has to occupy one, so the first cell of
+   each starts the line and the last one finishes it. A row of two then spans
+   the width, a row of four fills the columns, and a row of three has its last
+   cell take the rest — whatever the box holds, and however that changes. */
+.box--grid > .frow > .fcell:first-child { grid-column-start: 1; }
+/* The last cell SPANS what is left of the line. Ending it at the last line
+   without saying where it starts is not that: a cell with only an end given
+   takes one column, so a label-and-value row put its value in the fourth
+   column with two empty ones between. Stated by how many cells the row holds,
+   which is the one thing the row knows about itself. */
+.box--grid > .frow > .fcell:nth-child(2):last-child { grid-column: 2 / -1; }
+.box--grid > .frow > .fcell:nth-child(3):last-child { grid-column: 3 / -1; }
+
 /* A row holding one label and one value stretches across all four columns. */
 .box--grid > .frow--full > .fcell:last-child { grid-column: 2 / -1; }
 
@@ -619,11 +636,31 @@ table.rec-table td.actions { white-space: nowrap; text-align: right; }
 .box--grid .fcell--pair { gap: 6px; }
 
 /* Stacked, each label above its own value, when there is no room for four
-   columns — measured on the panel the box is in as well as the window. */
-@container (max-width: 620px) { .box--grid { grid-template-columns: 118px minmax(0, 1fr); } }
-@container (max-width: 420px) { .box--grid { grid-template-columns: 1fr; } }
-@media (max-width: 700px) { .box--grid { grid-template-columns: 118px minmax(0, 1fr); } }
-@media (max-width: 520px) { .box--grid { grid-template-columns: 1fr; } }
+   columns — measured on the panel the box is in as well as the window.
+   The spans above are written for four columns and have to be restated for
+   two and for one: a cell told to run from line 3 where the grid has only two
+   tracks does not span what is left of the line, it invents a column to the
+   right of the box, and everything that spans the box stops short of it. */
+@container (max-width: 620px) {
+  .box--grid { grid-template-columns: 118px minmax(0, 1fr); }
+  .box--grid > .frow > .fcell:nth-child(2):last-child,
+  .box--grid > .frow > .fcell:nth-child(3):last-child { grid-column: 2 / -1; }
+}
+@container (max-width: 420px) {
+  .box--grid { grid-template-columns: 1fr; }
+  .box--grid > .frow > .fcell:nth-child(2):last-child,
+  .box--grid > .frow > .fcell:nth-child(3):last-child { grid-column: 1 / -1; }
+}
+@media (max-width: 700px) {
+  .box--grid { grid-template-columns: 118px minmax(0, 1fr); }
+  .box--grid > .frow > .fcell:nth-child(2):last-child,
+  .box--grid > .frow > .fcell:nth-child(3):last-child { grid-column: 2 / -1; }
+}
+@media (max-width: 520px) {
+  .box--grid { grid-template-columns: 1fr; }
+  .box--grid > .frow > .fcell:nth-child(2):last-child,
+  .box--grid > .frow > .fcell:nth-child(3):last-child { grid-column: 1 / -1; }
+}
 @media (max-width: 700px) { .box--grid .frow--full > .fcell:last-child { grid-column: auto; } }
 
 /* ── Record pages and lists ────────────────────────────────────────────────
@@ -722,7 +759,17 @@ table.rec-table td.actions { white-space: nowrap; text-align: right; }
 
 /* A row of controls rather than a label and a value: the field takes what is
    left and the button keeps the last column. */
-.box--grid .frow--action > .fcell:first-child { grid-column: 1 / -2; }
+/* An action row — a field and the button that acts on it — is laid out across
+   the box rather than dissolved into its columns. Inside the grid its trailing
+   cell took a whole column of the field grid, so the button's edge landed on a
+   grid track while the same button in an ordinary box sat at the shared end
+   width, and the two boxes ruled their right-hand edge in different places.
+   As its own flex line it uses the same end column as everything else. */
+.box--grid > .frow--action {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: stretch;
+}
 .box--grid .frow--action > .fcell:last-child { justify-content: center; }
 
 /* ── Website listing, inside the project record ────────────────────────────

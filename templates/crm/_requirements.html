@@ -149,16 +149,16 @@
     {% endfor %}
   </ul>
   {% elif not has_requirement(contact) %}
-  <div class="empty" style="padding:14px 12px">
+  <div class="empty">
     Nothing to match on yet. Fill in the requirement and anything that fits
     will appear here.
   </div>
   {% elif contact.req_status in ('Requirement Satisfied', 'Withdrawn') %}
-  <div class="empty" style="padding:14px 12px">
+  <div class="empty">
     This requirement is {{ contact.req_status|lower }}, so nothing is being matched.
   </div>
   {% else %}
-  <div class="empty" style="padding:14px 12px">
+  <div class="empty">
     Nothing available fits this requirement at the moment.
   </div>
   {% endif %}

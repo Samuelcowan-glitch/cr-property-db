@@ -239,6 +239,110 @@ td.num, th.num, .money, .figure {
 }
 .card-title { color: var(--cr-navy); }
 
+/* ── The record grid ──────────────────────────────────────────────────────
+   Every record page — a contact, a property, an instruction — is columns of
+   boxes, and every box is rows of cells. The rows only line up if they agree
+   in advance on where the columns fall, and the way to make them agree is to
+   name the widths once here rather than to write a number into each row.
+
+   A row reads: [ label ] [ whatever it holds ] [ end ]
+
+   The label column and the end column are fixed and shared, so the first
+   divider and the last divider land in the same place in every box down a
+   column, whatever the box holds. Only the middle stretches.
+
+   These had been written inline, per row, as flex:0 0 74px, 92px and 96px —
+   three widths for the one column, so the Follow-up box, the Enquiries box
+   and the Journal each ruled their own edge in a different place. */
+:root {
+  --cr-col-end: 96px;      /* badges, buttons, authors — the trailing column */
+  --cr-row-pad: 6px 9px;   /* one padding for every cell in every box */
+}
+
+.fcell--end {
+  flex: 0 0 var(--cr-col-end);
+  justify-content: center;
+  gap: 4px;
+}
+/* The same column, holding quiet text rather than a control. */
+.fcell--meta {
+  flex: 0 0 var(--cr-col-end);
+  justify-content: flex-start;
+  color: var(--cr-muted);
+  font-size: 11.5px;
+}
+/* A button in the end column fills it, so the column edge is the button edge
+   rather than a button floating inside a wider cell. */
+.fcell--end > .btn { width: 100%; }
+
+/* Two lines that belong together — a heading and what kind of thing it is —
+   in one cell, rather than in two columns that line up with nothing. */
+.fcell--stack {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 1px;
+}
+.fcell--stack > .fsub,
+.fsub {
+  color: var(--cr-muted);
+  font-size: 11px;
+}
+
+/* One heading height for every box on the page. A heading holding a badge or
+   a link measured a pixel taller than one holding only its title, which is
+   exactly the sort of thing that reads as untidy without being nameable. */
+.box-head {
+  min-height: 32px;
+  box-sizing: border-box;
+  padding: var(--cr-row-pad);
+  background: linear-gradient(var(--cr-card), #f6f2ea);
+  border-bottom: var(--cr-hair) solid var(--cr-rule);
+  color: var(--cr-navy);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: var(--cr-track);
+  text-transform: uppercase;
+}
+.box-head > .box-title { letter-spacing: inherit; }
+.box-head .box-actions {
+  text-transform: none;
+  letter-spacing: .01em;
+  font-size: 11px;
+  color: var(--cr-muted);
+}
+.box-head .box-actions a { color: var(--cr-navy); }
+
+/* A badge is one height wherever it sits — in a heading, in a cell, beside a
+   record title — so a row of them has one baseline. */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  vertical-align: middle;
+  /* Stated rather than left to the font. Without a line-height of its own a
+     badge measured 21px against one word and 22px against another, so a row
+     of them sat on two baselines a pixel apart. */
+  height: 20px;
+  line-height: 14px;
+  padding: 2px 7px;
+}
+
+/* Boxes down a column, and the column itself. */
+.box {
+  background: var(--cr-card);
+  border: var(--cr-hair) solid var(--cr-rule);
+}
+.rec-col > .box { width: 100%; }
+
+/* One padding for an empty box, rather than one written into each. */
+.empty {
+  padding: 14px 12px;
+  color: var(--cr-muted);
+  font-size: 12px;
+}
+
 /* ── Panels on the organiser ──────────────────────────────────────────────
    These carried a hardcoded orange gradient of their own — a colour from no
    palette, on the busiest page in the CRM, shouting over everything beside it.
