@@ -175,4 +175,39 @@ for box in plan:
     assert box.y1 <= floor + 1, 'the floor plan runs into the footer band'
 print('4. the mark stays on the page, and nothing runs into the footer')
 
+
+# ─── 6. On page two it stands beside the details, not adrift of them ────────
+# The mark there was once centred in a 72pt slot written under the heading,
+# that being its height at the time. Drawn larger than the slot it hung above
+# the heading, below the last line, and over the rule above the small print.
+page = doc[1]
+H = page.rect.height
+found = logos_on(page)
+assert len(found) == 1, f'page two carries {len(found)} marks'
+mark_top, mark_bottom = H - found[0].y0, H - found[0].y1
+
+words = page.get_text('words')
+
+
+def word(term):
+    hit = [w for w in words if w[4] == term]
+    assert hit, f'page two does not say {term!r}'
+    return hit[0]
+
+
+heading_top = H - word('Contact')[1]
+details_bottom = H - word('www.cowanandrutter.co.uk')[3]
+small_print = H - word('Misrepresentation')[1] + 4
+
+assert mark_bottom > small_print, \
+    f'the mark reaches {mark_bottom:.0f}, over the small print at {small_print:.0f}'
+assert mark_bottom > details_bottom - 14, \
+    f'the mark hangs {details_bottom - mark_bottom:.0f}pt below the last detail'
+assert abs(mark_top - heading_top) < 18, \
+    f'the mark starts {mark_top - heading_top:.0f}pt away from the heading'
+off = abs((mark_top + mark_bottom) / 2 - (heading_top + details_bottom) / 2)
+assert off < 12, f'the mark sits {off:.0f}pt off the centre of the details'
+print(f'5. page two draws it with the details — centres within {off:.0f}pt, '
+      f'{mark_bottom - small_print:.0f}pt above the small print')
+
 print('\nLOGO SIZE: ALL CHECKS PASSED')

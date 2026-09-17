@@ -588,8 +588,15 @@ def _grey_panel(canvas, x, y, w, h, blocks):
     return cursor
 
 
-def contact_block(canvas, x, y, w, data):
-    """Who to speak to, with the mark beside it, right-aligned as in the house style."""
+def contact_block(canvas, x, y, w, data, floor=None):
+    """Who to speak to, with the mark beside it, right-aligned as in the house style.
+
+    The mark is centred on the details it stands beside. It used to be centred
+    in a 72pt slot fixed under the heading, which was the mark's own height
+    when that was written; once the mark was drawn larger than the slot it hung
+    above the heading and below the last line, and crossed the rule over the
+    small print. `floor` is the lowest the mark may be drawn.
+    """
     right = x + w
     # The mark is flush with the right edge and the details are set to its
     # left. This reserved its own width of 132pt when the mark here was drawn
@@ -612,18 +619,26 @@ def contact_block(canvas, x, y, w, data):
         canvas.drawRightString(text_right, line, clean(text))
         line -= 13
 
-    # Centred in the 72pt slot beneath the 'Contact' heading, whatever height
-    # the mark is drawn at.
-    slot = 72
-    draw_logo(canvas, right - logo_w, y - 2 - slot + (slot - LOGO_HEIGHT) / 2)
+    # Centred on the details as actually set: from the top of the 'Contact'
+    # heading down to the baseline of the last line written above.
+    heading_top = y + 8                      # cap height of the 11pt heading
+    last_baseline = line + 13
+    middle = (heading_top + last_baseline) / 2
+    logo_y = middle - LOGO_HEIGHT / 2
+    if floor is not None:
+        logo_y = max(logo_y, floor)
+    draw_logo(canvas, right - logo_w, logo_y)
     return line
+
+
+DISCLAIMER_RULE = 12          # the rule sits this far above the small print
 
 
 def disclaimer_block(canvas, x, y, w):
     """The small print, with a rule above it, as on the reference."""
     canvas.setStrokeColor(INK)
     canvas.setLineWidth(0.7)
-    canvas.line(x, y + 12, x + w, y + 12)
+    canvas.line(x, y + DISCLAIMER_RULE, x + w, y + DISCLAIMER_RULE)
     canvas.setFont(face('semibold'), 6.6)
     canvas.setFillColor(INK)
     canvas.drawString(x, y, DISCLAIMER_TITLE)
@@ -686,8 +701,10 @@ def detail_page(canvas, data, photos):
 
     # Page two carries the contact details and the disclaimer in both formats,
     # because it is the same page two in both.
-    contact_block(canvas, right_x, 128, right_w, data)
-    disclaimer_block(canvas, right_x, 30, right_w)
+    disclaimer_y = 30
+    contact_block(canvas, right_x, 128, right_w, data,
+                  floor=disclaimer_y + DISCLAIMER_RULE + 8)
+    disclaimer_block(canvas, right_x, disclaimer_y, right_w)
 
 
 FOOTER_BASE = 16                      # where the mark sits
