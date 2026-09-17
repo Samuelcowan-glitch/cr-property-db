@@ -339,7 +339,7 @@ def draw_image(canvas, source, x, y, w, h, fit=False):
 # The mark is drawn at one size on every page. It was 52pt on the cover, 72pt
 # beside the contact details and 22pt in the footer, which made four pages of
 # one document look like three different ones.
-LOGO_HEIGHT = 60
+LOGO_HEIGHT = 100
 
 # Its own proportions, measured from the file: 1106 x 765. Every reservation of
 # space for the mark is worked out from the height rather than written down, so
