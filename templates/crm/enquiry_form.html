@@ -333,7 +333,9 @@
       <button type="submit" class="btn btn-primary">{{ 'Save Changes' if enquiry else 'Record Enquiry' }}</button>
       {% if enquiry %}
         <a href="{{ url_for('enquiries_list') }}" class="btn btn-secondary">Cancel</a>
-        <button type="submit" form="enquiry-delete-form" class="btn btn-danger btn-sm" style="margin-left:auto">Delete</button>
+        {# Full height, like the two beside it: a short button in a row of tall
+           ones is the sort of thing that reads as a mistake. #}
+        <button type="submit" form="enquiry-delete-form" class="btn btn-danger" style="margin-left:auto">Delete</button>
       {% else %}
         <a href="{{ url_for('enquiries_list') }}" class="btn btn-secondary">Cancel</a>
       {% endif %}

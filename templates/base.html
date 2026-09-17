@@ -7,6 +7,10 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/crm-grid.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/enquiries.css') }}">
+  {# The house style, last, so it retunes the tokens the sheets above read and
+     gives the shared components their character. One system for every page:
+     nothing below this line is written for a page of its own. #}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/cr-design.css') }}">
 </head>
 <body>
 <div class="shell">

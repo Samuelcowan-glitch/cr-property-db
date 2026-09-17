@@ -1,0 +1,590 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   Cowan & Rutter — the house style of the CRM
+   ══════════════════════════════════════════════════════════════════════════
+
+   One design system for the whole application. It is loaded last, on every
+   page, and it works by retuning the tokens the rest of the CSS already reads
+   and then giving the shared components their character. Nothing here is
+   written for a particular page: a page that uses .card, .btn, .badge and
+   .table gets the house style by using them, which is the only way every
+   section can go on looking like the same piece of software.
+
+   The look: a boutique agency's stationery crossed with the instrument panel
+   of something from 1978. Warm paper rather than grey, ink navy and the red
+   from the mark, hairline rules, uppercase tracked labels for the small print,
+   figures set in a monospace so columns of money line up, square corners with
+   one chamfer, and buttons that sit on a hard shadow and press into it.
+
+   Restraint is the point. The period detail lives in the borders, the tracking
+   and the way things respond to a cursor. It is never allowed to cost
+   legibility: body text is upright and unstyled, contrast is kept high, and
+   nothing important is carried by colour alone.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── Ink and paper ──────────────────────────────────────────────────────
+     The navy is the mark's own. The paper is warm because a warm ground is
+     what makes the whole thing read as stationery rather than as a database. */
+  --cr-ink:        #17163a;   /* headings, body text at full strength */
+  --cr-navy:       #2e2c71;   /* the mark's navy — structure and primary */
+  --cr-navy-deep:  #100f2c;   /* the sidebar, the darkest ground */
+  --cr-paper:      #f2eee5;   /* the application background */
+  --cr-card:       #fffefb;   /* anything raised off the paper */
+  --cr-rule:       #d9d1c2;   /* hairlines, table rules, field borders */
+  --cr-rule-soft:  #e9e3d8;
+  /* The watermark grid on the ground. Barely off the paper on purpose: it is
+     meant to be felt on an empty page, not read on a full one. */
+  --cr-grid:       #e7e1d5;
+  --cr-muted:      #6b6858;   /* secondary text, on paper */
+
+  /* ── Accents ────────────────────────────────────────────────────────────
+     The red is the mark's. The teal and amber are its period companions,
+     used only for meaning — a state, a total, a warning — never decoration. */
+  --cr-red:        #d3402c;
+  --cr-red-deep:   #a82f1f;
+  --cr-red-wash:   #fbeae6;
+  --cr-teal:       #1d6f66;
+  --cr-teal-wash:  #e4f0ed;
+  --cr-amber:      #b07213;
+  --cr-amber-wash: #f9efdc;
+
+  /* ── Measure ────────────────────────────────────────────────────────────
+     One chamfer, one hairline, one hard shadow, reused everywhere. */
+  --cr-chamfer:    7px;
+  --cr-hair:       1px;
+  --cr-lift:       2px;
+  --cr-ease:       cubic-bezier(.2, .7, .3, 1);
+
+  --cr-track:      .14em;     /* the tracking on every uppercase label */
+  --cr-mono:       ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas,
+                   'Liberation Mono', monospace;
+
+  /* ── Retuning what the rest of the CSS already reads ────────────────────
+     These names are used throughout the older stylesheets. Changing them here
+     re-colours every page at once rather than page by page. */
+  --navy:     var(--cr-navy-deep);
+  --navy2:    var(--cr-navy);
+  --navy3:    #3a3785;
+  --orange:   var(--cr-red);
+  --orange-l: var(--cr-red-deep);
+  --orange-bg:var(--cr-red-wash);
+  --blue:     var(--cr-navy);
+  --blue-l:   var(--cr-ink);
+  --teal:     var(--cr-teal);
+  --grey-50:  var(--cr-paper);
+  --grey-100: #ebe5d9;
+  --grey-200: var(--cr-rule);
+  --grey-400: #a49c8a;        /* placeholder text and quiet borders, warmed */
+  --grey-600: var(--cr-muted);
+  --grey-700: #46432f;
+  --text:     var(--cr-ink);
+  --success:   var(--cr-teal);
+  --success-bg:var(--cr-teal-wash);
+  --danger:    var(--cr-red-deep);
+  --danger-bg: var(--cr-red-wash);
+  --info:      var(--cr-navy);
+  --info-bg:   #e8e7f4;
+}
+
+/* ── The ground ───────────────────────────────────────────────────────────
+   A hairline grid, at the opacity of a watermark. It is what stops a wide
+   empty page reading as a blank browser window, and it is the one purely
+   decorative thing in the system. */
+body {
+  background-color: var(--cr-paper);
+  background-image:
+    linear-gradient(var(--cr-grid) var(--cr-hair), transparent var(--cr-hair)),
+    linear-gradient(90deg, var(--cr-grid) var(--cr-hair), transparent var(--cr-hair));
+  background-size: 76px 76px, 76px 76px;
+  background-attachment: fixed;
+  color: var(--cr-ink);
+}
+
+/* ── The small print ──────────────────────────────────────────────────────
+   Every label, column heading, badge and section title in the CRM is set the
+   same way: small, uppercase, tracked. It is the single strongest thing
+   holding the look together, so it is defined once. */
+.cr-label,
+.form-group > label,
+.form-section,
+.card-title,
+.kpi-label, .stat-label, .stat-lbl,
+.nav-section-label,
+.table thead th, table thead th,
+.badge, .tab-btn {
+  font-weight: 600;
+  letter-spacing: var(--cr-track);
+  text-transform: uppercase;
+  font-size: 10.5px;
+  line-height: 1.45;
+}
+
+/* Figures line up in columns, which is worth a typeface of its own. */
+.kpi-figure, .stat-num, .stat-value, .cr-figure,
+td.num, th.num, .money, .figure {
+  font-family: var(--cr-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.01em;
+}
+
+/* ── Sidebar ──────────────────────────────────────────────────────────────
+   The darkest thing on screen, with a hairline of the mark's red down its
+   edge. The active item is marked by a block rather than a wash, so it can be
+   found at a glance from across a desk. */
+.sidebar {
+  background: var(--cr-navy-deep);
+  border-right: var(--cr-hair) solid #000;
+  box-shadow: inset -3px 0 0 var(--cr-red);
+}
+.sidebar-profile {
+  border-bottom: var(--cr-hair) solid rgba(255,255,255,.14);
+  padding-bottom: 14px;
+}
+.sidebar-avatar {
+  background: var(--cr-red);
+  color: #fff;
+  border-radius: 0;
+  clip-path: polygon(var(--cr-chamfer) 0, 100% 0, 100% calc(100% - var(--cr-chamfer)),
+                     calc(100% - var(--cr-chamfer)) 100%, 0 100%, 0 var(--cr-chamfer));
+  font-weight: 700;
+  letter-spacing: .06em;
+}
+.sidebar-profile-info h2 {
+  letter-spacing: .04em;
+  font-weight: 600;
+}
+.sidebar-profile-info p {
+  text-transform: uppercase;
+  letter-spacing: var(--cr-track);
+  font-size: 9.5px;
+  color: rgba(255,255,255,.5);
+}
+.nav-section-label {
+  color: rgba(255,255,255,.42);
+  padding-left: 18px;
+}
+.nav-divider { border-top: var(--cr-hair) solid rgba(255,255,255,.14); }
+
+.sidebar-nav a {
+  position: relative;
+  color: rgba(255,255,255,.76);
+  letter-spacing: .02em;
+  border-radius: 0;
+  transition: background .14s var(--cr-ease), color .14s var(--cr-ease),
+              padding-left .14s var(--cr-ease);
+}
+.sidebar-nav a::before {
+  content: '';
+  position: absolute; left: 0; top: 6px; bottom: 6px;
+  width: 3px; background: transparent;
+  transition: background .14s var(--cr-ease);
+}
+.sidebar-nav a:hover {
+  background: rgba(255,255,255,.06);
+  color: #fff;
+  padding-left: 20px;
+}
+.sidebar-nav a:hover::before { background: rgba(211,64,44,.6); }
+.sidebar-nav a.active {
+  background: rgba(255,255,255,.09);
+  color: #fff;
+}
+.sidebar-nav a.active::before { background: var(--cr-red); }
+.sidebar-nav a.nav-more {
+  text-transform: none;
+  font-size: 12px;
+  color: rgba(255,255,255,.6);
+}
+.sidebar-nav a.nav-more.active { color: #fff; }
+
+/* ── Topbar ───────────────────────────────────────────────────────────────
+   A rule under it rather than a shadow: the page is paper, and paper is ruled. */
+.topbar {
+  background: var(--cr-card);
+  border-bottom: var(--cr-hair) solid var(--cr-rule);
+  box-shadow: 0 1px 0 rgba(23,22,58,.05);
+}
+.topbar-title {
+  font-weight: 600;
+  letter-spacing: .02em;
+  color: var(--cr-ink);
+}
+
+/* ── Breadcrumb ───────────────────────────────────────────────────────── */
+.breadcrumb {
+  text-transform: uppercase;
+  letter-spacing: var(--cr-track);
+  font-size: 10px;
+  color: var(--cr-muted);
+}
+.breadcrumb .sep { color: var(--cr-rule); }
+.breadcrumb .current { color: var(--cr-ink); font-weight: 600; }
+
+/* ── Cards ────────────────────────────────────────────────────────────────
+   Square, hairlined, one chamfered corner, sitting on a hard shadow rather
+   than a blurred one. The chamfer is the system's signature and is used on
+   exactly three things: cards, primary buttons and modals. */
+.card {
+  background: var(--cr-card);
+  border: var(--cr-hair) solid var(--cr-rule);
+  border-radius: 0;
+  box-shadow: var(--cr-lift) var(--cr-lift) 0 rgba(23,22,58,.06);
+  clip-path: polygon(0 0, calc(100% - var(--cr-chamfer)) 0, 100% var(--cr-chamfer),
+                     100% 100%, 0 100%);
+}
+.card-header {
+  border-bottom: var(--cr-hair) solid var(--cr-rule);
+  box-shadow: 0 2px 0 -1px var(--cr-rule-soft);   /* the second, lighter rule */
+  background: linear-gradient(var(--cr-card), #faf7f0);
+}
+.card-title { color: var(--cr-navy); }
+
+/* ── Panels on the organiser ──────────────────────────────────────────────
+   These carried a hardcoded orange gradient of their own — a colour from no
+   palette, on the busiest page in the CRM, shouting over everything beside it.
+   They are the same object as a card and are now headed like one: an ink band,
+   the title in small caps, the mark's red as a hairline under it. */
+.org-panel {
+  background: var(--cr-card);
+  border: var(--cr-hair) solid var(--cr-rule);
+  border-radius: 0;
+  box-shadow: var(--cr-lift) var(--cr-lift) 0 rgba(23,22,58,.05);
+}
+.org-panel > header {
+  background: var(--cr-navy);
+  color: #fff;
+  border-bottom: 2px solid var(--cr-red);
+  font-weight: 600;
+  font-size: 10.5px;
+  letter-spacing: var(--cr-track);
+  text-transform: uppercase;
+  padding: 7px 10px;
+}
+.org-panel > header .count {
+  font-family: var(--cr-mono);
+  letter-spacing: 0;
+  opacity: .75;
+}
+.org-panel > header a {
+  text-transform: none;
+  letter-spacing: .01em;
+  font-size: 11px;
+  color: rgba(255,255,255,.85);
+}
+.org-panel > header a:hover { color: #fff; }
+.org-row { border-bottom: var(--cr-hair) solid var(--cr-rule-soft); }
+.org-row:hover { background: #fdf6e8; }
+
+/* ── Section headings inside a form or a card ─────────────────────────── */
+.form-section {
+  color: var(--cr-navy);
+  border-bottom: var(--cr-hair) solid var(--cr-rule);
+  padding-bottom: 5px;
+}
+.form-section::before {
+  content: '';
+  display: inline-block; width: 14px; height: 2px;
+  background: var(--cr-red);
+  vertical-align: middle; margin-right: 8px;
+  position: relative; top: -1px;
+}
+
+/* ── Buttons ──────────────────────────────────────────────────────────────
+   The most-used object in the CRM, so the one most worth giving character to.
+   Square, tracked, sitting on a hard offset shadow that it presses down into —
+   the tactile part of the period, and genuinely useful: the press is
+   unmistakable. Height and spacing are left exactly as they were, so nothing
+   reflows. */
+.btn {
+  border-radius: 0;
+  font-weight: 600;
+  font-size: 11.5px;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  transition: background .14s var(--cr-ease), color .14s var(--cr-ease),
+              border-color .14s var(--cr-ease), box-shadow .1s var(--cr-ease),
+              transform .1s var(--cr-ease);
+}
+.btn:active:not(:disabled) {
+  transform: translate(var(--cr-lift), var(--cr-lift));
+  box-shadow: none !important;
+}
+.btn:focus-visible {
+  outline: 2px solid var(--cr-red);
+  outline-offset: 2px;
+}
+
+/* Primary — the mark's navy, on a red shadow, with the chamfer. */
+.btn-primary {
+  background: var(--cr-navy);
+  border-color: var(--cr-navy);
+  color: #fff;
+  box-shadow: var(--cr-lift) var(--cr-lift) 0 var(--cr-red);
+  clip-path: polygon(0 0, calc(100% - var(--cr-chamfer)) 0, 100% var(--cr-chamfer),
+                     100% 100%, 0 100%);
+}
+.btn-primary:hover {
+  background: var(--cr-ink);
+  border-color: var(--cr-ink);
+  color: #fff;
+  box-shadow: 3px 3px 0 var(--cr-red);
+}
+
+/* Secondary — paper, inked border, an ink shadow. */
+.btn-secondary {
+  background: var(--cr-card);
+  color: var(--cr-navy);
+  border-color: var(--cr-navy);
+  box-shadow: var(--cr-lift) var(--cr-lift) 0 rgba(46,44,113,.22);
+}
+.btn-secondary:hover { background: #f4f0e7; color: var(--cr-ink); }
+
+/* Outline — the quiet one. No shadow until it is pointed at. */
+.btn-outline {
+  background: transparent;
+  border-color: var(--cr-rule);
+  color: var(--cr-muted);
+  box-shadow: none;
+}
+.btn-outline:hover {
+  background: var(--cr-card);
+  border-color: var(--cr-navy);
+  color: var(--cr-navy);
+  box-shadow: var(--cr-lift) var(--cr-lift) 0 rgba(46,44,113,.18);
+}
+
+.btn-danger {
+  background: var(--cr-card);
+  color: var(--cr-red-deep);
+  border-color: #e0b6ae;
+  box-shadow: none;
+}
+.btn-danger:hover {
+  background: var(--cr-red-deep);
+  border-color: var(--cr-red-deep);
+  color: #fff;
+  box-shadow: var(--cr-lift) var(--cr-lift) 0 rgba(168,47,31,.28);
+}
+
+.btn-orange {
+  background: var(--cr-red);
+  border-color: var(--cr-red);
+  color: #fff;
+  box-shadow: var(--cr-lift) var(--cr-lift) 0 rgba(23,22,58,.3);
+}
+.btn-orange:hover { background: var(--cr-red-deep); border-color: var(--cr-red-deep); }
+
+/* A small button keeps the character but loses the chamfer, which at that
+   size reads as a chipped corner rather than a detail. */
+.btn-sm { letter-spacing: .07em; font-size: 10.5px; }
+.btn-sm.btn-primary { clip-path: none; }
+.btn-icon { clip-path: none; }
+
+/* The smallest buttons — Change, Remove, the inline actions inside a picker or
+   a table cell — keep their sentence case. Tracked capitals need room, and
+   these sit in rows measured to the pixel: set in capitals they grew wide
+   enough to push their own container out of shape. At this size the tracking
+   also stops being a detail and starts being hard to read. */
+.btn-xs {
+  text-transform: none;
+  letter-spacing: .01em;
+  font-size: 11.5px;
+  font-weight: 500;
+  clip-path: none;
+  box-shadow: none;
+}
+.btn-xs:hover { box-shadow: 1px 1px 0 rgba(46,44,113,.18); }
+.btn-xs:active:not(:disabled) { transform: translate(1px, 1px); }
+
+/* ── Fields ───────────────────────────────────────────────────────────────
+   Square, hairlined, with a top inset so they read as recessed. Focus is the
+   mark's red, at two pixels, because a field you cannot find is the fastest
+   way to make software feel slow. */
+input[type=text], input[type=email], input[type=password], input[type=number],
+input[type=date], input[type=search], input[type=tel], input[type=url],
+select, textarea, .form-group input, .form-group select, .form-group textarea {
+  background: var(--cr-card);
+  border: var(--cr-hair) solid var(--cr-rule);
+  border-radius: 0;
+  color: var(--cr-ink);
+  box-shadow: inset 0 1px 2px rgba(23,22,58,.05);
+  transition: border-color .14s var(--cr-ease), box-shadow .14s var(--cr-ease),
+              background .14s var(--cr-ease);
+}
+input:hover:not(:disabled), select:hover:not(:disabled), textarea:hover:not(:disabled) {
+  border-color: #bdb3a0;
+}
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--cr-navy);
+  background: #fff;
+  box-shadow: 0 0 0 2px rgba(211,64,44,.22), inset 0 1px 2px rgba(23,22,58,.04);
+}
+input::placeholder, textarea::placeholder { color: #a49c8a; }
+input:disabled, select:disabled, textarea:disabled {
+  background: #efeae0; color: var(--cr-muted);
+}
+
+/* A field's label sits above it in small caps; the hint below it does not
+   shout. */
+.form-group > label { color: var(--cr-muted); }
+.form-hint { color: var(--cr-muted); font-size: 11px; }
+
+/* Selects get the chevron drawn rather than the platform's, so a dropdown
+   looks the same on every machine in the office. */
+select {
+  appearance: none; -webkit-appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--cr-navy) 50%),
+    linear-gradient(135deg, var(--cr-navy) 50%, transparent 50%);
+  background-position: calc(100% - 15px) calc(50% + 1px),
+                       calc(100% - 10px) calc(50% + 1px);
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 28px;
+}
+select[multiple] { background-image: none; padding-right: 8px; }
+
+/* ── Search ───────────────────────────────────────────────────────────────
+   Wider than a field needs to be, because searching is what people do first. */
+.search-bar input, input[type=search] {
+  background-color: var(--cr-card);
+  letter-spacing: .01em;
+}
+.search-bar input:focus, input[type=search]:focus {
+  box-shadow: 0 0 0 2px rgba(211,64,44,.22), inset 0 1px 2px rgba(23,22,58,.04);
+}
+
+/* ── Tables ───────────────────────────────────────────────────────────────
+   A register, ruled like one. Column headings in small caps on a tinted band,
+   hairlines between rows, and the row under the cursor picked out by a red
+   edge rather than a wash, so nothing shifts as the mouse moves. */
+table, .table { border-collapse: collapse; }
+table thead th, .table thead th {
+  background: #efe9dd;
+  color: var(--cr-navy);
+  border-bottom: var(--cr-hair) solid var(--cr-rule);
+  border-top: var(--cr-hair) solid var(--cr-rule);
+  text-align: left;
+  white-space: nowrap;
+}
+table tbody td, .table tbody td {
+  border-bottom: var(--cr-hair) solid var(--cr-rule-soft);
+  color: var(--cr-ink);
+}
+table tbody tr, .table tbody tr { transition: background .1s var(--cr-ease); }
+table tbody tr:nth-child(even) > td { background: rgba(233,227,216,.34); }
+table tbody tr:hover > td {
+  background: #fdf6e8;
+  box-shadow: inset 3px 0 0 var(--cr-red);
+}
+.table-wrap, .table-scroll {
+  border: var(--cr-hair) solid var(--cr-rule);
+  background: var(--cr-card);
+}
+
+/* ── Badges and statuses ──────────────────────────────────────────────────
+   Square, hairlined, small caps. The colour says which; the border and the
+   wording say it again, so none of it depends on colour alone. */
+.badge {
+  border-radius: 0;
+  border: var(--cr-hair) solid currentColor;
+  padding: 2px 7px;
+  background: transparent;
+  line-height: 1.5;
+}
+.badge-open,   .badge-active   { color: var(--cr-teal);  background: var(--cr-teal-wash); }
+.badge-won,    .badge-complete { color: #12594f;         background: var(--cr-teal-wash); }
+.badge-hold                    { color: var(--cr-amber); background: var(--cr-amber-wash); }
+.badge-lost                    { color: var(--cr-red-deep); background: var(--cr-red-wash); }
+.badge-muted                   { color: var(--cr-muted); background: #ece6da; }
+.badge-portal                  { color: var(--cr-navy);  background: #e8e7f4; }
+.badge-capital, .badge-leasehold { color: var(--cr-navy); background: #e8e7f4; }
+
+/* ── Figures on the dashboard ─────────────────────────────────────────────
+   The one place the system is allowed to be a little bit of an instrument
+   panel: a big monospaced number over a tracked label, on a ruled tile. */
+.kpi, .kpi-card, .stat-tile {
+  background: var(--cr-card);
+  border: var(--cr-hair) solid var(--cr-rule);
+  border-radius: 0;
+  box-shadow: var(--cr-lift) var(--cr-lift) 0 rgba(23,22,58,.05);
+  border-top: 2px solid var(--cr-navy);
+  transition: box-shadow .14s var(--cr-ease), transform .14s var(--cr-ease);
+}
+.kpi:hover, .kpi-card:hover, .stat-tile:hover {
+  box-shadow: 4px 4px 0 rgba(23,22,58,.09);
+  transform: translate(-1px, -1px);
+}
+.kpi-label, .stat-label, .stat-lbl { color: var(--cr-muted); }
+.kpi-figure, .stat-num, .stat-value { color: var(--cr-ink); }
+.kpi-sub, .kpi-foot, .stat-sub, .stat-foot, .stat-note { color: var(--cr-muted); }
+
+/* ── Tabs ─────────────────────────────────────────────────────────────── */
+.tab-bar, .tabs { border-bottom: var(--cr-hair) solid var(--cr-rule); }
+.tab-btn {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--cr-muted);
+  border-radius: 0;
+  transition: color .14s var(--cr-ease), border-color .14s var(--cr-ease);
+}
+.tab-btn:hover { color: var(--cr-navy); border-bottom-color: var(--cr-rule); }
+.tab-btn.active, .tab-btn[aria-selected="true"] {
+  color: var(--cr-navy);
+  border-bottom-color: var(--cr-red);
+}
+
+/* ── Modals ───────────────────────────────────────────────────────────────
+   The chamfer again, a heavier border, and a hard shadow. A dialog should
+   look like it has been put down on top of the page. */
+.modal, .modal-panel, .modal-content, dialog {
+  background: var(--cr-card);
+  border: 2px solid var(--cr-navy);
+  border-radius: 0;
+  box-shadow: 6px 6px 0 rgba(23,22,58,.18);
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
+}
+.modal-backdrop, .modal-overlay { background: rgba(16,15,44,.55); }
+
+/* ── Alerts ───────────────────────────────────────────────────────────── */
+.alert {
+  border-radius: 0;
+  border: var(--cr-hair) solid currentColor;
+  border-left-width: 3px;
+}
+
+/* ── Links ────────────────────────────────────────────────────────────────
+   Underlined on hover from the left, which is the one piece of pure
+   period styling in the system and costs nothing in readability. */
+a { color: var(--cr-navy); }
+a:hover { color: var(--cr-red); }
+
+/* ── Motion ───────────────────────────────────────────────────────────────
+   Every transition here is under a sixth of a second, and all of it is off
+   for anyone who has asked for less movement. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition-duration: .01ms !important;
+    animation-duration: .01ms !important;
+  }
+  .sidebar-nav a:hover { padding-left: 18px; }
+  .kpi:hover, .kpi-card:hover, .stat-tile:hover { transform: none; }
+}
+
+/* ── Narrow screens ───────────────────────────────────────────────────────
+   The chamfers and hard shadows are the first thing to go on a phone, where
+   the space they take is worth more than the detail they add. */
+@media (max-width: 760px) {
+  .card, .btn-primary, .modal, .modal-panel, .modal-content { clip-path: none; }
+  .card, .kpi, .kpi-card, .stat-tile { box-shadow: none; }
+}
+
+/* ── Printing ─────────────────────────────────────────────────────────────
+   On paper the ground, the shadows and the tints are only in the way. */
+@media print {
+  body { background: #fff; }
+  .card, .kpi, .kpi-card, .stat-tile { box-shadow: none; clip-path: none; }
+  .sidebar, .topbar-actions { display: none !important; }
+}

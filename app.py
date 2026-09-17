@@ -2175,13 +2175,17 @@ class User(UserMixin, db.Model):
 # Times are stored in UTC and shown in Europe/London, so the hour on screen
 # stays right either side of the clocks changing.
 
+# The diary's colours are the house palette, so a day in the diary looks like
+# the rest of the CRM rather than like a calendar borrowed from elsewhere.
+# They stay far enough apart to be told apart at a glance, and every block
+# carries its type in words as well, so none of this rests on colour alone.
 EVENT_TYPES = {
-    'viewing':     ('Viewing',     '#1a73e8'),
-    'call':        ('Call',        '#12805c'),
-    'meeting':     ('Meeting',     '#7b3fb5'),
-    'inspection':  ('Inspection',  '#b8860b'),
-    'reminder':    ('Reminder',    '#c2410c'),
-    'appointment': ('Appointment', '#5b6675'),
+    'viewing':     ('Viewing',     '#2e2c71'),   # the mark's navy
+    'call':        ('Call',        '#1d6f66'),   # teal
+    'meeting':     ('Meeting',     '#6b3f6e'),   # plum
+    'inspection':  ('Inspection',  '#b07213'),   # amber
+    'reminder':    ('Reminder',    '#d3402c'),   # the mark's red
+    'appointment': ('Appointment', '#6b6858'),   # warm grey
 }
 LONDON = 'Europe/London'
 
