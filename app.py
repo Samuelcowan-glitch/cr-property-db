@@ -8904,16 +8904,18 @@ def particulars_data(project):
     if size:
         size_line = f'Approx {size:,.0f} sq ft – {size * 0.092903:,.0f} sq m'
 
+    # Still read, because the instruction's own pages say who is running it.
     earner = User.query.get(project.fee_earner_id) if project.fee_earner_id else None
-    contact_lines = []
-    if earner:
-        contact_lines.append(earner.display_name)
-    contact_lines.append(f"T: {pp.COMPANY['phone']}")
-    # Only a real address is printed. Making one up from a username would put
-    # an address on a marketing document that nobody reads.
-    if earner and getattr(earner, 'email', None):
-        contact_lines.append(earner.email)
-    contact_lines.append(pp.COMPANY['website'])
+
+    # One agent on every brochure, whoever the instruction is booked to. The
+    # fee earner is who the office credits with the work, which is a different
+    # question from who an enquirer should ring, and the brochure answers the
+    # second. The mobile comes directly under the name, above the office line.
+    contact_lines = [pp.AGENT['name'],
+                     f"M: {pp.AGENT['mobile']}",
+                     f"T: {pp.COMPANY['phone']}",
+                     pp.AGENT['email'],
+                     pp.COMPANY['website']]
 
     # The strapline is the headline. It is the one line the office has chosen
     # for this property, and the same line Zoopla is sent, so the brochure and
@@ -8976,10 +8978,12 @@ def particulars_data(project):
     }
 
 
+# The fee earner was once listed here, because the brochure printed whoever
+# the instruction was booked to. It now always names the same agent, so an
+# instruction with no fee earner set is no longer a gap in the document.
 PARTICULARS_ESSENTIALS = [
     ('address', 'Property address'), ('description', 'Description'),
     ('location', 'Location'), ('size_line', 'Floor area'),
-    ('fee_earner', 'Fee earner'),
 ]
 
 

@@ -53,6 +53,15 @@ COMPANY = {
     'website': 'www.cowanandrutter.co.uk',
 }
 
+# Every brochure names the same agent, whoever the instruction is booked to
+# inside the CRM. The fee earner decides who is credited with the work; it is
+# not the name an enquirer should be given.
+AGENT = {
+    'name': 'Benjamin Cowan',
+    'mobile': '07557 380291',
+    'email': 'bc@cowanandrutter.co.uk',
+}
+
 DISCLAIMER_TITLE = 'Misrepresentation Act 1967:'
 DISCLAIMER = (
     'These particulars are believed to be correct but their accuracy is not '
@@ -588,6 +597,23 @@ def _grey_panel(canvas, x, y, w, h, blocks):
     return cursor
 
 
+CONTACT_VIEWING = 16      # the viewing line, below the 'Contact' baseline
+CONTACT_FIRST = 36        # the first detail, below the 'Contact' baseline
+CONTACT_LINE = 13         # between one detail and the next
+
+
+def contact_block_height(data):
+    """From the 'Contact' baseline to the baseline of its last detail.
+
+    The block is set downwards from its heading, so whoever places it has to
+    know how far it reaches before drawing it. Adding the mobile number made it
+    a line deeper and, against a fixed heading, that line landed on the rule
+    above the small print.
+    """
+    count = len(data.get('contact_lines', []))
+    return CONTACT_FIRST + CONTACT_LINE * max(count - 1, 0)
+
+
 def contact_block(canvas, x, y, w, data, floor=None):
     """Who to speak to, with the mark beside it, right-aligned as in the house style.
 
@@ -609,20 +635,20 @@ def contact_block(canvas, x, y, w, data, floor=None):
     canvas.setFillColor(NAVY)
     canvas.drawRightString(text_right, y, 'Contact')
 
-    line = y - 16
     canvas.setFont(face('regular'), 9.5)
     canvas.setFillColor(INK)
-    canvas.drawRightString(text_right, line, 'Viewings by prior appointment with the agent')
-    line -= 20
+    canvas.drawRightString(text_right, y - CONTACT_VIEWING,
+                           'Viewings by prior appointment with the agent')
 
+    line = y - CONTACT_FIRST
     for text in data.get('contact_lines', []):
         canvas.drawRightString(text_right, line, clean(text))
-        line -= 13
+        line -= CONTACT_LINE
 
     # Centred on the details as actually set: from the top of the 'Contact'
     # heading down to the baseline of the last line written above.
     heading_top = y + 8                      # cap height of the 11pt heading
-    last_baseline = line + 13
+    last_baseline = line + CONTACT_LINE
     middle = (heading_top + last_baseline) / 2
     logo_y = middle - LOGO_HEIGHT / 2
     if floor is not None:
@@ -701,9 +727,12 @@ def detail_page(canvas, data, photos):
 
     # Page two carries the contact details and the disclaimer in both formats,
     # because it is the same page two in both.
+    # Set up from the small print rather than down from a fixed heading, so
+    # that a contact block of any depth keeps its last line clear of the rule.
     disclaimer_y = 30
-    contact_block(canvas, right_x, 128, right_w, data,
-                  floor=disclaimer_y + DISCLAIMER_RULE + 8)
+    rule = disclaimer_y + DISCLAIMER_RULE
+    contact_block(canvas, right_x, rule + 10 + contact_block_height(data),
+                  right_w, data, floor=rule + 8)
     disclaimer_block(canvas, right_x, disclaimer_y, right_w)
 
 
