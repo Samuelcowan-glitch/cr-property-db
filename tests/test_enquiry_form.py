@@ -50,17 +50,21 @@ HTML = r.get_data(as_text=True)
 
 
 # ─── 1. The old section and its pickers are gone ────────────────────────────
-for gone in ('Who and what it is about', 'Link Project',
-             'name="contact_id"', 'name="organisation_id"'):
+for gone in ('Who and what it is about', 'Who is enquiring', 'Link Project',
+             'name="organisation_id"'):
     assert gone not in HTML, f'the form still carries {gone!r}'
-print('1. "Who and what it is about" and its contact pickers are gone')
+print('1. "Who and what it is about" and "Who is enquiring" are gone')
 
 
-# ─── 2. The caller is typed in rather than chosen ───────────────────────────
-for want in ('name="caller_name"', 'name="caller_company"',
+# ─── 2. The contact is chosen or added, and named for the type ──────────────
+for want in ('name="contact_mode"', 'name="contact_id"',
+             'name="caller_name"', 'name="caller_company"',
              'name="caller_phone"', 'name="caller_email"'):
     assert want in HTML, f'the form cannot record {want}'
-print('2. the caller\'s name, company, phone and email are typed in')
+for heading in ('Tenant Contact', 'Buyer Contact',
+                'Landlord Contact', 'Seller Contact'):
+    assert heading in HTML, f'no section headed {heading!r}'
+print('2. the contact section is named for the type, and is chosen or added')
 
 
 # ─── 3. Each kind of enquiry has its own heading ────────────────────────────
@@ -125,7 +129,8 @@ def shown_for(*keys):
 
 # ─── 4. No name is claimed twice, for any type ──────────────────────────────
 KEYS = [(), ('tenant',), ('buyer',), ('landlord', 'landlord-existing'),
-        ('landlord', 'landlord-new'), ('vendor',), ('valuation',)]
+        ('landlord', 'landlord-new'), ('seller',), ('valuation',)]
+KEYS = [k + (c,) for k in KEYS for c in ('contact-existing', 'contact-new')]
 for key in KEYS:
     names = shown_for(*key)
     dupes = {n for n in names if names.count(n) > 1}
@@ -140,6 +145,13 @@ assert 'new_address' not in shown_for('landlord', 'landlord-existing')
 assert 'project_id' not in shown_for('tenant'), 'a tenant is offered an instruction'
 print('   linking an instruction and adding one are never offered together')
 
+# Nor do the two ways of giving the contact.
+assert 'contact_id' in shown_for('tenant', 'contact-existing')
+assert 'contact_id' not in shown_for('tenant', 'contact-new')
+assert 'caller_name' in shown_for('tenant', 'contact-new')
+assert 'caller_name' not in shown_for('tenant', 'contact-existing')
+print('   choosing a contact and adding one are never offered together')
+
 
 # ─── 5. Each type is asked what it should be ────────────────────────────────
 EXPECTED = {
@@ -149,18 +161,18 @@ EXPECTED = {
                   'req_budget_max', 'req_tenure'],
     'landlord':  ['letting_mode', 'req_budget_min', 'req_budget_unit',
                   'req_occupation_date'],
-    'vendor':    ['req_area', 'req_size_min', 'req_budget_min'],
+    'seller':    ['req_area', 'req_size_min', 'req_budget_min'],
     'valuation': ['req_area', 'req_size_min', 'req_tenure', 'req_notes'],
 }
 for key, wanted in EXPECTED.items():
-    names = shown_for(key, f'{key}-existing')
+    names = shown_for(key, f'{key}-existing', 'contact-existing')
     for field in wanted:
         assert field in names, f'a {key} enquiry is never asked for {field}'
     print(f'   {key:10s} asks for {len(set(names))} fields')
 
 # And a tenant is not asked a vendor's question, nor the other way round.
 assert 'req_tenure' not in shown_for('tenant'), 'a tenant is asked about tenure'
-assert 'req_occupation_date' not in shown_for('vendor'), \
+assert 'req_occupation_date' not in shown_for('seller'), \
     'a vendor is asked when they want to move in'
 print('5. every type is asked its own questions and not another type\'s')
 
@@ -168,6 +180,7 @@ print('5. every type is asked its own questions and not another type\'s')
 # ─── 6. What is typed is what is stored ─────────────────────────────────────
 r = cl.post('/enquiries/new', data={
     'enquiry_type': 'Tenant — Looking to Rent', 'status': 'Open',
+    'contact_mode': 'new',
     'caller_name': 'Jane Whitfield', 'caller_company': 'Acme Ltd',
     'caller_phone': '07700 900123', 'caller_email': 'jane@acme.co.uk',
     'req_category': 'commercial', 'req_use_class': 'office',
@@ -189,6 +202,7 @@ with A.app.app_context():
 
 r = cl.post('/enquiries/new', data={
     'enquiry_type': 'Valuation', 'status': 'Open',
+    'contact_mode': 'new',
     'caller_name': 'Peter Ngozi', 'caller_phone': '020 7946 0000',
     'req_category': 'residential', 'req_area': '57B New Kings Road, SW6',
     'req_size_min': '1200', 'req_tenure': 'freehold',
@@ -205,7 +219,81 @@ with A.app.app_context():
 print('6. a tenant enquiry and a valuation each store what they were asked')
 
 
-# ─── 7. A landlord's enquiry is filed against an instruction ────────────────
+# ─── 6b. A contact added here takes the type the enquiry establishes ────────
+# The enquiry type has already said which side of the market they are on, so
+# nobody is asked it twice.
+WANTED = [('Tenant — Looking to Rent',        'Tenant',   'Alice Abara'),
+          ('Buyer — Looking to Buy',          'Buyer',    'Bruno Baptiste'),
+          ('Landlord — Looking to Let',       'Landlord', 'Clara Chowdhury'),
+          ('Owner/Vendor — Looking to Sell',  'Seller',   'Dmitri Dumas')]
+for etype, kind, who in WANTED:
+    first, last = who.split(' ')
+    r = cl.post('/enquiries/new', data={
+        'enquiry_type': etype, 'status': 'Open',
+        'contact_mode': 'new', 'caller_name': who,
+        'caller_email': f'{first.lower()}@example.co.uk',
+        'caller_phone': '07700 900999',
+    }, follow_redirects=True)
+    assert r.status_code == 200
+    with A.app.app_context():
+        c = A.Contact.query.filter_by(email=f'{first.lower()}@example.co.uk').first()
+        assert c is not None, f'no contact was made for a {kind} enquiry'
+        assert c.contact_type == kind, \
+            f'a {etype} enquiry made a {c.contact_type}, not a {kind}'
+        assert c.first_name == first and c.last_name == last, (c.first_name, c.last_name)
+        assert kind in A.role_names(c), A.role_names(c)
+        e = A.Enquiry.query.order_by(A.Enquiry.id.desc()).first()
+        assert e.contact_id == c.id, 'the enquiry was not filed against the contact'
+print('7. a contact added on an enquiry takes its type, and is linked to it')
+
+# The same email again is that person, not a second copy of them.
+with A.app.app_context():
+    before = A.Contact.query.count()
+r = cl.post('/enquiries/new', data={
+    'enquiry_type': 'Tenant — Looking to Rent', 'status': 'Open',
+    'contact_mode': 'new', 'caller_name': 'Alice Abara',
+    'caller_email': 'alice@example.co.uk',
+}, follow_redirects=True)
+assert r.status_code == 200
+with A.app.app_context():
+    assert A.Contact.query.count() == before, 'a second copy of the contact was made'
+print('   the same email again is that person, not a second copy')
+
+# An existing contact can be chosen, and a type they already hold is kept.
+with A.app.app_context():
+    known = A.Contact(first_name='Margaret', last_name='Osei',
+                      email='margaret@example.co.uk', contact_type='Landlord')
+    db.session.add(known); db.session.commit()
+    KNOWN = known.id
+r = cl.post('/enquiries/new', data={
+    'enquiry_type': 'Tenant — Looking to Rent', 'status': 'Open',
+    'contact_mode': 'existing', 'contact_id': str(KNOWN),
+}, follow_redirects=True)
+assert r.status_code == 200
+with A.app.app_context():
+    e = A.Enquiry.query.order_by(A.Enquiry.id.desc()).first()
+    assert e.contact_id == KNOWN, 'the chosen contact was not linked'
+    assert A.Contact.query.get(KNOWN).contact_type == 'Landlord', \
+        'a known Landlord was reclassified by a tenant enquiry'
+print('   a known Landlord asking about a shop to rent stays a Landlord')
+
+# A contact with no type yet takes the one the enquiry establishes.
+with A.app.app_context():
+    blank = A.Contact(first_name='Nina', last_name='Novak',
+                      email='nina@example.co.uk')
+    db.session.add(blank); db.session.commit()
+    BLANK = blank.id
+cl.post('/enquiries/new', data={
+    'enquiry_type': 'Buyer — Looking to Buy', 'status': 'Open',
+    'contact_mode': 'existing', 'contact_id': str(BLANK),
+}, follow_redirects=True)
+with A.app.app_context():
+    assert A.Contact.query.get(BLANK).contact_type == 'Buyer', \
+        'a contact with no type was left without one'
+print('   a contact with no type yet takes the one the enquiry establishes')
+
+
+# ─── 8. A landlord's enquiry is filed against an instruction ────────────────
 # Adding a new one: the property, the instruction and the link are all made.
 before = None
 with A.app.app_context():
@@ -237,7 +325,7 @@ with A.app.app_context():
     assert project.landlord_name == 'Margaret Osei', project.landlord_name
     assert '12 Harwood Road' in e.subject, e.subject
     MADE = project.id
-print('7. adding a new one creates the property, the To Let instruction '
+print('8. adding a new one creates the property, the To Let instruction '
       'and the link')
 
 # The same address again reuses the property already on file.
@@ -286,7 +374,7 @@ with A.app.app_context():
 print('   an empty address creates nothing')
 
 
-# ─── 8. Saving from this form does not clear links it never showed ──────────
+# ─── 9. Saving from this form does not clear links it never showed ──────────
 # The form no longer offers the contact, organisation and project boxes. An
 # enquiry that already has them must keep them when it is saved from here.
 with A.app.app_context():
@@ -309,6 +397,6 @@ with A.app.app_context():
         'saving from a form without the contact box cleared the contact'
     assert e.caller_name == 'Ada Okonkwo'
     assert e.req_area == 'Putney'
-print('8. an enquiry keeps a link the form no longer shows')
+print('9. an enquiry keeps a link the form no longer shows')
 
 print('\nENQUIRY FORM: ALL CHECKS PASSED')

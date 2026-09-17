@@ -1303,7 +1303,11 @@ CONTACT_ROLES = [
     ('Landlord',            'Lets a property through us'),
     ('Prospective Landlord', 'May instruct us to let'),
     ('Buyer',               'Looking to buy'),
-    ('Vendor',              'Selling a property'),
+    # 'Seller', not 'Vendor'. CONTACT_TYPES says Seller and so does the rest of
+    # the CRM; while the role list said Vendor, giving somebody the role their
+    # type names quietly did nothing for a seller, because the name it looked
+    # for was not on this list. Roles already recorded are renamed on start-up.
+    ('Seller',              'Selling a property'),
     ('Investor',            'Buying to hold'),
     ('Agent',               'Acting for another party'),
 ]
@@ -7489,7 +7493,10 @@ ENQUIRY_TYPE_KEYS = {
     'Tenant — Looking to Rent': 'tenant',
     'Buyer — Looking to Buy': 'buyer',
     'Landlord — Looking to Let': 'landlord',
-    'Owner/Vendor — Looking to Sell': 'vendor',
+    # 'seller', not 'vendor': the side names here are the ones SIDES uses and
+    # CONTACT_TYPES holds. Two names for the one side is how the form came to
+    # ask for a Seller and be handed nothing.
+    'Owner/Vendor — Looking to Sell': 'seller',
     'Valuation': 'valuation',
     'Agency — Letting': 'tenant',
     'Agency — Sale': 'buyer',
@@ -8072,6 +8079,79 @@ def _enquiry_fields(form, e, links, property_id, pd, pf):
     return fields
 
 
+def _enquiry_contacts():
+    """Everyone an enquiry could be from, by surname.
+
+    Not filtered to the enquiry's own type. A landlord can ring about a shop
+    to rent, and a list that hid them would send somebody off to make a second
+    record of a person the CRM already holds. The type is shown beside each
+    name instead, so the right one is easy to pick out.
+    """
+    return Contact.query.order_by(Contact.last_name, Contact.first_name).all()
+
+
+def _enquiry_contact(form, enquiry_type):
+    """The person an enquiry is from: one already on the book, or a new one.
+
+    The enquiry type has already established which side of the market they are
+    on, so a contact made here is given that type without being asked again —
+    a tenant enquiry makes a Tenant. The type is only ever filled in, never
+    changed: somebody already recorded as a Landlord stays one, whatever they
+    are ringing about today.
+
+    Returns the Contact, or None where no choice was made.
+    """
+    kind = SIDES.get(enquiry_type_key(enquiry_type), (None, None))[1]
+
+    def settle(contact):
+        """Give them the type and the role the enquiry establishes, if blank."""
+        if contact is not None and kind and not (contact.contact_type or '').strip():
+            contact.contact_type = kind
+            sync_type_to_role(contact)
+        return contact
+
+    mode = (form.get('contact_mode') or '').strip()
+    if mode == 'existing':
+        cid = _fint(form.get('contact_id'))
+        return settle(Contact.query.get(cid) if cid else None)
+    if mode != 'new':
+        return None
+
+    name  = (form.get('caller_name')  or '').strip()
+    email = (form.get('caller_email') or '').strip() or None
+    phone = (form.get('caller_phone') or '').strip() or None
+    if not name and not email:
+        return None                 # nothing to make a contact from
+
+    # Somebody already on the book at this address is that person, not a
+    # second copy of them.
+    if email:
+        already = Contact.query.filter(
+            db.func.lower(Contact.email) == email.lower()).first()
+        if already is not None:
+            if phone and not already.phone:
+                already.phone = phone
+            return settle(already)
+
+    first, _, last = name.partition(' ')
+    # Their company is linked where the CRM already knows it. One is never
+    # invented from a line typed on an enquiry form.
+    company = (form.get('caller_company') or '').strip()
+    org = (Organisation.query.filter(
+        db.func.lower(Organisation.name) == company.lower()).first()
+        if company else None)
+
+    contact = Contact(first_name=first or 'Unknown', last_name=last or '.',
+                      email=email, phone=phone, contact_type=kind,
+                      organisation_id=org.id if org is not None else None)
+    db.session.add(contact)
+    db.session.flush()
+    sync_type_to_role(contact)
+    audit('create', entity='Contact', entity_id=contact.id,
+          detail=f'from an enquiry{" as a " + kind if kind else ""}')
+    return contact
+
+
 def _lettable_projects():
     """The instructions a letting enquiry can be filed against, newest first."""
     return (Project.query.order_by(Project.id.desc()).all())
@@ -8141,17 +8221,23 @@ def _attach_letting_instruction(e, form):
 @app.route('/enquiries/new', methods=['GET', 'POST'])
 @requires('create')
 def enquiry_new():
-    # No list of contacts or organisations is read: the caller is typed in.
-    # Instructions are, because a landlord's enquiry is filed against one.
     if request.method == 'POST':
         e = Enquiry(**_parse_enquiry_form(request.form))
+        # The contact first: the enquiry is filed against whoever it is from,
+        # and a new one takes the type the enquiry has already established.
+        contact = _enquiry_contact(request.form, e.enquiry_type)
+        if contact is not None:
+            e.contact_id = contact.id
+            if contact.organisation_id and not e.organisation_id:
+                e.organisation_id = contact.organisation_id
         _attach_letting_instruction(e, request.form)
         db.session.add(e)
         db.session.commit()
         flash('Enquiry recorded.', 'success')
         return redirect(url_for('enquiry_detail', id=e.id))
     return render_template('crm/enquiry_form.html', enquiry=None,
-                           projects=_lettable_projects())
+                           projects=_lettable_projects(),
+                           contacts=_enquiry_contacts())
 
 
 def _enquiry_activity(e):
@@ -8233,13 +8319,19 @@ def enquiry_edit(id):
     e = Enquiry.query.get_or_404(id)
     if request.method == 'POST':
         _save_enquiry_from_form(e, request.form)
+        contact = _enquiry_contact(request.form, e.enquiry_type)
+        if contact is not None:
+            e.contact_id = contact.id
+            if contact.organisation_id and not e.organisation_id:
+                e.organisation_id = contact.organisation_id
         _attach_letting_instruction(e, request.form)
         db.session.commit()
         audit('edit', entity='Enquiry', entity_id=e.id)
         flash('Enquiry updated.', 'success')
         return _back_to('enquiry_detail', id=e.id)
     return render_template('crm/enquiry_form.html', enquiry=e,
-                           projects=_lettable_projects())
+                           projects=_lettable_projects(),
+                           contacts=_enquiry_contacts())
 
 
 @app.route('/enquiries/<int:id>/log-contact', methods=['POST'])
@@ -11603,8 +11695,18 @@ def _migrate_contact_roles():
         # A contact already filed as a Tenant or a Landlord is given the
         # matching role, once, so nothing has to be re-entered. Their
         # contact_type is left exactly as it is.
+        # The role the CRM calls Seller was on this list as Vendor. Roles
+        # already recorded under the old name are renamed, so a contact keeps
+        # the role they were given and the name matches the rest of the CRM.
+        renamed = ContactRole.query.filter(ContactRole.role == 'Vendor').all()
+        for role in renamed:
+            role.role = 'Seller'
+        if renamed:
+            db.session.commit()
+            app.logger.info('Renamed %s Vendor role(s) to Seller', len(renamed))
+
         seeded = 0
-        for label in ('Tenant', 'Landlord', 'Prospective Tenant'):
+        for label in ('Tenant', 'Landlord', 'Buyer', 'Seller', 'Prospective Tenant'):
             for c in Contact.query.filter(Contact.contact_type == label).all():
                 if any(r.role == label for r in (c.roles or [])):
                     continue

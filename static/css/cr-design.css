@@ -379,7 +379,14 @@ td.num, th.num, .money, .figure {
 .org-row { border-bottom: var(--cr-hair) solid var(--cr-rule-soft); }
 .org-row:hover { background: #fdf6e8; }
 
-/* ── Section headings inside a form or a card ─────────────────────────── */
+/* ── Section headings inside a form or a card ─────────────────────────────
+   A heading names everything under it, so it takes the width of the form
+   rather than a column of it. In a two-column grid it was landing in whichever
+   half was free, which put "What they are looking to rent" alongside the first
+   field of that very section. */
+.form-grid > .form-section,
+.form-grid > hr.divider { grid-column: 1 / -1; }
+
 .form-section {
   color: var(--cr-navy);
   border-bottom: var(--cr-hair) solid var(--cr-rule);

@@ -79,40 +79,92 @@
       </div>
 
       <hr class="divider" style="grid-column:span 2;margin:8px 0">
-      <div class="form-section">Who is enquiring</div>
 
-      {# Typed in, not chosen. Somebody who has just rung up is not on the CRM
-         yet, so a list of existing contacts cannot record them. A contact
-         record is made from this afterwards. #}
-      <div class="form-group">
+      {# The enquiry type has already said which side of the market they are
+         on, so this section is named for it and a contact made here is given
+         that type without being asked a second time. #}
+      <div class="form-section" data-for="tenant">Tenant Contact</div>
+      <div class="form-section" data-for="buyer">Buyer Contact</div>
+      <div class="form-section" data-for="landlord">Landlord Contact</div>
+      <div class="form-section" data-for="seller">Seller Contact</div>
+      <div class="form-section" data-for="valuation general none">Contact</div>
+
+      <div class="form-group span-2">
+        <label for="contact_mode">Contact</label>
+        <select id="contact_mode" name="contact_mode" onchange="showEnquiryFields()">
+          <option value="existing" {{ 'selected' if enquiry and enquiry.contact_id else '' }}>
+            Select an existing contact
+          </option>
+          <option value="new" {{ 'selected' if enquiry and not enquiry.contact_id else '' }}>
+            Add a new contact
+          </option>
+        </select>
+      </div>
+
+      <div class="form-group span-2" data-for="contact-existing">
+        <label for="contact_id">Who it is from</label>
+        <select id="contact_id" name="contact_id" data-search
+                data-placeholder="Search name, company or email…">
+          <option value="">— Choose a contact —</option>
+          {% for c in contacts %}
+          <option value="{{ c.id }}" {{ 'selected' if enquiry and enquiry.contact_id == c.id else '' }}>
+            {{ c.full_name }}{% if c.contact_type %} — {{ c.contact_type }}{% endif %}
+            {%- if c.organisation %} · {{ c.organisation.name }}{% endif %}
+          </option>
+          {% endfor %}
+        </select>
+        <span class="form-hint" data-for="tenant">
+          Everyone is listed, not only tenants — a landlord may well ring about
+          a shop to rent. If they have no type yet they are recorded as a Tenant.
+        </span>
+        <span class="form-hint" data-for="buyer">
+          Everyone is listed. A contact with no type yet is recorded as a Buyer.
+        </span>
+        <span class="form-hint" data-for="landlord">
+          Everyone is listed. A contact with no type yet is recorded as a Landlord.
+        </span>
+        <span class="form-hint" data-for="seller">
+          Everyone is listed. A contact with no type yet is recorded as a Seller.
+        </span>
+      </div>
+
+      <div class="form-group" data-for="contact-new">
         <label for="caller_name">Name</label>
         <input type="text" id="caller_name" name="caller_name" value="{{ val('caller_name') }}"
                placeholder="Who is calling">
       </div>
 
-      <div class="form-group">
+      <div class="form-group" data-for="contact-new">
         <label for="caller_company">Company</label>
         <input type="text" id="caller_company" name="caller_company" value="{{ val('caller_company') }}"
                placeholder="Their company, if any">
       </div>
 
-      <div class="form-group">
+      <div class="form-group" data-for="contact-new">
         <label for="caller_phone">Phone</label>
         <input type="text" id="caller_phone" name="caller_phone" value="{{ val('caller_phone') }}"
                placeholder="e.g. 07700 900123">
       </div>
 
-      <div class="form-group">
+      <div class="form-group" data-for="contact-new">
         <label for="caller_email">Email</label>
         <input type="email" id="caller_email" name="caller_email" value="{{ val('caller_email') }}"
                placeholder="e.g. jane@company.co.uk">
       </div>
 
+      <div class="form-group span-2" data-for="contact-new">
+        <span class="form-hint">
+          A contact record is made and the enquiry filed against it. It is given
+          the type this enquiry establishes, so there is nothing further to set.
+          Somebody already on the book at the same email address is used rather
+          than copied.
+        </span>
+      </div>
+
       {% if enquiry and enquiry.contact %}
       <div class="form-group span-2">
         <span class="form-hint">
-          Already linked to the contact record
-          <a href="{{ url_for('contact_detail', id=enquiry.contact.id) }}">{{ contact_label(enquiry.contact) }}</a>.
+          Linked to <a href="{{ url_for('contact_detail', id=enquiry.contact.id) }}">{{ contact_label(enquiry.contact) }}</a>.
         </span>
       </div>
       {% endif %}
@@ -130,16 +182,16 @@
          property being described is the enquirer's own for a landlord, vendor
          or valuation, and one they are hoping to find for a tenant or buyer,
          so the same columns are asked for under different headings. #}
-      <hr class="divider" data-for="tenant buyer landlord vendor valuation"
+      <hr class="divider" data-for="tenant buyer landlord seller valuation"
           style="grid-column:span 2;margin:8px 0">
       <div class="form-section" data-for="tenant">What they are looking to rent</div>
       <div class="form-section" data-for="buyer">What they are looking to buy</div>
       <div class="form-section" data-for="landlord">What they have to let</div>
-      <div class="form-section" data-for="vendor">The property they want to sell</div>
+      <div class="form-section" data-for="seller">The property they want to sell</div>
       <div class="form-section" data-for="valuation">What needs valuing</div>
 
       {# A landlord is not asked these: they come from the instruction. #}
-      <div class="form-group" data-for="tenant buyer vendor valuation">
+      <div class="form-group" data-for="tenant buyer seller valuation">
         <label>Category</label>
         <select name="req_category" id="req_category" onchange="updateUseClass()">
           <option value="">— Any —</option>
@@ -148,7 +200,7 @@
         </select>
       </div>
 
-      <div class="form-group" data-for="tenant buyer vendor valuation">
+      <div class="form-group" data-for="tenant buyer seller valuation">
         <label id="use-class-label">Property Type</label>
         <select name="req_use_class" id="req_use_class">
           <!-- Options populated by JS based on category -->
@@ -216,13 +268,13 @@
       {# Buyers are always buying, so the unit is not a question. #}
       <input type="hidden" name="req_budget_unit" value="sale" data-for="buyer">
 
-      <div class="form-group span-2" data-for="vendor valuation">
+      <div class="form-group span-2" data-for="seller valuation">
         <label for="req_area_have">Address or area</label>
         <input type="text" id="req_area_have" name="req_area" value="{{ val('req_area') }}"
                placeholder="e.g. 57B New Kings Road, SW6">
       </div>
 
-      <div class="form-group" data-for="vendor valuation">
+      <div class="form-group" data-for="seller valuation">
         <label>Approx Size (sq ft)</label>
         <input type="number" name="req_size_min" placeholder="e.g. 1200" value="{{ num('req_size_min') }}">
       </div>
@@ -300,12 +352,12 @@
         <input type="date" id="req_available_from" name="req_occupation_date" value="{{ day('req_occupation_date') }}">
       </div>
 
-      <div class="form-group" data-for="vendor">
+      <div class="form-group" data-for="seller">
         <label>Guide Price (£)</label>
         <input type="number" name="req_budget_min" placeholder="e.g. 850000" value="{{ num('req_budget_min') }}">
       </div>
 
-      <input type="hidden" name="req_budget_unit" value="sale" data-for="vendor valuation">
+      <input type="hidden" name="req_budget_unit" value="sale" data-for="seller valuation">
 
       {# ── Valuation ───────────────────────────────────────────────────── #}
       <div class="form-group span-2" data-for="valuation">
@@ -314,7 +366,7 @@
                placeholder="e.g. probate, loan security, rent review, sale advice">
       </div>
 
-      <div class="form-group span-2" data-for="tenant buyer landlord vendor">
+      <div class="form-group span-2" data-for="tenant buyer landlord seller">
         <label for="req_notes_any">Anything else they have asked for</label>
         <input type="text" id="req_notes_any" name="req_notes" value="{{ val('req_notes') }}"
                placeholder="Parking, ground floor, A3 use, short let…">
@@ -390,6 +442,10 @@ function showEnquiryFields() {
   // instruction is one already on the books or one being made here.
   var mode = document.getElementById('letting_mode');
   if (key === 'landlord' && mode) active.push('landlord-' + mode.value);
+  // Every enquiry asks who it is from, the same way: somebody already on the
+  // book, or somebody being put on it here.
+  var cmode = document.getElementById('contact_mode');
+  if (cmode) active.push('contact-' + cmode.value);
   document.querySelectorAll('[data-for]').forEach(function(el) {
     var wanted = el.getAttribute('data-for').split(' ');
     var show = wanted.some(function(w) { return active.indexOf(w) !== -1; });

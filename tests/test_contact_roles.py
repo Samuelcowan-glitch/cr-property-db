@@ -68,9 +68,13 @@ def roles_of(cid):
 
 
 # ─── 1. Every role the agency needs ─────────────────────────────────────────
+# Seller, not Vendor: the organisation roles were renamed to Seller already,
+# and while the contact roles still said Vendor, giving a contact the role
+# their type names did nothing at all for a seller.
 for wanted in ('Tenant', 'Prospective Tenant', 'Landlord', 'Prospective Landlord',
-               'Buyer', 'Vendor', 'Investor', 'Agent'):
+               'Buyer', 'Seller', 'Investor', 'Agent'):
     assert wanted in A.CONTACT_ROLE_NAMES, f'{wanted} is not offered'
+assert 'Vendor' not in A.CONTACT_ROLE_NAMES, 'the old name is still offered'
 print(f'1. all {len(A.CONTACT_ROLE_NAMES)} roles are available')
 
 
