@@ -339,7 +339,13 @@ def draw_image(canvas, source, x, y, w, h, fit=False):
 # The mark is drawn at one size on every page. It was 52pt on the cover, 72pt
 # beside the contact details and 22pt in the footer, which made four pages of
 # one document look like three different ones.
-LOGO_HEIGHT = 46
+LOGO_HEIGHT = 60
+
+# Its own proportions, measured from the file: 1106 x 765. Every reservation of
+# space for the mark is worked out from the height rather than written down, so
+# that changing the one size above moves the space with it.
+LOGO_RATIO = 1106 / 765
+LOGO_WIDTH = LOGO_HEIGHT * LOGO_RATIO
 
 
 def draw_logo(canvas, x, y, height=LOGO_HEIGHT):
@@ -449,7 +455,7 @@ def cover_page(canvas, data):
     # Centred on the PAGE, not on the space left beside the mark, so the group
     # does not shift as the logo or the floor area changes.
     centre = PW / 2
-    logo_w = LOGO_HEIGHT * 1.45
+    logo_w = LOGO_WIDTH
     size_w = (canvas.stringWidth(size_line, face('regular'), 10.5)
               if size_line else 0)
     # Clear of the mark on one side and the floor area on the other, by the
@@ -585,7 +591,11 @@ def _grey_panel(canvas, x, y, w, h, blocks):
 def contact_block(canvas, x, y, w, data):
     """Who to speak to, with the mark beside it, right-aligned as in the house style."""
     right = x + w
-    logo_w = 132
+    # The mark is flush with the right edge and the details are set to its
+    # left. This reserved its own width of 132pt when the mark here was drawn
+    # at 72pt, so once every page agreed on one smaller size the mark kept the
+    # wider slot and sat half an inch shy of the edge it was meant to meet.
+    logo_w = LOGO_WIDTH
     text_right = right - logo_w - 22
 
     canvas.setFont(face('medium'), 11)
@@ -602,7 +612,10 @@ def contact_block(canvas, x, y, w, data):
         canvas.drawRightString(text_right, line, clean(text))
         line -= 13
 
-    draw_logo(canvas, right - logo_w, y - 74 + (72 - LOGO_HEIGHT) / 2)
+    # Centred in the 72pt slot beneath the 'Contact' heading, whatever height
+    # the mark is drawn at.
+    slot = 72
+    draw_logo(canvas, right - logo_w, y - 2 - slot + (slot - LOGO_HEIGHT) / 2)
     return line
 
 
