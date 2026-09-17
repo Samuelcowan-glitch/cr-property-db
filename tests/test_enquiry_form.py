@@ -50,10 +50,10 @@ HTML = r.get_data(as_text=True)
 
 
 # ─── 1. The old section and its pickers are gone ────────────────────────────
-for gone in ('Who and what it is about', 'Link Project', 'Search instructions',
-             'name="project_id"', 'name="contact_id"', 'name="organisation_id"'):
+for gone in ('Who and what it is about', 'Link Project',
+             'name="contact_id"', 'name="organisation_id"'):
     assert gone not in HTML, f'the form still carries {gone!r}'
-print('1. "Who and what it is about" and its three pickers are gone')
+print('1. "Who and what it is about" and its contact pickers are gone')
 
 
 # ─── 2. The caller is typed in rather than chosen ───────────────────────────
@@ -65,7 +65,7 @@ print('2. the caller\'s name, company, phone and email are typed in')
 
 # ─── 3. Each kind of enquiry has its own heading ────────────────────────────
 for heading in ('What they are looking to rent', 'What they are looking to buy',
-                'The property they have to let', 'The property they want to sell',
+                'What they have to let', 'The property they want to sell',
                 'What needs valuing'):
     assert heading in HTML, f'no section for: {heading}'
 assert 'Valuation' in [t for t in A.INQUIRY_TYPES], 'Valuation is not offered'
@@ -106,26 +106,39 @@ parser = Fields()
 parser.feed(HTML)
 
 
-def shown_for(key):
-    """The controls the page leaves enabled for this type — the rest disable."""
+def shown_for(*keys):
+    """The controls the page leaves enabled for this type — the rest disable.
+
+    More than one key where a type asks a question of its own: a letting
+    enquiry is either against an instruction on the books or one made here,
+    and the two never show together.
+    """
+    active = [k for k in keys if k] or ['none']
     out = []
     for name, scope, _type in parser.found:
         if scope is None:
             out.append(name)                      # always on the page
-        elif key and key in scope.split():
-            out.append(name)
-        elif not key and 'none' in scope.split():
+        elif any(k in scope.split() for k in active):
             out.append(name)
     return out
 
 
 # ─── 4. No name is claimed twice, for any type ──────────────────────────────
-KEYS = ['', 'tenant', 'buyer', 'landlord', 'vendor', 'valuation']
+KEYS = [(), ('tenant',), ('buyer',), ('landlord', 'landlord-existing'),
+        ('landlord', 'landlord-new'), ('vendor',), ('valuation',)]
 for key in KEYS:
-    names = shown_for(key)
+    names = shown_for(*key)
     dupes = {n for n in names if names.count(n) > 1}
     assert not dupes, f'type {key or "(general)"} submits {sorted(dupes)} twice'
 print(f'4. no field is submitted twice, across all {len(KEYS)} sets of questions')
+
+# The two ways of giving a letting instruction never appear together.
+assert 'project_id' in shown_for('landlord', 'landlord-existing')
+assert 'project_id' not in shown_for('landlord', 'landlord-new')
+assert 'new_address' in shown_for('landlord', 'landlord-new')
+assert 'new_address' not in shown_for('landlord', 'landlord-existing')
+assert 'project_id' not in shown_for('tenant'), 'a tenant is offered an instruction'
+print('   linking an instruction and adding one are never offered together')
 
 
 # ─── 5. Each type is asked what it should be ────────────────────────────────
@@ -134,13 +147,13 @@ EXPECTED = {
                   'req_budget_max', 'req_budget_unit', 'req_occupation_date'],
     'buyer':     ['req_area', 'req_size_min', 'req_size_max', 'req_budget_min',
                   'req_budget_max', 'req_tenure'],
-    'landlord':  ['req_area', 'req_size_min', 'req_budget_min', 'req_budget_unit',
+    'landlord':  ['letting_mode', 'req_budget_min', 'req_budget_unit',
                   'req_occupation_date'],
     'vendor':    ['req_area', 'req_size_min', 'req_budget_min'],
     'valuation': ['req_area', 'req_size_min', 'req_tenure', 'req_notes'],
 }
 for key, wanted in EXPECTED.items():
-    names = shown_for(key)
+    names = shown_for(key, f'{key}-existing')
     for field in wanted:
         assert field in names, f'a {key} enquiry is never asked for {field}'
     print(f'   {key:10s} asks for {len(set(names))} fields')
@@ -192,7 +205,88 @@ with A.app.app_context():
 print('6. a tenant enquiry and a valuation each store what they were asked')
 
 
-# ─── 7. Saving from this form does not clear links it never showed ──────────
+# ─── 7. A landlord's enquiry is filed against an instruction ────────────────
+# Adding a new one: the property, the instruction and the link are all made.
+before = None
+with A.app.app_context():
+    before = A.Project.query.count()
+
+r = cl.post('/enquiries/new', data={
+    'enquiry_type': 'Landlord — Looking to Let', 'status': 'Open',
+    'caller_name': 'Margaret Osei', 'caller_company': 'Osei Estates',
+    'caller_phone': '020 7946 1111',
+    'letting_mode': 'new',
+    'new_address': '12 Harwood Road, London', 'new_postcode': 'SW6 4QP',
+    'new_property_type': 'Office', 'new_size': '1800',
+    'req_budget_min': '45000', 'req_budget_unit': 'pa',
+    'req_occupation_date': '2026-11-01',
+}, follow_redirects=True)
+assert r.status_code == 200
+
+with A.app.app_context():
+    assert A.Project.query.count() == before + 1, 'no instruction was created'
+    e = A.Enquiry.query.order_by(A.Enquiry.id.desc()).first()
+    assert e.project_id, 'the enquiry was not filed against an instruction'
+    project = A.Project.query.get(e.project_id)
+    assert project.instruction_type == A.INSTRUCTION_TO_LET, project.instruction_type
+    assert e.property_id == project.property_id, 'the property does not match'
+    prop = A.Property.query.get(e.property_id)
+    assert '12 Harwood Road' in prop.address, prop.address
+    assert prop.postcode == 'SW6 4QP', prop.postcode
+    assert prop.size == 1800, prop.size
+    assert project.landlord_name == 'Margaret Osei', project.landlord_name
+    assert '12 Harwood Road' in e.subject, e.subject
+    MADE = project.id
+print('7. adding a new one creates the property, the To Let instruction '
+      'and the link')
+
+# The same address again reuses the property already on file.
+with A.app.app_context():
+    props_before = A.Property.query.count()
+r = cl.post('/enquiries/new', data={
+    'enquiry_type': 'Landlord — Looking to Let', 'status': 'Open',
+    'caller_name': 'Margaret Osei', 'letting_mode': 'new',
+    'new_address': '12 Harwood Road, London', 'new_postcode': 'SW6 4QP',
+}, follow_redirects=True)
+assert r.status_code == 200
+with A.app.app_context():
+    assert A.Property.query.count() == props_before, \
+        'a second copy of the property was put on the register'
+print('   the same address again reuses the property already on file')
+
+# Linking one already on the books makes nothing new.
+with A.app.app_context():
+    projects_before = A.Project.query.count()
+r = cl.post('/enquiries/new', data={
+    'enquiry_type': 'Landlord — Looking to Let', 'status': 'Open',
+    'caller_name': 'Tomas Lindqvist',
+    'letting_mode': 'existing', 'project_id': str(MADE),
+    'req_budget_min': '38000', 'req_budget_unit': 'pa',
+}, follow_redirects=True)
+assert r.status_code == 200
+with A.app.app_context():
+    assert A.Project.query.count() == projects_before, \
+        'linking an instruction created another one'
+    e = A.Enquiry.query.order_by(A.Enquiry.id.desc()).first()
+    assert e.project_id == MADE, e.project_id
+    assert e.property_id == A.Project.query.get(MADE).property_id
+print('   linking one already on the books creates nothing new')
+
+# An empty address makes nothing rather than an instruction with no property.
+with A.app.app_context():
+    projects_before = A.Project.query.count()
+r = cl.post('/enquiries/new', data={
+    'enquiry_type': 'Landlord — Looking to Let', 'status': 'Open',
+    'caller_name': 'Nobody Yet', 'letting_mode': 'new', 'new_address': '',
+}, follow_redirects=True)
+assert r.status_code == 200
+with A.app.app_context():
+    assert A.Project.query.count() == projects_before, \
+        'an instruction was invented from an empty address'
+print('   an empty address creates nothing')
+
+
+# ─── 8. Saving from this form does not clear links it never showed ──────────
 # The form no longer offers the contact, organisation and project boxes. An
 # enquiry that already has them must keep them when it is saved from here.
 with A.app.app_context():
@@ -215,6 +309,6 @@ with A.app.app_context():
         'saving from a form without the contact box cleared the contact'
     assert e.caller_name == 'Ada Okonkwo'
     assert e.req_area == 'Putney'
-print('7. an enquiry keeps a link the form no longer shows')
+print('8. an enquiry keeps a link the form no longer shows')
 
 print('\nENQUIRY FORM: ALL CHECKS PASSED')

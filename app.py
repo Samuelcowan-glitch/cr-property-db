@@ -7971,18 +7971,86 @@ def _enquiry_fields(form, e, links, property_id, pd, pf):
     return fields
 
 
+def _lettable_projects():
+    """The instructions a letting enquiry can be filed against, newest first."""
+    return (Project.query.order_by(Project.id.desc()).all())
+
+
+def _letting_instruction(form):
+    """The instruction a landlord's enquiry is about.
+
+    A landlord with space to let is not describing a property in free text —
+    they are describing an instruction, either one already on the books or one
+    that is about to be. The enquiry is linked to it, so the property, the
+    client and the enquiry are the same record rather than three spellings of
+    it. Returns the Project, or None where no choice was made.
+    """
+    mode = (form.get('letting_mode') or '').strip()
+    if mode == 'existing':
+        pid = _fint(form.get('project_id'))
+        return Project.query.get(pid) if pid else None
+    if mode != 'new':
+        return None
+
+    address = (form.get('new_address') or '').strip()
+    if not address:
+        return None            # nothing to make one from; nothing is invented
+
+    # Reuses a property already on file at the same address rather than
+    # putting a second copy of it on the register.
+    prop = _find_or_create_property({
+        'address': address,
+        'postcode': form.get('new_postcode') or '',
+        'property_type': form.get('new_property_type') or '',
+        'size': form.get('new_size') or '',
+    })
+    project = Project(
+        property_id=prop.id,
+        name=f'To Let — {prop.address}',
+        status='Active',
+        instruction_type=INSTRUCTION_TO_LET,
+        fee_earner_id=_fid(form.get('fee_earner_id')),
+        # Whoever rang in is the landlord, as far as anything is known yet.
+        landlord_name=_ftext(form.get('caller_name')),
+        client=_ftext(form.get('caller_company')) or _ftext(form.get('caller_name')),
+        client_phone=_ftext(form.get('caller_phone')),
+        client_email=_ftext(form.get('caller_email')),
+    )
+    db.session.add(project)
+    db.session.flush()
+    audit('create', entity='Project', entity_id=project.id,
+          detail='from a letting enquiry')
+    return project
+
+
+def _attach_letting_instruction(e, form):
+    """Link the enquiry to its instruction, and name it after the property."""
+    project = _letting_instruction(form)
+    if project is None:
+        return
+    e.project_id = project.id
+    e.property_id = project.property_id
+    # The subject is built from the type and the property, and the property is
+    # only known once the instruction is.
+    e.subject = enquiry_subject(
+        e.enquiry_type,
+        Property.query.get(e.property_id) if e.property_id else None)
+
+
 @app.route('/enquiries/new', methods=['GET', 'POST'])
 @requires('create')
 def enquiry_new():
-    # The form no longer offers a list of contacts, organisations or projects
-    # to link to, so none of them is read to draw it.
+    # No list of contacts or organisations is read: the caller is typed in.
+    # Instructions are, because a landlord's enquiry is filed against one.
     if request.method == 'POST':
         e = Enquiry(**_parse_enquiry_form(request.form))
+        _attach_letting_instruction(e, request.form)
         db.session.add(e)
         db.session.commit()
         flash('Enquiry recorded.', 'success')
         return redirect(url_for('enquiry_detail', id=e.id))
-    return render_template('crm/enquiry_form.html', enquiry=None)
+    return render_template('crm/enquiry_form.html', enquiry=None,
+                           projects=_lettable_projects())
 
 
 def _enquiry_activity(e):
@@ -8064,11 +8132,13 @@ def enquiry_edit(id):
     e = Enquiry.query.get_or_404(id)
     if request.method == 'POST':
         _save_enquiry_from_form(e, request.form)
+        _attach_letting_instruction(e, request.form)
         db.session.commit()
         audit('edit', entity='Enquiry', entity_id=e.id)
         flash('Enquiry updated.', 'success')
         return _back_to('enquiry_detail', id=e.id)
-    return render_template('crm/enquiry_form.html', enquiry=e)
+    return render_template('crm/enquiry_form.html', enquiry=e,
+                           projects=_lettable_projects())
 
 
 @app.route('/enquiries/<int:id>/log-contact', methods=['POST'])

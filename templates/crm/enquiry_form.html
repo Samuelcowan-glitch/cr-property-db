@@ -134,11 +134,12 @@
           style="grid-column:span 2;margin:8px 0">
       <div class="form-section" data-for="tenant">What they are looking to rent</div>
       <div class="form-section" data-for="buyer">What they are looking to buy</div>
-      <div class="form-section" data-for="landlord">The property they have to let</div>
+      <div class="form-section" data-for="landlord">What they have to let</div>
       <div class="form-section" data-for="vendor">The property they want to sell</div>
       <div class="form-section" data-for="valuation">What needs valuing</div>
 
-      <div class="form-group" data-for="tenant buyer landlord vendor valuation">
+      {# A landlord is not asked these: they come from the instruction. #}
+      <div class="form-group" data-for="tenant buyer vendor valuation">
         <label>Category</label>
         <select name="req_category" id="req_category" onchange="updateUseClass()">
           <option value="">— Any —</option>
@@ -147,7 +148,7 @@
         </select>
       </div>
 
-      <div class="form-group" data-for="tenant buyer landlord vendor valuation">
+      <div class="form-group" data-for="tenant buyer vendor valuation">
         <label id="use-class-label">Property Type</label>
         <select name="req_use_class" id="req_use_class">
           <!-- Options populated by JS based on category -->
@@ -215,15 +216,70 @@
       {# Buyers are always buying, so the unit is not a question. #}
       <input type="hidden" name="req_budget_unit" value="sale" data-for="buyer">
 
-      <div class="form-group span-2" data-for="landlord vendor valuation">
+      <div class="form-group span-2" data-for="vendor valuation">
         <label for="req_area_have">Address or area</label>
         <input type="text" id="req_area_have" name="req_area" value="{{ val('req_area') }}"
                placeholder="e.g. 57B New Kings Road, SW6">
       </div>
 
-      <div class="form-group" data-for="landlord vendor valuation">
+      <div class="form-group" data-for="vendor valuation">
         <label>Approx Size (sq ft)</label>
         <input type="number" name="req_size_min" placeholder="e.g. 1200" value="{{ num('req_size_min') }}">
+      </div>
+
+      {# A landlord with space to let is describing an instruction, not a
+         property in free text. It is either already on the books or about to
+         be, and either way the enquiry is filed against it. #}
+      <div class="form-group span-2" data-for="landlord">
+        <label for="letting_mode">The instruction</label>
+        <select id="letting_mode" name="letting_mode" onchange="showEnquiryFields()">
+          <option value="existing" {{ 'selected' if enquiry and enquiry.project_id else '' }}>
+            Link one already on the books
+          </option>
+          <option value="new" {{ 'selected' if enquiry and not enquiry.project_id else '' }}>
+            Add a new instruction
+          </option>
+        </select>
+      </div>
+
+      <div class="form-group span-2" data-for="landlord-existing">
+        <label for="project_id">Instruction</label>
+        <select id="project_id" name="project_id" data-search
+                data-placeholder="Search instructions…">
+          <option value="">— Choose an instruction —</option>
+          {% for p in projects %}
+          <option value="{{ p.id }}" {{ 'selected' if enquiry and enquiry.project_id == p.id else '' }}>
+            {{ p.name }}{% if p.property %} — {{ p.property.address }}{% endif %}
+          </option>
+          {% endfor %}
+        </select>
+        <span class="form-hint">The property and client come from the instruction.</span>
+      </div>
+
+      <div class="form-group span-2" data-for="landlord-new">
+        <label for="new_address">Property address</label>
+        <input type="text" id="new_address" name="new_address"
+               placeholder="e.g. 57B New Kings Road, London">
+        <span class="form-hint">
+          A To Let instruction is created against this address and the enquiry
+          filed against it. A property already on file at the same address is
+          used rather than a second copy being made.
+        </span>
+      </div>
+
+      <div class="form-group" data-for="landlord-new">
+        <label for="new_postcode">Postcode</label>
+        <input type="text" id="new_postcode" name="new_postcode" placeholder="e.g. SW6 4SQ">
+      </div>
+
+      <div class="form-group" data-for="landlord-new">
+        <label for="new_property_type">Property Type</label>
+        <input type="text" id="new_property_type" name="new_property_type" placeholder="e.g. Office">
+      </div>
+
+      <div class="form-group" data-for="landlord-new">
+        <label for="new_size">Approx Size (sq ft)</label>
+        <input type="number" id="new_size" name="new_size" placeholder="e.g. 1200">
       </div>
 
       <div class="form-group" data-for="landlord">
@@ -327,10 +383,14 @@ function showEnquiryFields() {
   var key = (opt && opt.dataset.key) || '';
   // Three cases, not two: a type with its own questions, a type that calls for
   // none — an existing client, a general enquiry — and nothing chosen yet.
-  var placeholder = key ? 'general' : (sel.value ? 'general' : 'none');
+  var active = [key || (sel.value ? 'general' : 'none')];
+  // A letting enquiry asks a second question of its own: whether the
+  // instruction is one already on the books or one being made here.
+  var mode = document.getElementById('letting_mode');
+  if (key === 'landlord' && mode) active.push('landlord-' + mode.value);
   document.querySelectorAll('[data-for]').forEach(function(el) {
     var wanted = el.getAttribute('data-for').split(' ');
-    var show = key ? wanted.indexOf(key) !== -1 : wanted.indexOf(placeholder) !== -1;
+    var show = wanted.some(function(w) { return active.indexOf(w) !== -1; });
     el.style.display = show ? '' : 'none';
     el.querySelectorAll('input, select, textarea').forEach(function(f) {
       f.disabled = !show;
