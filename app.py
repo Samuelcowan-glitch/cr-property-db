@@ -1567,6 +1567,14 @@ class Enquiry(db.Model):
     project_id = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=True)
     fee_earner = db.Column(db.String(100))   # kept: what was typed before
     fee_earner_id = db.Column(db.Integer, db.ForeignKey('users.id'), index=True)
+    # Somebody who has just rung in is not on the CRM yet, so the form cannot
+    # ask which existing contact they are. What they say is typed straight onto
+    # the enquiry; a Contact record can be made from it afterwards, and
+    # contact_id above is filled in when there is one.
+    caller_name    = db.Column(db.String(120))
+    caller_company = db.Column(db.String(120))
+    caller_phone   = db.Column(db.String(40))
+    caller_email   = db.Column(db.String(120))
     received_date = db.Column(db.Date)
     notes = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -7417,6 +7425,10 @@ ENQUIRY_FIELDS = [
     ('priority',            'priority',            _ftext),
     ('preferred_contact',   'preferred_contact',   _ftext),
     ('received_date',       'received_date',       _parse_date),
+    ('caller_name',         'caller_name',         _ftext),
+    ('caller_company',      'caller_company',      _ftext),
+    ('caller_phone',        'caller_phone',        _ftext),
+    ('caller_email',        'caller_email',        _ftext),
     ('notes',               'notes',               _ftext),
     ('req_category',        'req_category',        _ftext),
     ('req_property_type',   'req_property_type',   _ftext),
@@ -7449,6 +7461,7 @@ INQUIRY_TYPES = [
     'Buyer — Looking to Buy',
     'Landlord — Looking to Let',
     'Owner/Vendor — Looking to Sell',
+    'Valuation',
     'Existing Client',
     'General Inquiry',
     'Other',
@@ -7456,11 +7469,32 @@ INQUIRY_TYPES = [
 
 # What the CRM used to offer. Nothing is rewritten — an old enquiry keeps the
 # type it was filed under, and that value is still offered on its own record so
-# saving it does not silently change it.
+# saving it does not silently change it. Valuation has been promoted back to
+# the live list above, so the older valuations file under the same heading as
+# the new ones rather than under a heading of their own.
 INQUIRY_TYPES_LEGACY = [
-    'Valuation', 'Lease Advisory', 'Agency — Letting', 'Agency — Sale',
+    'Lease Advisory', 'Agency — Letting', 'Agency — Sale',
     'Building Consultancy', 'Business Rates', 'Rent Review', 'Lease Renewal',
 ]
+
+# Which set of questions an enquiry of each type is worth asking. Somebody
+# looking for space is asked what they want; somebody with space is asked what
+# they have; a valuation is asked about the property and why. The key is put on
+# the option itself so the page never has to match on the wording of a type.
+ENQUIRY_TYPE_KEYS = {
+    'Tenant — Looking to Rent': 'tenant',
+    'Buyer — Looking to Buy': 'buyer',
+    'Landlord — Looking to Let': 'landlord',
+    'Owner/Vendor — Looking to Sell': 'vendor',
+    'Valuation': 'valuation',
+    'Agency — Letting': 'tenant',
+    'Agency — Sale': 'buyer',
+}
+
+
+def enquiry_type_key(value):
+    """The set of questions this type calls for, or '' for the general ones."""
+    return ENQUIRY_TYPE_KEYS.get((value or '').strip(), '')
 
 # Portal leads arrive as one of these two; they map onto the new list so a
 # Zoopla or Rightmove enquiry files itself under the right heading.
@@ -7484,6 +7518,7 @@ def inquiry_type_options(current=None):
 
 app.jinja_env.globals['INQUIRY_TYPES'] = INQUIRY_TYPES
 app.jinja_env.globals['inquiry_type_options'] = inquiry_type_options
+app.jinja_env.globals['enquiry_type_key'] = enquiry_type_key
 
 
 def enquiry_subject(enquiry_type, prop):
@@ -7859,6 +7894,17 @@ def _parse_enquiry_form(form, e=None):
     def pf(v): return float(v.replace(',','')) if v and v.strip() else None
     def pi(v): return int(v) if v else None
 
+    # The links are set where a form offers them and left alone where it does
+    # not. The enquiry form stopped asking which project, contact and
+    # organisation an enquiry belongs to; without this, saving an edit from
+    # that form would clear links the enquiry already had.
+    offers_links = any(k in form for k in
+                       ('project_id', 'property_id', 'contact_id', 'organisation_id'))
+    if not offers_links:
+        links = {}
+        property_id = e.property_id if e else None
+        return _enquiry_fields(form, e, links, property_id, pd, pf)
+
     # The enquiry is filed against a project. Its property comes from that
     # project rather than being asked for a second time — the same
     # relationship typed twice is how the two drift apart.
@@ -7876,6 +7922,17 @@ def _parse_enquiry_form(form, e=None):
         if who is not None:
             organisation_id = getattr(who, 'organisation_id', None)
 
+    links = dict(property_id=property_id, contact_id=contact_id,
+                 organisation_id=organisation_id, project_id=project_id)
+    return _enquiry_fields(form, e, links, property_id, pd, pf)
+
+
+def _enquiry_fields(form, e, links, property_id, pd, pf):
+    """Everything an enquiry form sets, links apart.
+
+    Split out because a form that offers no links still sets all of this, and
+    the two callers must not drift into setting different things.
+    """
     fields = dict(
         # Never typed. Built from the type and the property so the list still
         # reads as one line per enquiry, and kept on the record for the older
@@ -7884,10 +7941,7 @@ def _parse_enquiry_form(form, e=None):
                                 Property.query.get(property_id) if property_id else None),
         enquiry_type=form.get('enquiry_type'),
         status=form.get('status', 'Open'),
-        property_id=property_id,
-        contact_id=contact_id,
-        organisation_id=organisation_id,
-        project_id=project_id,
+        **links,
         fee_earner_id=_fid(form.get('fee_earner_id')),
         received_date=pd(form.get('received_date')),
         last_contact_date=pd(form.get('last_contact_date')),
@@ -7900,6 +7954,17 @@ def _parse_enquiry_form(form, e=None):
         req_budget_unit=form.get('req_budget_unit') or 'pa',
         req_use_class=form.get('req_use_class') or None,
         req_category=form.get('req_category') or None,
+        req_area=form.get('req_area') or None,
+        req_tenure=form.get('req_tenure') or None,
+        req_occupation_date=pd(form.get('req_occupation_date')),
+        req_notes=form.get('req_notes') or None,
+        # Typed in as the caller gives them. Only what the form actually showed
+        # for this type is sent, so nothing is stored against an enquiry that
+        # was never asked the question.
+        caller_name=form.get('caller_name') or None,
+        caller_company=form.get('caller_company') or None,
+        caller_phone=form.get('caller_phone') or None,
+        caller_email=form.get('caller_email') or None,
     )
     if e:
         for k, v in fields.items(): setattr(e, k, v)
@@ -7909,19 +7974,15 @@ def _parse_enquiry_form(form, e=None):
 @app.route('/enquiries/new', methods=['GET', 'POST'])
 @requires('create')
 def enquiry_new():
-    properties = Property.query.order_by(Property.address).all()
-    contacts = Contact.query.order_by(Contact.last_name).all()
-    organisations = Organisation.query.order_by(Organisation.name).all()
-    projects = Project.query.order_by(Project.name).all()
+    # The form no longer offers a list of contacts, organisations or projects
+    # to link to, so none of them is read to draw it.
     if request.method == 'POST':
         e = Enquiry(**_parse_enquiry_form(request.form))
         db.session.add(e)
         db.session.commit()
         flash('Enquiry recorded.', 'success')
         return redirect(url_for('enquiry_detail', id=e.id))
-    return render_template('crm/enquiry_form.html', enquiry=None,
-                           properties=properties, contacts=contacts,
-                           organisations=organisations, projects=projects)
+    return render_template('crm/enquiry_form.html', enquiry=None)
 
 
 def _enquiry_activity(e):
@@ -8001,19 +8062,13 @@ def enquiry_detail(id):
 @requires('edit')
 def enquiry_edit(id):
     e = Enquiry.query.get_or_404(id)
-    properties = Property.query.order_by(Property.address).all()
-    contacts = Contact.query.order_by(Contact.last_name).all()
-    organisations = Organisation.query.order_by(Organisation.name).all()
-    projects = Project.query.order_by(Project.name).all()
     if request.method == 'POST':
         _save_enquiry_from_form(e, request.form)
         db.session.commit()
         audit('edit', entity='Enquiry', entity_id=e.id)
         flash('Enquiry updated.', 'success')
         return _back_to('enquiry_detail', id=e.id)
-    return render_template('crm/enquiry_form.html', enquiry=e,
-                           properties=properties, contacts=contacts,
-                           organisations=organisations, projects=projects)
+    return render_template('crm/enquiry_form.html', enquiry=e)
 
 
 @app.route('/enquiries/<int:id>/log-contact', methods=['POST'])
@@ -10946,6 +11001,8 @@ def _migrate_enquiry_columns():
             ('preferred_contact','TEXT'),('priority','TEXT'),
             ('next_action','TEXT'),('next_call_date','DATE'),
             ('archived','BOOLEAN DEFAULT FALSE'),
+            ('caller_name','TEXT'),('caller_company','TEXT'),
+            ('caller_phone','TEXT'),('caller_email','TEXT'),
         ]
         with db.engine.connect() as conn:
             for col_name, col_def in new_cols:

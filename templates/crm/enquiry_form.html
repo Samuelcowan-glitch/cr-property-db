@@ -1,9 +1,14 @@
-﻿{% extends "base.html" %}
+{% extends "base.html" %}
 {% block title %}{{ 'Edit Enquiry' if enquiry else 'New Enquiry' }}{% endblock %}
 {% block topbar_title %}{{ 'Edit Enquiry' if enquiry else 'New Enquiry' }}{% endblock %}
 {% block topbar_actions %}
   <a href="{{ url_for('enquiries_list') }}" class="btn btn-outline btn-sm">← Enquiries</a>
 {% endblock %}
+
+{% set _e = enquiry %}
+{% macro val(attr) %}{{ _e[attr] if _e and _e[attr] is not none else '' }}{% endmacro %}
+{% macro num(attr) %}{{ _e[attr]|int if _e and _e[attr] else '' }}{% endmacro %}
+{% macro day(attr) %}{{ _e[attr].strftime('%Y-%m-%d') if _e and _e[attr] else '' }}{% endmacro %}
 
 {% block content %}
 <div class="breadcrumb">
@@ -15,20 +20,23 @@
 <div class="card" style="max-width:760px">
   <div class="card-header">
     <div class="card-title">{{ 'Edit Enquiry' if enquiry else 'New Enquiry' }}</div>
-    <div style="font-size:12px;color:#5f6368">Link to a property, contact, organisation and/or project to build the full picture.</div>
+    <div style="font-size:12px;color:#5f6368">
+      Choose what the enquiry is. The questions below follow from it.
+    </div>
   </div>
   <form method="post">
     <div class="form-grid" style="margin-bottom:16px">
 
       {# The field the register turns on. There is no Subject: it is built from
          this and the property, so nobody types a line of prose to file an
-         enquiry. #}
+         enquiry. It also decides which set of questions is asked below. #}
       <div class="form-group span-2">
-        <label for="enquiry_type">Inquiry Type *</label>
-        <select id="enquiry_type" name="enquiry_type" required>
+        <label for="enquiry_type">Enquiry Type *</label>
+        <select id="enquiry_type" name="enquiry_type" required onchange="showEnquiryFields()">
           <option value="">— Select —</option>
           {% for t in inquiry_type_options(enquiry.enquiry_type if enquiry else none) %}
-          <option value="{{ t }}" {{ 'selected' if enquiry and enquiry.enquiry_type == t else '' }}>{{ t }}</option>
+          <option value="{{ t }}" data-key="{{ enquiry_type_key(t) }}"
+                  {{ 'selected' if enquiry and enquiry.enquiry_type == t else '' }}>{{ t }}</option>
           {% endfor %}
         </select>
       </div>
@@ -62,64 +70,75 @@
 
       <div class="form-group">
         <label for="received_date">Date Received</label>
-        <input type="date" id="received_date" name="received_date"
-               value="{{ enquiry.received_date.strftime('%Y-%m-%d') if enquiry and enquiry.received_date else '' }}">
+        <input type="date" id="received_date" name="received_date" value="{{ day('received_date') }}">
+      </div>
+
+      <div class="form-group">
+        <label for="next_follow_up">Next Follow-up Date</label>
+        <input type="date" id="next_follow_up" name="next_follow_up" value="{{ day('next_follow_up') }}">
       </div>
 
       <hr class="divider" style="grid-column:span 2;margin:8px 0">
+      <div class="form-section">Who is enquiring</div>
 
-      <div class="form-section">Who and what it is about</div>
+      {# Typed in, not chosen. Somebody who has just rung up is not on the CRM
+         yet, so a list of existing contacts cannot record them. A contact
+         record is made from this afterwards. #}
+      <div class="form-group">
+        <label for="caller_name">Name</label>
+        <input type="text" id="caller_name" name="caller_name" value="{{ val('caller_name') }}"
+               placeholder="Who is calling">
+      </div>
 
-      {# One relationship, not three. The project carries its own property, so
-         asking for that again is how the two end up disagreeing. #}
+      <div class="form-group">
+        <label for="caller_company">Company</label>
+        <input type="text" id="caller_company" name="caller_company" value="{{ val('caller_company') }}"
+               placeholder="Their company, if any">
+      </div>
+
+      <div class="form-group">
+        <label for="caller_phone">Phone</label>
+        <input type="text" id="caller_phone" name="caller_phone" value="{{ val('caller_phone') }}"
+               placeholder="e.g. 07700 900123">
+      </div>
+
+      <div class="form-group">
+        <label for="caller_email">Email</label>
+        <input type="email" id="caller_email" name="caller_email" value="{{ val('caller_email') }}"
+               placeholder="e.g. jane@company.co.uk">
+      </div>
+
+      {% if enquiry and enquiry.contact %}
       <div class="form-group span-2">
-        <label for="project_id">Link Project</label>
-        <select id="project_id" name="project_id" data-search
-                data-placeholder="Search instructions…">
-          <option value="">— Not about a specific instruction —</option>
-          {% for p in projects %}
-          <option value="{{ p.id }}" {{ 'selected' if enquiry and enquiry.project_id == p.id else '' }}>
-            {{ p.name }}{% if p.property %} — {{ p.property.address }}{% endif %}
-          </option>
-          {% endfor %}
-        </select>
         <span class="form-hint">
-          The property and client are taken from the instruction. You do not
-          need to link them separately.
+          Already linked to the contact record
+          <a href="{{ url_for('contact_detail', id=enquiry.contact.id) }}">{{ contact_label(enquiry.contact) }}</a>.
         </span>
       </div>
+      {% endif %}
 
-      <div class="form-group">
-        <label for="contact_id">Who is enquiring</label>
-        <select id="contact_id" name="contact_id" data-search data-placeholder="Search contacts…">
-          <option value="">— No contact —</option>
-          {% for c in contacts %}
-          <option value="{{ c.id }}" {{ 'selected' if enquiry and enquiry.contact_id == c.id else '' }}>
-            {{ contact_label(c) }}
-          </option>
-          {% endfor %}
-        </select>
+      {# Nothing chosen yet, and the types that call for no questions of their
+         own — an existing client or a general enquiry is written up in Notes. #}
+      <div class="form-group span-2" data-for="none">
+        <span class="form-hint">Choose an enquiry type to be asked the rest.</span>
+      </div>
+      <div class="form-group span-2" data-for="general">
+        <span class="form-hint">Nothing further is needed. Write it up in Notes below.</span>
       </div>
 
-      <div class="form-group">
-        <label for="organisation_id">Their organisation</label>
-        <select id="organisation_id" name="organisation_id">
-          <option value="">— No organisation —</option>
-          {% for o in organisations %}
-          <option value="{{ o.id }}" {{ 'selected' if enquiry and enquiry.organisation_id == o.id else '' }}>{{ o.name }}</option>
-          {% endfor %}
-        </select>
-        <span class="form-hint">
-          The company the enquirer works for &mdash; not ours, and not the
-          instruction&rsquo;s. Filled in automatically if they are already on
-          record with one.
-        </span>
-      </div>
+      {# One heading per type, then the questions that type calls for. The
+         property being described is the enquirer's own for a landlord, vendor
+         or valuation, and one they are hoping to find for a tenant or buyer,
+         so the same columns are asked for under different headings. #}
+      <hr class="divider" data-for="tenant buyer landlord vendor valuation"
+          style="grid-column:span 2;margin:8px 0">
+      <div class="form-section" data-for="tenant">What they are looking to rent</div>
+      <div class="form-section" data-for="buyer">What they are looking to buy</div>
+      <div class="form-section" data-for="landlord">The property they have to let</div>
+      <div class="form-section" data-for="vendor">The property they want to sell</div>
+      <div class="form-section" data-for="valuation">What needs valuing</div>
 
-      <hr class="divider" style="grid-column:span 2;margin:8px 0">
-      <div class="form-section">Applicant Requirements</div>
-
-      <div class="form-group">
+      <div class="form-group" data-for="tenant buyer landlord vendor valuation">
         <label>Category</label>
         <select name="req_category" id="req_category" onchange="updateUseClass()">
           <option value="">— Any —</option>
@@ -128,80 +147,121 @@
         </select>
       </div>
 
-      <div class="form-group">
+      <div class="form-group" data-for="tenant buyer landlord vendor valuation">
         <label id="use-class-label">Property Type</label>
         <select name="req_use_class" id="req_use_class">
           <!-- Options populated by JS based on category -->
         </select>
       </div>
 
-      <script>
-      var currentUseClass = "{{ enquiry.req_use_class if enquiry and enquiry.req_use_class else '' }}";
-      var commercialOpts = [
-        ['', '— Any —'],
-        ['office', 'Office'],
-        ['retail', 'Retail'],
-        ['industrial', 'Industrial / Warehouse']
-      ];
-      var residentialOpts = [
-        ['', '— Any —'],
-        ['owner-occupied', 'Owner Occupied'],
-        ['investment', 'Investment / Resi Investment'],
-        ['hmo', 'HMO'],
-        ['vacant', 'Vacant']
-      ];
-      function updateUseClass() {
-        var cat = document.getElementById('req_category').value;
-        var sel = document.getElementById('req_use_class');
-        var opts = cat === 'residential' ? residentialOpts : commercialOpts;
-        sel.innerHTML = '';
-        opts.forEach(function(o) {
-          var opt = document.createElement('option');
-          opt.value = o[0]; opt.textContent = o[1];
-          if (o[0] === currentUseClass) opt.selected = true;
-          sel.appendChild(opt);
-        });
-      }
-      updateUseClass();
-      </script>
+      <div class="form-group span-2" data-for="tenant buyer">
+        <label for="req_area_want">Preferred area</label>
+        <input type="text" id="req_area_want" name="req_area" value="{{ val('req_area') }}"
+               placeholder="e.g. Fulham, Parsons Green, SW6">
+      </div>
 
-      <div class="form-group">
+      <div class="form-group" data-for="tenant buyer">
         <label>Min Size (sq ft)</label>
-        <input type="number" name="req_size_min" placeholder="e.g. 500"
-               value="{{ enquiry.req_size_min|int if enquiry and enquiry.req_size_min else '' }}">
+        <input type="number" name="req_size_min" placeholder="e.g. 500" value="{{ num('req_size_min') }}">
       </div>
 
-      <div class="form-group">
+      <div class="form-group" data-for="tenant buyer">
         <label>Max Size (sq ft)</label>
-        <input type="number" name="req_size_max" placeholder="e.g. 2000"
-               value="{{ enquiry.req_size_max|int if enquiry and enquiry.req_size_max else '' }}">
+        <input type="number" name="req_size_max" placeholder="e.g. 2000" value="{{ num('req_size_max') }}">
       </div>
 
-      <div class="form-group">
+      <div class="form-group" data-for="tenant">
         <label>Min Budget (£)</label>
-        <input type="number" name="req_budget_min" placeholder="e.g. 20000"
-               value="{{ enquiry.req_budget_min|int if enquiry and enquiry.req_budget_min else '' }}">
+        <input type="number" name="req_budget_min" placeholder="e.g. 20000" value="{{ num('req_budget_min') }}">
       </div>
 
-      <div class="form-group">
+      <div class="form-group" data-for="tenant">
         <label>Max Budget (£)</label>
-        <input type="number" name="req_budget_max" placeholder="e.g. 60000"
-               value="{{ enquiry.req_budget_max|int if enquiry and enquiry.req_budget_max else '' }}">
+        <input type="number" name="req_budget_max" placeholder="e.g. 60000" value="{{ num('req_budget_max') }}">
       </div>
 
-      <div class="form-group">
+      <div class="form-group" data-for="tenant">
         <label>Budget Unit</label>
         <select name="req_budget_unit">
-          <option value="pa" {{ 'selected' if not enquiry or enquiry.req_budget_unit == 'pa' else '' }}>Per annum</option>
+          <option value="pa"  {{ 'selected' if not enquiry or enquiry.req_budget_unit == 'pa'  else '' }}>Per annum</option>
           <option value="pcm" {{ 'selected' if enquiry and enquiry.req_budget_unit == 'pcm' else '' }}>Per month</option>
-          <option value="sale" {{ 'selected' if enquiry and enquiry.req_budget_unit == 'sale' else '' }}>Purchase price</option>
         </select>
       </div>
 
-      <div class="form-group">
-        <label>Next Follow-up Date</label>
-        <input type="date" name="next_follow_up"
-               value="{{ enquiry.next_follow_up.strftime('%Y-%m-%d') if enquiry and enquiry.next_follow_up else '' }}">
+      <div class="form-group" data-for="tenant">
+        <label for="req_occupation_date">Wants to be in by</label>
+        <input type="date" id="req_occupation_date" name="req_occupation_date" value="{{ day('req_occupation_date') }}">
+      </div>
+
+      <div class="form-group" data-for="buyer">
+        <label>Min Price (£)</label>
+        <input type="number" name="req_budget_min" placeholder="e.g. 250000" value="{{ num('req_budget_min') }}">
+      </div>
+
+      <div class="form-group" data-for="buyer">
+        <label>Max Price (£)</label>
+        <input type="number" name="req_budget_max" placeholder="e.g. 750000" value="{{ num('req_budget_max') }}">
+      </div>
+
+      <div class="form-group" data-for="buyer valuation">
+        <label>Tenure</label>
+        <select name="req_tenure">
+          <option value="">— Either —</option>
+          <option value="freehold" {{ 'selected' if enquiry and enquiry.req_tenure == 'freehold' else '' }}>Freehold</option>
+          <option value="leasehold" {{ 'selected' if enquiry and enquiry.req_tenure == 'leasehold' else '' }}>Leasehold</option>
+        </select>
+      </div>
+
+      {# Buyers are always buying, so the unit is not a question. #}
+      <input type="hidden" name="req_budget_unit" value="sale" data-for="buyer">
+
+      <div class="form-group span-2" data-for="landlord vendor valuation">
+        <label for="req_area_have">Address or area</label>
+        <input type="text" id="req_area_have" name="req_area" value="{{ val('req_area') }}"
+               placeholder="e.g. 57B New Kings Road, SW6">
+      </div>
+
+      <div class="form-group" data-for="landlord vendor valuation">
+        <label>Approx Size (sq ft)</label>
+        <input type="number" name="req_size_min" placeholder="e.g. 1200" value="{{ num('req_size_min') }}">
+      </div>
+
+      <div class="form-group" data-for="landlord">
+        <label>Guide Rent (£)</label>
+        <input type="number" name="req_budget_min" placeholder="e.g. 45000" value="{{ num('req_budget_min') }}">
+      </div>
+
+      <div class="form-group" data-for="landlord">
+        <label>Rent Basis</label>
+        <select name="req_budget_unit">
+          <option value="pa"  {{ 'selected' if not enquiry or enquiry.req_budget_unit == 'pa'  else '' }}>Per annum</option>
+          <option value="pcm" {{ 'selected' if enquiry and enquiry.req_budget_unit == 'pcm' else '' }}>Per month</option>
+        </select>
+      </div>
+
+      <div class="form-group" data-for="landlord">
+        <label for="req_available_from">Available from</label>
+        <input type="date" id="req_available_from" name="req_occupation_date" value="{{ day('req_occupation_date') }}">
+      </div>
+
+      <div class="form-group" data-for="vendor">
+        <label>Guide Price (£)</label>
+        <input type="number" name="req_budget_min" placeholder="e.g. 850000" value="{{ num('req_budget_min') }}">
+      </div>
+
+      <input type="hidden" name="req_budget_unit" value="sale" data-for="vendor valuation">
+
+      {# ── Valuation ───────────────────────────────────────────────────── #}
+      <div class="form-group span-2" data-for="valuation">
+        <label for="req_notes_val">What is the valuation for?</label>
+        <input type="text" id="req_notes_val" name="req_notes" value="{{ val('req_notes') }}"
+               placeholder="e.g. probate, loan security, rent review, sale advice">
+      </div>
+
+      <div class="form-group span-2" data-for="tenant buyer landlord vendor">
+        <label for="req_notes_any">Anything else they have asked for</label>
+        <input type="text" id="req_notes_any" name="req_notes" value="{{ val('req_notes') }}"
+               placeholder="Parking, ground floor, A3 use, short let…">
       </div>
 
       <hr class="divider" style="grid-column:span 2;margin:8px 0">
@@ -209,7 +269,7 @@
       <div class="form-group span-2">
         <label for="notes">Notes</label>
         <textarea id="notes" name="notes" rows="3"
-                  placeholder="Details of the enquiry, source, requirements…">{{ enquiry.notes if enquiry else '' }}</textarea>
+                  placeholder="What was said, and where the enquiry came from">{{ enquiry.notes if enquiry else '' }}</textarea>
       </div>
     </div>
 
@@ -228,4 +288,58 @@
   {% endif %}
 </div>
 
+<script>
+var currentUseClass = "{{ enquiry.req_use_class if enquiry and enquiry.req_use_class else '' }}";
+var commercialOpts = [
+  ['', '— Any —'],
+  ['office', 'Office'],
+  ['retail', 'Retail'],
+  ['industrial', 'Industrial / Warehouse']
+];
+var residentialOpts = [
+  ['', '— Any —'],
+  ['owner-occupied', 'Owner Occupied'],
+  ['investment', 'Investment / Resi Investment'],
+  ['hmo', 'HMO'],
+  ['vacant', 'Vacant']
+];
+function updateUseClass() {
+  var cat = document.getElementById('req_category').value;
+  var sel = document.getElementById('req_use_class');
+  var opts = cat === 'residential' ? residentialOpts : commercialOpts;
+  sel.innerHTML = '';
+  opts.forEach(function(o) {
+    var opt = document.createElement('option');
+    opt.value = o[0]; opt.textContent = o[1];
+    if (o[0] === currentUseClass) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+// Only the questions this kind of enquiry calls for. Several types ask for the
+// same column under a different heading — a tenant's preferred area and a
+// vendor's address are both req_area — so the boxes that are not shown are
+// also disabled. A disabled box is not submitted, and without that the browser
+// would send every copy and the record would take whichever came first.
+function showEnquiryFields() {
+  var sel = document.getElementById('enquiry_type');
+  var opt = sel.options[sel.selectedIndex];
+  var key = (opt && opt.dataset.key) || '';
+  // Three cases, not two: a type with its own questions, a type that calls for
+  // none — an existing client, a general enquiry — and nothing chosen yet.
+  var placeholder = key ? 'general' : (sel.value ? 'general' : 'none');
+  document.querySelectorAll('[data-for]').forEach(function(el) {
+    var wanted = el.getAttribute('data-for').split(' ');
+    var show = key ? wanted.indexOf(key) !== -1 : wanted.indexOf(placeholder) !== -1;
+    el.style.display = show ? '' : 'none';
+    el.querySelectorAll('input, select, textarea').forEach(function(f) {
+      f.disabled = !show;
+    });
+    if (el.matches('input, select, textarea')) el.disabled = !show;
+  });
+}
+
+updateUseClass();
+showEnquiryFields();
+</script>
 {% endblock %}
