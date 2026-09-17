@@ -590,16 +590,26 @@ table.rec-table td.actions { white-space: nowrap; text-align: right; }
   grid-template-columns: var(--label-w) minmax(0, 1fr) var(--label-w) minmax(0, 1fr);
   align-items: stretch;
 }
-.box--grid > .box-head { grid-column: 1 / -1; }
-.box--grid .frow { display: contents; }
+/* Only a row is made of columns. Anything else in the box — the heading, a
+   warning banner, a fold of extra fields, a result, a row of buttons, a note —
+   is one thing across the whole width. Without this each lands in whichever
+   column happened to be free, which reads as a shuffled page rather than a
+   box. */
+.box--grid > :not(.frow) { grid-column: 1 / -1; }
+
+/* Only the box's OWN rows dissolve into it. A row inside something else in the
+   box — inside a fold, say — is laid out by that thing, and dissolving it
+   would scatter its cells into the box's grid instead. It stays a flex row,
+   which puts its divider on the same label width regardless. */
+.box--grid > .frow { display: contents; }
 
 /* The row border moves onto the cells, since the row itself no longer boxes
    anything in. */
-.box--grid .fcell { border-bottom: 1px solid var(--cell-line); }
-.box--grid .frow:last-child .fcell { border-bottom: 0; }
+.box--grid > .frow > .fcell { border-bottom: 1px solid var(--cell-line); }
+.box--grid > .frow:last-child > .fcell { border-bottom: 0; }
 
 /* A row holding one label and one value stretches across all four columns. */
-.box--grid .frow--full > .fcell:last-child { grid-column: 2 / -1; }
+.box--grid > .frow--full > .fcell:last-child { grid-column: 2 / -1; }
 
 /* Every field is the same height, whatever it is. */
 .box--grid .fcell--edit > input,
@@ -652,6 +662,15 @@ table.rec-table td.actions { white-space: nowrap; text-align: right; }
 .rec-note {
   margin: 10px 0 0; font-size: 12px; color: var(--grey-600); line-height: 1.5;
   max-width: 70ch;
+}
+
+/* The same note inside a box is the last band of that box, so it takes the
+   box's padding and a divider above it rather than sitting flush against the
+   border with its words touching the edge. */
+.box > .rec-note {
+  margin: 0; padding: 10px 14px;
+  border-top: 1px solid var(--cell-line);
+  max-width: none;          /* the band spans the box; only the words are measured */
 }
 
 /* ── Record header ─────────────────────────────────────────────────────────
@@ -2543,3 +2562,19 @@ body.pg-open { overflow: hidden; }
 
 /* A name matched to a record rather than linked to one. Said quietly, but said. */
 .orgpick-bit.is-matched { color: var(--grey-600); font-style: italic; }
+
+/* ── Zoopla feed ───────────────────────────────────────────────────────────
+   The BLM file shown exactly as it would be uploaded: a fixed-width block that
+   scrolls inside its box rather than stretching the page. */
+.zoo-blm {
+  margin: 0; padding: 14px; max-height: 420px; overflow: auto;
+  background: var(--navy); color: #dbe4ff;
+  font-size: 12px; line-height: 1.5; white-space: pre;
+  border-top: 1px solid var(--cell-line);
+}
+/* Something Zoopla would refuse, said in the row it belongs to. */
+.zoo-problem { color: var(--danger); }
+
+/* A table wide enough to need dragging scrolls inside its box, so the page
+   itself never moves sideways. */
+.box > .table-scroll { overflow-x: auto; }

@@ -43,6 +43,29 @@ const PAGES = [
   ['transaction record', '/transactions/1'],
   ['new transaction', '/transactions/new'],
   ['diary', '/diary'],
+  // Every other page somebody actually opens. A box laid out wrongly is only
+  // found where it is looked at, and the rates calculator was wrong on a page
+  // this list did not cover in full.
+  ['edit contact', '/contacts/1/edit'],
+  ['new organisation', '/organisations/new'],
+  ['edit organisation', '/organisations/1/edit'],
+  ['new property', '/properties/new'],
+  ['edit property', '/properties/1/edit'],
+  ['new project', '/projects/new'],
+  ['edit project', '/projects/1/edit'],
+  ['edit listing', '/listings/1/edit'],
+  ['new listing', '/projects/1/listing/new'],
+  ['particulars', '/projects/1/particulars'],
+  ['enquiry schedule', '/projects/1/enquiry-schedule'],
+  ['new enquiry', '/enquiries/new'],
+  ['edit enquiry', '/enquiries/1/edit'],
+  ['edit transaction', '/transactions/1/edit'],
+  ['targets', '/transactions/targets'],
+  ['business rates', '/admin/rates'],
+  ['microsoft', '/admin/microsoft'],
+  ['zoopla', '/admin/zoopla'],
+  ['password', '/account/password'],
+  ['two-step', '/account/mfa'],
 ];
 
 const WIDTHS = [[1440, 900, 'desktop'], [1024, 800, 'laptop'], [390, 844, 'phone']];
@@ -52,7 +75,14 @@ const WIDTHS = [[1440, 900, 'desktop'], [1024, 800, 'laptop'], [390, 844, 'phone
 const EDGE_TOLERANCE = 0.75;
 
 function measure() {
-  const out = { edges: [], controls: [], overflow: [], gaps: [] };
+  // What holds the page. Most pages are a .content; a printable schedule is a
+  // .sheet with its own wrapper, and skipping it reported "measured nothing"
+  // rather than measuring it.
+  const HOLDERS = ['.content', '.sheet'];
+  const sel = (what) => HOLDERS.map((h) => h + ' ' + what).join(', ');
+  const PAGE_BODY = sel('*');
+
+  const out = { edges: [], controls: [], overflow: [], gaps: [], bands: [] };
   const seen = (el) => {
     const r = el.getBoundingClientRect();
     const s = getComputedStyle(el);
@@ -84,7 +114,7 @@ function measure() {
   }
 
   // ── Nothing sticking out of what contains it ──────────────────────────────
-  for (const el of document.querySelectorAll('.content *')) {
+  for (const el of document.querySelectorAll(PAGE_BODY)) {
     if (!seen(el) || placedOnPurpose(el)) continue;
     const p = el.parentElement;
     if (!p || !seen(p)) continue;
@@ -108,8 +138,8 @@ function measure() {
   // ── Boxes stacked in a column should share their left and right edges ─────
   const groups = new Map();
   for (const el of document.querySelectorAll(
-      '.content .box, .content .card, .content .ct-card, ' +
-      '.content .rec-box, .content .panel')) {
+      sel('.box') + ', ' + sel('.card') + ', ' + sel('.ct-card') + ', ' +
+      sel('.rec-box') + ', ' + sel('.panel'))) {
     if (!seen(el)) continue;
     const p = el.parentElement;
     if (!p) continue;
@@ -145,8 +175,8 @@ function measure() {
 
   // ── Controls sitting on one line should be the same height ────────────────
   const controls = [...document.querySelectorAll(
-    '.content input:not([type=checkbox]):not([type=radio]):not([type=hidden]), ' +
-    '.content select, .content button, .content .btn')]
+    sel('input:not([type=checkbox]):not([type=radio]):not([type=hidden])') + ', ' +
+    sel('select') + ', ' + sel('button') + ', ' + sel('.btn'))]
     .filter((el) => seen(el) && !placedOnPurpose(el) &&
                     !el.classList.contains('btn-link'));
   // "On one row" means sharing a parent and a top edge. Banding on the top
@@ -176,7 +206,42 @@ function measure() {
     }
   }
 
-  out.counted = document.querySelectorAll('.content *').length;
+  // ── A box is a stack of bands, and every band spans it ────────────────────
+  // A box divides into full-width bands: a heading, a row, a banner, a note.
+  // Anything that starts or stops short of the box's own edges is not a band —
+  // on a .box--grid it is a stray cell that has landed in whichever column was
+  // free, which is how the business rates calculator came to be dealt across
+  // the page like a hand of cards. Rows are exempt from the right edge only
+  // where they are the grid's own (display: contents) rows, whose rectangle is
+  // the union of their cells.
+  for (const box of document.querySelectorAll(sel('.box'))) {
+    if (!seen(box)) continue;
+    const br = box.getBoundingClientRect();
+    const bs = getComputedStyle(box);
+    const left = br.left + parseFloat(bs.borderLeftWidth) + parseFloat(bs.paddingLeft);
+    const right = br.right - parseFloat(bs.borderRightWidth) - parseFloat(bs.paddingRight);
+    for (const kid of box.children) {
+      if (!seen(kid) || placedOnPurpose(kid)) continue;
+      const ks = getComputedStyle(kid);
+      if (ks.display === 'inline') continue;          // words, not a band
+      if (ks.float !== 'none') continue;
+      // Measured to the margin box: a band deliberately inset on both sides
+      // is still a band. What is not is a band that starts or stops somewhere
+      // the box never asked for.
+      const kr = kid.getBoundingClientRect();
+      const short = Math.max(kr.left - parseFloat(ks.marginLeft) - left,
+                             right - kr.right - parseFloat(ks.marginRight));
+      if (short > 1.5) {
+        out.bands.push({
+          box: name(box), band: name(kid),
+          left: +(kr.left - left).toFixed(1),
+          right: +(right - kr.right).toFixed(1),
+        });
+      }
+    }
+  }
+
+  out.counted = document.querySelectorAll(PAGE_BODY).length;
   return out;
 }
 
@@ -217,7 +282,8 @@ function measure() {
         continue;
       }
       totalSeen += found.counted;
-      const total = found.edges.length + found.controls.length + found.overflow.length;
+      const total = found.edges.length + found.controls.length +
+                    found.overflow.length + found.bands.length;
       if (total) report.push({ page: label, size, ...found });
     }
   }
@@ -251,6 +317,11 @@ function measure() {
       n++;
       console.log(`   OVERFLOW ${o.what}${o.inside ? ' inside ' + o.inside : ''} ` +
         `by ${o.by}px`);
+    }
+    for (const b of r.bands || []) {
+      n++;
+      console.log(`   BAND   ${b.band} in ${b.box} stops short of the box ` +
+        `(${b.left}px left, ${b.right}px right)`);
     }
   }
   console.log(`\n${n} problem(s) across ${report.length} page/width combinations.`);

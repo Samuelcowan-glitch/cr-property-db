@@ -268,7 +268,7 @@
 {% if summary.history %}
 <div class="box br-box">
   <div class="box-head">Earlier calculations</div>
-  <table class="br-history">
+  <div class="table-scroll"><table class="br-history">
     <thead>
       <tr><th>Tax year</th><th>Rateable value</th><th>Multiplier</th>
           <th class="num">Estimate</th><th>Calculated</th><th>By</th></tr>
@@ -286,7 +286,7 @@
       </tr>
       {% endfor %}
     </tbody>
-  </table>
+  </table></div>
   <p class="rec-note">Kept for audit. These are never edited or removed.</p>
 </div>
 {% endif %}

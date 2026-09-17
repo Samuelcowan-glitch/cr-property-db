@@ -30,6 +30,10 @@
     var monthlyEl = root.querySelector('[data-br-monthly]');
     var assumeBox = root.querySelector('[data-br-assumptions]');
     var errorEl = root.querySelector('[data-br-error]');
+    /* Whether anybody has actually asked for a figure yet — by typing in the
+       calculator or pressing Calculate. Until they have, a complaint about a
+       missing input has nothing to do with anything they did. */
+    var asked = false;
     var typeEl = root.querySelector('[data-br-type]');
     var whyEl = root.querySelector('[data-br-why]');
     var saveBtn = root.querySelector('[data-br-save]');
@@ -64,7 +68,10 @@
         var messages = Object.keys(payload.errors || {}).map(function (k) {
           return payload.errors[k];
         });
-        errorEl.hidden = messages.length === 0;
+        /* An untouched calculator is not a mistake. Telling somebody to enter
+           the rateable value before they have had the chance to reads as an
+           error on a page they have only just opened. */
+        errorEl.hidden = messages.length === 0 || !asked;
         errorEl.textContent = messages.join(' ');
         return;
       }
@@ -185,12 +192,15 @@
     Array.prototype.forEach.call(fields, function (el) {
       var event = (el.tagName === 'SELECT' || el.type === 'checkbox') ? 'change' : 'input';
       el.addEventListener(event, function () {
+        asked = true;
         var name = el.getAttribute('data-br');
         if (name === 'tax_year' || name === 'rateable_value') { suggest(); }
         recalculate();
       });
     });
-    if (calcBtn) { calcBtn.addEventListener('click', recalculate); }
+    if (calcBtn) {
+      calcBtn.addEventListener('click', function () { asked = true; recalculate(); });
+    }
 
     /* An estimate already on the record is redrawn on load, so the breakdown
        is visible without touching anything. */

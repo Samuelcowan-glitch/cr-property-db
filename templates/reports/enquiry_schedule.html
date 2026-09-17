@@ -90,6 +90,10 @@
 
     .foot { margin-top: 34px; border-top: 1px solid var(--line); padding-top: 12px; font-size: 10.5px; color: var(--muted); display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 
+    /* The sheet is laid out for A4. On a phone it is read by dragging it
+       sideways inside its own scroller, so the page itself never moves. */
+    .sheet-scroll { overflow-x: auto; }
+
     @media print {
       body { background: #fff; font-size: 11px; }
       .controls, .no-print { display: none !important; }
@@ -97,6 +101,7 @@
       @page { size: A4; margin: 14mm 12mm; }
       thead { display: table-header-group; }
       tr { break-inside: avoid; }
+      .sheet-scroll { overflow-x: visible; }
       h2 { break-after: avoid; }
     }
   </style>
@@ -165,6 +170,7 @@
   <h2>Enquiries received</h2>
 
   {% if rows %}
+  <div class="sheet-scroll">
   <table>
     <thead>
       <tr>
@@ -211,6 +217,7 @@
       {% endfor %}
     </tbody>
   </table>
+  </div>
 
   <div class="summary">
     <div><span>By source:</span> {% for name, n in by_source %}{{ name }} {{ n }}{{ ', ' if not loop.last }}{% endfor %}</div>

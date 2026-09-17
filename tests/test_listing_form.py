@@ -123,7 +123,7 @@ for cls in ['lst-com', 'lst-res', 'lst-sale', 'lst-let-com']:
     assert re.search(r'class="(?:frow|box box--grid lst-box)[^"]*\b' + cls + r'\b', form), \
         f'{cls} is no longer on any row or box, so the toggle does nothing'
 # Hiding a row works because the row is display:contents until told otherwise.
-assert '.box--grid .frow { display: contents; }' in open(f'{root}/static/css/crm-grid.css').read()
+assert '.box--grid > .frow { display: contents; }' in open(f'{root}/static/css/crm-grid.css').read()
 print('7. the commercial / residential / sale toggles still have rows to act on')
 
 # ── 8. The listing still saves ─────────────────────────────────────────────

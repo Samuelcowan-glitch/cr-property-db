@@ -167,7 +167,7 @@ css = open(f'{root}/static/css/crm-grid.css').read()
 assert '.box--grid {' in css
 assert 'grid-template-columns: var(--label-w) minmax(0, 1fr) var(--label-w) minmax(0, 1fr)' in css
 assert '--label-w:' in css, 'there is no shared label width'
-assert '.box--grid .frow { display: contents; }' in css
+assert '.box--grid > .frow { display: contents; }' in css
 print('9. both boxes share one four-column grid, so their columns line up')
 
 # ── 10. Every row has the same shape ────────────────────────────────────────
@@ -183,7 +183,7 @@ print('10. every row is label, value, label, value — nothing out of step')
 # ── 11. Heights and spacing are set by the grid, not per box ────────────────
 assert 'align-items: stretch' in css
 assert '.box--grid .fcell--edit > input,' in css and 'height: var(--cell-h)' in css
-assert '.box--grid .fcell { border-bottom: 1px solid var(--cell-line); }' in css
+assert '.box--grid > .frow > .fcell { border-bottom: 1px solid var(--cell-line); }' in css
 assert 'overflow-wrap: anywhere' in css
 print('11. matching field heights, consistent row borders, long text wraps')
 

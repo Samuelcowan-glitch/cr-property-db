@@ -22,7 +22,7 @@
   <!-- ── Councils ── -->
   <div class="box">
     <div class="box-head">Councils</div>
-    <table class="br-history">
+    <div class="table-scroll"><table class="br-history">
       <thead>
         <tr><th>Council</th><th>Telephone</th><th>Email</th>
             <th>Verified</th><th>Properties</th><th></th></tr>
@@ -52,7 +52,7 @@
         </tr>
         {% endfor %}
       </tbody>
-    </table>
+    </table></div>
 
     <form method="post" action="{{ url_for('rates_council_save') }}" id="council-form"
           class="box box--grid" style="border:0;margin:0">
@@ -103,7 +103,7 @@
       checked it against gov.uk and recorded that they did. Until then, the
       calculator says so on every estimate that uses it.
     </p>
-    <table class="br-history">
+    <div class="table-scroll"><table class="br-history">
       <thead>
         <tr><th>Tax year</th><th>Name</th><th>Type</th><th class="num">Multiplier</th>
             <th>Rateable value</th><th>Verified</th><th></th></tr>
@@ -140,7 +140,7 @@
         </tr>
         {% endfor %}
       </tbody>
-    </table>
+    </table></div>
 
     <form method="post" action="{{ url_for('rates_multiplier_save') }}" id="multiplier-form"
           class="box box--grid" style="border:0;margin:0">

@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}Zoopla feed{% endblock %}
+{% block topbar_title %}Zoopla feed{% endblock %}
+{% block topbar_actions %}
+  <a href="{{ url_for('projects_list') }}" class="btn btn-outline btn-sm">&larr; Projects</a>
+{% endblock %}
+
+{% block content %}
+{# The push posts on its own so it cannot nest inside anything on the page. #}
+<form id="zoopla-push" method="post" action="{{ url_for('admin_zoopla_push') }}"></form>
+
+<div class="rec-page">
+
+  <div class="rec-header">
+    <div>
+      <h2>Zoopla feed</h2>
+      <div class="rec-facts">
+        <span>Going out: <strong>{{ live|length }}</strong></span>
+        {% if takedown %}<span>Being taken down: <strong>{{ takedown|length }}</strong></span>{% endif %}
+        {% if cfg.ready %}<span>Branch <strong>{{ cfg.branch_id }}</strong></span>{% endif %}
+      </div>
+    </div>
+    <div class="rec-tags">
+      {% if cfg.ready %}<span class="badge badge-active">Connected</span>
+      {% else %}<span class="badge badge-muted">Not connected</span>{% endif %}
+    </div>
+  </div>
+
+  <div class="box">
+    <div class="box-head">Connection</div>
+    {% if cfg.ready %}
+    <div class="frow frow--full">
+      <div class="fcell fcell--label">Feed</div>
+      <div class="fcell">
+        {{ cfg.host }}, branch {{ cfg.branch_id }}, file {{ cfg.filename }}
+      </div>
+    </div>
+    {% else %}
+    <div class="br-stale">
+      <strong>The feed is not connected yet.</strong>
+      Ask your Zoopla account manager to enable a custom data feed for this
+      branch, then set <code>ZOOPLA_FTP_HOST</code>, <code>ZOOPLA_FTP_USER</code>,
+      <code>ZOOPLA_FTP_PASS</code> and <code>ZOOPLA_BRANCH_ID</code> in Railway.
+      Nothing is sent until then. The preview below still works.
+    </div>
+    {% endif %}
+    <div class="br-actions">
+      {% if cfg.ready %}
+      <button type="submit" form="zoopla-push" class="btn btn-primary">
+        Push the feed to Zoopla now
+      </button>
+      <span class="br-saved">
+        Sends {{ live|length }} listing{{ '' if live|length == 1 else 's' }}
+        and {{ media_files|length }} media file{{ '' if media_files|length == 1 else 's' }}.
+      </span>
+      {% else %}
+      <button type="button" class="btn btn-primary" disabled>Push the feed to Zoopla now</button>
+      <span class="br-saved">Set the four credentials above before this can send anything.</span>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if blocked %}
+  {# Said before it is sent, not after Zoopla has refused it. #}
+  <div class="box">
+    <div class="box-head">Zoopla summary missing or too long ({{ blocked|length }})</div>
+    <div class="br-stale">
+      The summary comes from the <strong>Strapline</strong> on the instruction.
+      Nothing is invented and the marketing description is never used instead
+      &mdash; amend the strapline in the Marketing section.
+    </div>
+    {% for listing, problems in blocked %}
+    <div class="frow frow--full">
+      <div class="fcell fcell--label">CR-{{ listing.id }}</div>
+      <div class="fcell">
+        <a href="{{ url_for('listing_edit', id=listing.id) }}">{{ title_of(listing) }}</a>
+        <span class="zoo-problem">{{ problems|join('; ') }}</span>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="box">
+    <div class="box-head">
+      Listings going to Zoopla ({{ live|length }})
+    </div>
+    {% if takedown %}
+    <p class="rec-note">
+      Plus {{ takedown|length }} website listing{{ '' if takedown|length == 1 else 's' }}
+      not on Zoopla, sent with PUBLISHED_FLAG=0 so Zoopla removes
+      {{ 'it' if takedown|length == 1 else 'them' }}.
+    </p>
+    {% endif %}
+    <div class="table-scroll">
+      <table class="rec-table">
+        <thead>
+          <tr>
+            <th>Ref</th><th>Listing</th><th>Zoopla Summary</th>
+            <th>Status</th><th class="num">Photos</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for listing in live %}
+          <tr>
+            <td>CR-{{ listing.id }}</td>
+            <td><a href="{{ url_for('listing_edit', id=listing.id) }}">{{ title_of(listing) }}</a></td>
+            <td>
+              {% set problems, text = summary_of(listing) %}
+              {% if problems %}
+              <span class="zoo-problem">{{ problems|join('; ') }}</span>
+              {% else %}{{ text }}{% endif %}
+            </td>
+            <td>{{ listing.listing_status or 'available' }}</td>
+            <td class="num">{{ listing.photos|list|length }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="empty">No listings are toggled for Zoopla yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="box">
+    <div class="box-head">BLM file preview</div>
+    <p class="rec-note">
+      Exactly what would be uploaded. {{ media_files|length }} media
+      file{{ '' if media_files|length == 1 else 's' }} ship alongside it.
+    </p>
+    <pre class="zoo-blm">{{ blm_text }}</pre>
+  </div>
+
+</div>
+{% endblock %}

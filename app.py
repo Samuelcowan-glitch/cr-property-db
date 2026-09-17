@@ -10617,100 +10617,40 @@ def admin_ms_contacts_push():
 @app.route('/admin/zoopla', methods=['GET'])
 @requires('publish')
 def admin_zoopla():
-    """Zoopla feed dashboard: shows which listings will be sent, a preview of
-    the BLM file, feed configuration status, and a Push button. Login-gated via
-    the global before_request guard (not in _PUBLIC_ENDPOINTS)."""
+    """What Zoopla is about to be told, and anything that would stop it.
+
+    Shows the listings going out, the ones being taken down, the summaries
+    Zoopla would refuse, and the BLM file itself. Login-gated by the global
+    before_request guard; not in _PUBLIC_ENDPOINTS.
+    """
     import zoopla_feed as zf
     cfg = zf.feed_config()
-    # Send every Zoopla-toggled listing as live, plus any that are on the
-    # website but toggled OFF so Zoopla takes them down (PUBLISHED_FLAG=0).
-    # What Zoopla will be told, and anything that would stop it being said.
+
+    # Everything toggled for Zoopla goes as live. Anything on the website but
+    # toggled off goes too, with PUBLISHED_FLAG=0, so Zoopla takes it down
+    # rather than leaving it up for ever.
     live = Listing.query.filter_by(zoopla_listed=True).order_by(Listing.id).all()
     takedown = (Listing.query.filter_by(zoopla_listed=False, website_listed=True)
                              .order_by(Listing.id).all())
-    to_send = live + takedown
-    blm_text, media_files = zf.generate_feed(to_send, cfg['branch_id'])
+    blm_text, media_files = zf.generate_feed(live + takedown, cfg['branch_id'])
 
-    def _t(l):
+    def title_of(listing):
         try:
-            return l.display_title
+            return listing.display_title
         except Exception:
-            return f'Listing #{l.id}'
+            return f'Listing #{listing.id}'
 
-    from markupsafe import escape as _esc
-
-    def _summary_cell(listing):
+    def summary_of(listing):
         """What Zoopla will be sent as the summary, and why it might refuse."""
-        problems, text = zf.summary_problems(getattr(listing, 'strapline', None))
-        if problems:
-            return ('<span style="color:#b3463c">'
-                    + '<br>'.join(_esc(p) for p in problems) + '</span>')
-        return f'<span style="color:#1f2333">{_esc(text)}</span>'
+        return zf.summary_problems(getattr(listing, 'strapline', None))
 
-    live_rows = ''.join(
-        f'<tr><td>CR-{l.id}</td><td>{_esc(_t(l))}</td>'
-        f'<td>{_summary_cell(l)}</td>'
-        f'<td>{l.listing_status or "available"}</td>'
-        f'<td>{len(list(l.photos or []))}</td></tr>' for l in live) \
-        or '<tr><td colspan=5 style="color:#6b7280">No listings toggled for Zoopla yet.</td></tr>'
+    blocked = [(l, summary_of(l)[0]) for l in live]
+    blocked = [(l, problems) for l, problems in blocked if problems]
 
-    # Anything that would stop a listing going out, said before it is sent.
-    blocked = [(l, zf.summary_problems(getattr(l, 'strapline', None))[0])
-               for l in live]
-    blocked = [(l, p) for l, p in blocked if p]
-    warning = ''
-    if blocked:
-        items = ''.join(
-            f'<li>CR-{l.id} {_esc(_t(l))}: ' + '; '.join(_esc(x) for x in p) + '</li>'
-            for l, p in blocked)
-        warning = (
-            '<div style="background:#fff8e6;border:1px solid #e8d5a3;'
-            'border-left:3px solid #b5762c;border-radius:3px;padding:12px 14px;'
-            'margin:14px 0"><b>Zoopla summary missing or too long</b>'
-            '<p style="margin:6px 0 8px;color:#4a5568">The summary comes from '
-            'the Strapline on the instruction. Nothing is invented and the '
-            'marketing description is never used instead — amend the strapline '
-            f'in the Marketing section.</p><ul style="margin:0 0 0 18px">{items}</ul></div>')
-    takedown_note = (f'<p style="color:#6b7280;font-size:13px">Plus '
-                     f'<b>{len(takedown)}</b> website listing(s) not on Zoopla — '
-                     f'sent with PUBLISHED_FLAG=0 so Zoopla removes them.</p>'
-                     if takedown else '')
-
-    if cfg['ready']:
-        status_html = (f'<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;'
-                       f'padding:12px 16px;margin:14px 0"><b style="color:#1b7a3f">Feed configured</b> — '
-                       f'{cfg["host"]}, branch {cfg["branch_id"]}, file {cfg["filename"]}.</div>')
-        push_btn = ('<form method="post" action="/admin/zoopla/push" style="margin-top:8px">'
-                    '<button style="background:#0e1f44;color:#fff;padding:11px 20px;border:0;'
-                    'border-radius:6px;font-size:15px;cursor:pointer">Push feed to Zoopla now</button></form>')
-    else:
-        status_html = (f'<div style="background:#fef9c3;border:1px solid #fde047;border-radius:8px;'
-                       f'padding:12px 16px;margin:14px 0"><b>Feed not connected yet.</b> Ask your Zoopla '
-                       f'account manager to enable a custom data feed for your branch, then set these '
-                       f'Railway env vars: <code>ZOOPLA_FTP_HOST</code>, <code>ZOOPLA_FTP_USER</code>, '
-                       f'<code>ZOOPLA_FTP_PASS</code>, <code>ZOOPLA_BRANCH_ID</code>. Preview below still works.</div>')
-        push_btn = ('<button disabled style="background:#9ca3af;color:#fff;padding:11px 20px;border:0;'
-                    'border-radius:6px;font-size:15px;margin-top:8px">Push (set credentials first)</button>')
-
-    import html as _html
-    preview = _html.escape(blm_text)
-    return f'''<!doctype html><meta charset=utf-8>
-<body style="font-family:system-ui,Arial;max-width:920px;margin:40px auto;padding:0 20px;color:#111">
-<h2 style="color:#0e1f44">Zoopla feed</h2>
-{status_html}
-{warning}
-<h3 style="margin-bottom:4px">Listings going to Zoopla ({len(live)})</h3>
-{takedown_note}
-<table style="width:100%;border-collapse:collapse;font-size:14px">
-<thead><tr style="text-align:left;border-bottom:2px solid #0e1f44">
-<th>Ref</th><th>Listing</th><th>Zoopla Summary</th><th>Status</th><th>Photos</th></tr></thead>
-<tbody>{live_rows}</tbody></table>
-{push_btn}
-<h3 style="margin-top:28px">BLM file preview</h3>
-<p style="color:#6b7280;font-size:13px">This is exactly what would be uploaded ({len(media_files)} media file(s) ship alongside it).</p>
-<pre style="background:#0e1f44;color:#dbe4ff;padding:16px;border-radius:8px;overflow:auto;font-size:12px;max-height:420px">{preview}</pre>
-<p><a href="{url_for('projects_list')}" style="color:#0e1f44">← Back to projects</a></p>
-</body>'''
+    return render_template('admin/zoopla.html', cfg=cfg, live=live,
+                           takedown=takedown, blocked=blocked,
+                           blm_text=blm_text, media_files=media_files,
+                           title_of=title_of, summary_of=summary_of)
 
 
 @app.route('/admin/zoopla/push', methods=['POST'])
