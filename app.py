@@ -7504,6 +7504,103 @@ PORTAL_TYPE_MAP = {
 }
 
 
+# ── Which side of the market somebody is on ─────────────────────────────────
+# One vocabulary for the whole CRM: Landlord, Tenant, Buyer, Seller. A lead off
+# the website, the enquiry it files, the contact it creates and the role that
+# contact is given all use it, so the register, the contact book, the applicant
+# lists and the transactions agree about what somebody is.
+#
+# CONTACT_TYPES holds the same four names, and LOOKING_FOR already says which
+# of them are looking and at what. This is the one place that decides which of
+# the four a website enquiry belongs to.
+
+SIDES = {
+    #  side      enquiry type                     contact type
+    'tenant':    ('Tenant — Looking to Rent',        'Tenant'),
+    'buyer':     ('Buyer — Looking to Buy',          'Buyer'),
+    'landlord':  ('Landlord — Looking to Let',       'Landlord'),
+    'seller':    ('Owner/Vendor — Looking to Sell',  'Seller'),
+    'valuation': ('Valuation',                       None),
+}
+
+# What the enquirer picked on the website's own form. Commercial Agency is
+# taken as somebody looking for space, which is what it has always meant here.
+# Management is a landlord: it is their property we would be managing.
+# Residential Agency says nothing about which side, so it is not guessed at.
+WEBSITE_INTEREST_SIDES = {
+    'commercial agency':  'tenant',
+    'management':         'landlord',
+    'letting my property': 'landlord',
+    'selling my property': 'seller',
+    'property valuation':  'valuation',
+    'valuation':           'valuation',
+}
+
+# The website's form offers none of the owner-side choices yet, so somebody
+# with a property to let or sell arrives as a General Enquiry with their
+# reason written out. These read it. Deliberately narrow: each needs the
+# possessive, so "looking to rent a shop" is not read as a landlord.
+MESSAGE_SIDES = [
+    (r'\b(sell|selling|dispose of)\s+(my|our)\b',                'seller'),
+    (r'\b(let|letting|rent out|renting out)\s+(my|our)\b',       'landlord'),
+    (r'\b(value|valuation of|appraise)\s+(my|our)\b',            'valuation'),
+    (r'\b(my|our)\s+(property|building|unit|shop|office)\b.*\b(let|sell|valu)', 'landlord'),
+    (r'\bi\s+am\s+(a\s+)?landlord\b',                            'landlord'),
+    (r'\bvaluation\b',                                           'valuation'),
+]
+
+
+def instruction_side(instruction_type):
+    """Whether an instruction is a letting or a sale — 'tenant' or 'buyer'.
+
+    Named for the side the ENQUIRER is on, not the side the instruction is on:
+    somebody enquiring about a To Let unit is a tenant, not a landlord.
+    """
+    text = (instruction_type or '').lower()
+    if 'to let' in text:
+        return 'tenant'
+    if 'for sale' in text:
+        return 'buyer'
+    return None
+
+
+def classify_website_enquiry(interest=None, transaction=None,
+                             instruction=None, message=None):
+    """Which side a website enquiry is on, as (enquiry type, contact type).
+
+    Decided from the strongest signal available, in this order:
+
+      1. the instruction the enquiry is actually about. An enquiry on a To Let
+         unit is a tenant and one on a For Sale unit is a buyer, whatever was
+         picked on the form — the property is the fact, the dropdown is a guess;
+      2. the transaction the listing page was showing, where the property
+         itself could not be matched;
+      3. what the enquirer chose on the form;
+      4. what they wrote, which is the only way an owner-side enquiry can be
+         recognised while the website's form offers no choice for one.
+
+    A general enquiry that says nothing about a side is filed as a general
+    enquiry. Guessing at one would put somebody in the register as a tenant
+    who then has to be corrected by hand, which is the thing this is for.
+    """
+    side = (instruction_side(instruction)
+            or instruction_side(transaction)
+            or {'let': 'tenant', 'sale': 'buyer'}.get(
+                (transaction or '').strip().lower())
+            or WEBSITE_INTEREST_SIDES.get((interest or '').strip().lower()))
+
+    if not side:
+        text = ' '.join((message or '').lower().split())
+        for pattern, found in MESSAGE_SIDES:
+            if re.search(pattern, text):
+                side = found
+                break
+
+    if not side:
+        return 'General Inquiry', None
+    return SIDES[side]
+
+
 def inquiry_type_options(current=None):
     """The types to offer, plus whatever this record already holds.
 
@@ -10163,6 +10260,32 @@ def match_property_from_text(ref):
     return Property.query.filter(Property.address.ilike(f'%{ref[:40]}%')).first()
 
 
+def _website_project(prop, transaction):
+    """The instruction a website enquiry is about.
+
+    A property can carry more than one — the same building offered both To Let
+    and For Sale, or a past instruction alongside a live one. The listing page
+    says which the enquirer was looking at, so that one is preferred; an active
+    instruction is preferred over a closed one; and only then the first found.
+    Without this, an enquiry on a unit For Sale could be filed against the
+    letting instruction and go out as a tenant.
+    """
+    if prop is None:
+        return None
+    projects = Project.query.filter_by(property_id=prop.id).all()
+    if not projects:
+        return None
+    wanted = {'let': 'tenant', 'sale': 'buyer'}.get(
+        (transaction or '').strip().lower())
+
+    def rank(p):
+        return (0 if wanted and instruction_side(p.instruction_type) == wanted else 1,
+                0 if (p.status or '') == 'Active' else 1,
+                -(p.id or 0))
+
+    return sorted(projects, key=rank)[0]
+
+
 @app.route('/api/enquiry', methods=['POST', 'OPTIONS'])
 def api_enquiry():
     if request.method == 'OPTIONS':
@@ -10212,21 +10335,16 @@ def api_enquiry():
         return jsonify({'ok': False,
                         'error': 'Please tell us what you are enquiring about.'}), 400
 
-    # Determine the right contact type
-    # "Arrange a viewing" from property listing → use transaction type
-    # General enquiry from contact page → use interest field
-    if transaction == 'sale':
-        contact_type = 'Prospective Buyer'
-    elif transaction == 'let':
-        contact_type = 'Prospective Tenant'
-    elif interest == 'Commercial Agency':
-        contact_type = 'Prospective Tenant'
-    elif interest == 'Residential Agency':
-        contact_type = 'Prospect'  # sale vs let unknown without listing context
-    elif interest == 'Management':
-        contact_type = 'Client'
-    else:
-        contact_type = 'Prospect'
+    # Which property, and which instruction on it. Done before the enquiry is
+    # classified, because what the enquiry is about decides what it is: an
+    # enquiry on a To Let unit is a tenant whatever the form said.
+    prop = match_property_from_text(property_ref) if property_ref else None
+    proj = _website_project(prop, transaction)
+
+    enquiry_type, contact_type = classify_website_enquiry(
+        interest=interest, transaction=transaction,
+        instruction=proj.instruction_type if proj else None,
+        message=message)
 
     # Split full name
     parts      = raw_name.split(' ', 1)
@@ -10246,33 +10364,17 @@ def api_enquiry():
         db.session.add(contact)
         db.session.flush()
     elif contact:
-        # Update phone if missing; upgrade type if it's still generic
+        # Update phone if missing. A type is only ever filled in or made more
+        # specific: somebody already on the book as a Landlord is not turned
+        # into a Tenant because they asked about a shop to rent. What they are
+        # to us is a judgement somebody has already made.
         if phone and not contact.phone:
             contact.phone = phone
-        if contact.contact_type in (None, 'Enquiry', 'Prospect', 'Other') and contact_type not in (None, 'Prospect'):
+        if contact_type and (contact.contact_type or '').strip() in (
+                '', 'Enquiry', 'Prospect', 'Other', 'Prospective Tenant',
+                'Prospective Buyer'):
             contact.contact_type = contact_type
 
-    # Try to match a property from the property reference passed in the form.
-    # The website sends "Title — Address, POSTCODE", so match on the postcode
-    # first (most reliable), then the address portion after the dash, then a
-    # final loose fallback on the whole string.
-    prop = match_property_from_text(property_ref) if property_ref else None
-
-    # Find the active project for that property (if any)
-    proj = None
-    if prop:
-        proj = Project.query.filter_by(
-            property_id=prop.id, status='Active'
-        ).first()
-
-    # Map interest → enquiry type label
-    etype_map = {
-        'Commercial Agency':  'Agency — Letting',
-        'Residential Agency': 'Agency — Sale',
-        'Management':         'Other',
-        'General Enquiry':    'Other',
-        'Arrange a viewing':  'Agency — Letting' if transaction == 'let' else 'Agency — Sale',
-    }
     subject = f"Website — {interest}"
     if property_ref:
         subject = f"Viewing request — {property_ref[:80]}"
@@ -10292,7 +10394,7 @@ def api_enquiry():
 
     enq = Enquiry(
         subject=subject,
-        enquiry_type=etype_map.get(interest, 'Other'),
+        enquiry_type=enquiry_type,
         status='Open',
         source='Website',
         contact_id=contact.id if contact else None,
@@ -10302,11 +10404,21 @@ def api_enquiry():
         received_date=date.today(),
     )
     db.session.add(enq)
+    # The record says what they are at the top; the roles underneath are what
+    # the rest of the CRM reads. A lead that names somebody a Tenant gives
+    # them the Tenant role too, rather than leaving the two disagreeing.
+    if contact is not None and contact_type:
+        sync_type_to_role(contact)
     db.session.commit()
+
+    # An applicant is somebody looking at the property. A landlord or a seller
+    # enquiring about their own is not one, and putting them on the applicant
+    # list would have them chased as though they were.
+    applicant_side = contact_type in LOOKING_FOR
 
     # Auto-link contact to matching active projects
     linked_projects = []
-    if contact:
+    if contact and applicant_side:
         linked_projects = auto_link_contact_to_projects(contact)
         # Also directly link to the specific project if known
         if proj and contact:
