@@ -1,14 +1,17 @@
 {% extends "base.html" %}
 {% import "crm/_org_picker.html" as op %}
 {% import "crm/_fields.html" as ff %}
-{% set title = (t.reference or 'Transaction') ~ (' — ' ~ t.property.address if t.property else '') %}
+{# The property comes from the instruction where there is one, so the whole
+   page — the title, the button, the heading and box two — names the same one. #}
+{% set tprop = t.the_property %}
+{% set title = (t.reference or 'Transaction') ~ (' — ' ~ tprop.address if tprop else '') %}
 {% block title %}{{ t.reference or 'Transaction' }}{% endblock %}
 {% block topbar_title %}{{ t.reference or 'Transaction' }}{% endblock %}
 {% block topbar_actions %}
   {# The one Save on the page. Every field below belongs to this form. #}
   <button type="submit" form="trx-form" class="btn btn-primary btn-sm">Save</button>
-  {% if t.property %}
-  <a href="{{ url_for('property_detail', id=t.property.id) }}" class="btn btn-outline btn-sm">View Property</a>
+  {% if tprop %}
+  <a href="{{ url_for('property_detail', id=tprop.id) }}" class="btn btn-outline btn-sm">View Property</a>
   {% endif %}
 {% endblock %}
 
@@ -41,7 +44,7 @@
   <!-- ── Header strip ── -->
   <div class="rec-header">
     <div>
-      <h2>{{ t.property.address if t.property else 'Transaction' }}</h2>
+      <h2>{{ tprop.address if tprop else 'Transaction' }}</h2>
       <div class="rec-facts">
         <span>Ref: <strong>{{ t.reference or '—' }}</strong></span>
         {% if t.transaction_type %}<span>{{ t.transaction_type }}</span>{% endif %}
@@ -127,8 +130,25 @@
       <!-- ── 2. Property and project ── -->
       <div class="box box--grid">
         <div class="box-head">2. Property and project</div>
+        {# Four things, and only one of them is typed here.
+
+           The instruction carries the property, so where one is linked the
+           property is read from it rather than chosen again — two pickers
+           meant a transaction could name one property while its instruction
+           was about another. The postcode and the floor area are the
+           property's own and have always been read; correcting them on the
+           property record corrects them here. #}
+        {% set prop = tprop %}
         <div class="frow frow--full">
           <div class="fcell fcell--label">Property</div>
+          {% if t.project %}
+          <div class="fcell {{ 'is-empty' if not prop }}">
+            {% if prop %}
+            <a href="{{ url_for('property_detail', id=prop.id) }}">{{ prop.address }}</a>
+            <span class="fsub">from the instruction</span>
+            {% else %}The instruction has no property on it yet{% endif %}
+          </div>
+          {% else %}
           <div class="fcell fcell--edit">
             <select name="property_id" form="trx-form">
               {% for p in properties %}
@@ -138,6 +158,7 @@
               {% endfor %}
             </select>
           </div>
+          {% endif %}
         </div>
         <div class="frow frow--full">
           <div class="fcell fcell--label">Project</div>
@@ -154,23 +175,14 @@
         </div>
         <div class="frow">
           <div class="fcell fcell--label">Postcode</div>
-          <div class="fcell {{ 'is-empty' if not (t.property and t.property.postcode) }}">
-            {{ t.property.postcode if t.property and t.property.postcode else '—' }}
+          <div class="fcell {{ 'is-empty' if not (prop and prop.postcode) }}">
+            {{ prop.postcode if prop and prop.postcode else '—' }}
           </div>
           <div class="fcell fcell--label">Size</div>
-          <div class="fcell {{ 'is-empty' if not (t.property and t.property.size) }}">
-            {{ t.property.display_size if t.property else '—' }}
+          <div class="fcell {{ 'is-empty' if not (prop and prop.size) }}">
+            {{ prop.display_size if prop else '—' }}
           </div>
         </div>
-        {% if t.project %}
-        <div class="frow frow--full">
-          <div class="fcell fcell--label">Instruction</div>
-          <div class="fcell">
-            <a href="{{ url_for('project_detail', id=t.project.id) }}">{{ t.project.name }}</a>
-            {% if t.project.instruction_type %} &middot; {{ t.project.instruction_type }}{% endif %}
-          </div>
-        </div>
-        {% endif %}
       </div>
 
       <!-- ── 3. The two sides of the deal ── -->

@@ -417,9 +417,17 @@ class Property(db.Model):
 
     @property
     def display_size(self):
-        if self.size and self.measurement_type:
+        """The floor area, with the basis it was measured on where that is
+        known. A size recorded without a basis used to show as nothing at all,
+        so a property whose area the office knew perfectly well appeared to
+        have none — on its own page, on its instruction and on its
+        transactions. The basis is worth saying; not knowing it is not a
+        reason to withhold the figure."""
+        if not self.size:
+            return '—'
+        if self.measurement_type:
             return f"{self.size:,.0f} sq ft ({self.measurement_type})"
-        return '—'
+        return f"{self.size:,.0f} sq ft"
 
     # ── Business rates ──
 
@@ -708,6 +716,26 @@ class Transaction(db.Model):
     documents = db.relationship('TransactionDocument', backref='transaction',
                                 lazy=True, cascade='all, delete-orphan')
     project   = db.relationship('Project', foreign_keys=[project_id])
+
+    @property
+    def the_property(self):
+        """The property this transaction is about, from one place only.
+
+        An instruction already carries its own property. A transaction filed
+        against one takes the property from there rather than keeping a second
+        answer of its own — the address, the postcode and the floor area are
+        the property's, and correcting them on the property record corrects
+        them here. Only a transaction filed against no instruction keeps a
+        property of its own, because then there is nowhere else for it to come
+        from.
+
+        The column is still written on save, so everything that looks a
+        transaction up by property goes on working; this is what decides what
+        it is written to.
+        """
+        if self.project is not None and self.project.property is not None:
+            return self.project.property
+        return self.property
 
     @property
     def display_value(self):
@@ -4655,6 +4683,17 @@ def transaction_save(id):
     if 'project_id' in form:
         pid = (form.get('project_id') or '').strip()
         t.project_id = int(pid) if pid.isdigit() else None
+
+    # The instruction carries the property, so a transaction filed against one
+    # takes its property from there. Both were set from the form and could
+    # disagree: a transaction could name one property while its instruction
+    # was about another, and the record then said two different things about
+    # the same deal. The page no longer offers the property where there is an
+    # instruction, and this is what makes it so for anything already saved.
+    if t.project_id:
+        linked = Project.query.get(t.project_id)
+        if linked is not None and linked.property_id:
+            t.property_id = linked.property_id
 
     before = (t.status, t.completion_date, t.net_commission)
     apply_form_fields(t, form, TRANSACTION_FIELDS)
