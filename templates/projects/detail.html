@@ -353,6 +353,177 @@
     {# What the instruction is worth. Kept out of Instruction Details. #}
     {{ rb.fee_box(pv, 'project-form') }}
 
+    {# ── Offers ──────────────────────────────────────────────────────────────
+       What has been offered on this instruction and where it has got to. The
+       property, the landlord and the client are not repeated here: they are on
+       the instruction above, and the offer reads them from it. #}
+    <div class="box" id="offers">
+      <div class="box-head">
+        <span class="box-title">Offers</span>
+        <span class="box-actions">{{ project.offers|length }}</span>
+      </div>
+
+      {% for offer in project.offers|sort(attribute='received_date', reverse=true) %}
+      <form method="post" action="{{ url_for('offer_save', id=offer.id) }}"
+            class="box--grid" style="border-bottom:1px solid var(--cell-line)">
+        <div class="frow">
+          <div class="fcell fcell--label">{{ 'Tenant' if offer.is_letting else 'Buyer' }}</div>
+          <div class="fcell fcell--edit">
+            <select name="contact_id">
+              <option value="">— Not named —</option>
+              {% for c in all_contacts %}
+              <option value="{{ c.id }}" {{ 'selected' if offer.contact_id == c.id }}>
+                {{ c.full_name }}{% if c.contact_type %} — {{ c.contact_type }}{% endif %}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="fcell fcell--label">Status</div>
+          <div class="fcell fcell--edit">
+            <select name="status">
+              {% for s in OFFER_STATUSES %}
+              <option value="{{ s }}" {{ 'selected' if offer.status == s }}>{{ s }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="frow">
+          <div class="fcell fcell--label">{{ 'Rent' if offer.is_letting else 'Price' }}</div>
+          <div class="fcell fcell--edit fcell--pair">
+            <input type="number" name="amount" step="any" value="{{ offer.amount|int if offer.amount else '' }}">
+            {% if offer.is_letting %}
+            <select name="amount_unit">
+              <option value="pa"  {{ 'selected' if (offer.amount_unit or 'pa') == 'pa' }}>per annum</option>
+              <option value="pcm" {{ 'selected' if offer.amount_unit == 'pcm' }}>per month</option>
+            </select>
+            {% endif %}
+          </div>
+          <div class="fcell fcell--label">Received</div>
+          <div class="fcell fcell--edit">
+            <input type="date" name="received_date"
+                   value="{{ offer.received_date.strftime('%Y-%m-%d') if offer.received_date else '' }}">
+          </div>
+        </div>
+        {% if offer.is_letting %}
+        <div class="frow">
+          <div class="fcell fcell--label">Term (years)</div>
+          <div class="fcell fcell--edit">
+            <input type="number" name="lease_years" step="any" value="{{ offer.lease_years|round(2) if offer.lease_years else '' }}">
+          </div>
+          <div class="fcell fcell--label">Break</div>
+          <div class="fcell fcell--edit">
+            <input type="text" name="break_clause" value="{{ offer.break_clause or '' }}"
+                   placeholder="e.g. year 3, 6 months' notice">
+          </div>
+        </div>
+        <div class="frow">
+          <div class="fcell fcell--label">Rent free (months)</div>
+          <div class="fcell fcell--edit">
+            <input type="number" name="rent_free_months" step="any" value="{{ offer.rent_free_months|round(1) if offer.rent_free_months else '' }}">
+          </div>
+          <div class="fcell fcell--label">Deposit</div>
+          <div class="fcell fcell--edit">
+            <input type="number" name="deposit" step="any" value="{{ offer.deposit|int if offer.deposit else '' }}">
+          </div>
+        </div>
+        {% endif %}
+        <div class="frow">
+          <div class="fcell fcell--label">{{ 'Start' if offer.is_letting else 'Completion' }}</div>
+          <div class="fcell fcell--edit">
+            <input type="date" name="start_date"
+                   value="{{ offer.start_date.strftime('%Y-%m-%d') if offer.start_date else '' }}">
+          </div>
+          {% if not offer.is_letting %}
+          <div class="fcell fcell--label">Deposit</div>
+          <div class="fcell fcell--edit">
+            <input type="number" name="deposit" step="any" value="{{ offer.deposit|int if offer.deposit else '' }}">
+          </div>
+          {% endif %}
+        </div>
+        <div class="frow frow--full">
+          <div class="fcell fcell--label fcell--top">Conditions</div>
+          <div class="fcell fcell--edit">
+            <textarea name="conditions" rows="2"
+                      placeholder="Subject to board approval, references…">{{ offer.conditions or '' }}</textarea>
+          </div>
+        </div>
+        <div class="frow frow--full frow--action">
+          <div class="fcell fcell--edit" style="gap:8px">
+            <button type="submit" class="btn btn-sm btn-secondary">Save offer</button>
+            {% if offer.status == 'Accepted' %}
+              {% if offer.transaction_id %}
+              <a class="btn btn-sm btn-outline"
+                 href="{{ url_for('transaction_detail', id=offer.transaction_id) }}">
+                 On transaction</a>
+              {% else %}
+              <button type="submit" class="btn btn-sm btn-primary"
+                      formaction="{{ url_for('offer_to_transaction', id=offer.id) }}">
+                Create transaction</button>
+              {% endif %}
+              {% if offer.is_letting %}
+              <a class="btn btn-sm btn-primary"
+                 href="{{ url_for('offer_heads_of_terms', id=offer.id) }}">
+                 Generate heads of terms</a>
+              {% endif %}
+            {% endif %}
+            <span class="fsub" style="margin-left:auto">{{ offer.display_amount }}</span>
+          </div>
+          <div class="fcell fcell--end">
+            <button type="submit" class="btn btn-sm btn-danger"
+                    formaction="{{ url_for('offer_delete', id=offer.id) }}"
+                    onclick="return confirm('Remove this offer?')">Remove</button>
+          </div>
+        </div>
+      </form>
+      {% else %}
+      <div class="empty">No offers on this instruction yet.</div>
+      {% endfor %}
+
+      {# Adding one: the figure is the only thing it cannot do without. #}
+      <form method="post" action="{{ url_for('offer_add', id=project.id) }}" class="box--grid">
+        <div class="box-head">Record an offer</div>
+        <div class="frow">
+          <div class="fcell fcell--label">
+            {{ 'Tenant' if project.instruction_type == INSTRUCTION_TO_LET else 'Buyer' }}
+          </div>
+          <div class="fcell fcell--edit">
+            <select name="contact_id" data-search data-placeholder="Search contacts…">
+              <option value="">— Choose who offered —</option>
+              {% for c in all_contacts %}
+              <option value="{{ c.id }}">
+                {{ c.full_name }}{% if c.contact_type %} — {{ c.contact_type }}{% endif %}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="fcell fcell--label">
+            {{ 'Rent' if project.instruction_type == INSTRUCTION_TO_LET else 'Price' }}
+          </div>
+          <div class="fcell fcell--edit fcell--pair">
+            <input type="number" name="amount" step="any" placeholder="e.g. 57260" required>
+            {% if project.instruction_type == INSTRUCTION_TO_LET %}
+            <select name="amount_unit">
+              <option value="pa">per annum</option>
+              <option value="pcm">per month</option>
+            </select>
+            {% endif %}
+          </div>
+        </div>
+        <div class="frow frow--action">
+          <div class="fcell fcell--edit">
+            <span class="fsub">
+              The rest — term, break, rent free, deposit and conditions — is
+              filled in on the offer once it is on the list.
+            </span>
+          </div>
+          <div class="fcell fcell--end">
+            <button type="submit" class="btn btn-sm btn-primary">Add offer</button>
+          </div>
+        </div>
+      </form>
+    </div>
+
+
     {# Marketing & publishing continues in this column #}
 
 

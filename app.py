@@ -2095,6 +2095,108 @@ class ProjectTask(db.Model):
     project = db.relationship('Project', backref=db.backref('tasks', lazy=True, cascade='all, delete-orphan', order_by='ProjectTask.due_date'))
 
 
+# ── Offers ──────────────────────────────────────────────────────────────────
+# What somebody has offered on an instruction, and where it has got to. An
+# offer belongs to the instruction and to the applicant who made it; the
+# property, the landlord and the seller are read from the instruction rather
+# than copied on to it.
+
+OFFER_STATUSES = ['Submitted', 'Negotiating', 'Accepted', 'Rejected', 'Withdrawn']
+
+# The ones still worth chasing. A rejected or withdrawn offer stays on the
+# record — what was offered and turned down is worth knowing later.
+OFFER_LIVE = ('Submitted', 'Negotiating', 'Accepted')
+
+app.jinja_env.globals['OFFER_STATUSES'] = OFFER_STATUSES
+
+
+class Offer(db.Model):
+    """An offer made on an instruction.
+
+    A letting offer and a sale offer are the same record: the amount is a rent
+    or a price depending on what the instruction is, and the lease terms are
+    simply not filled in on a sale. One table, because an offer is an offer,
+    and because the alternative is two of everything — two lists, two statuses,
+    two ways of turning one into a transaction.
+    """
+    __tablename__ = 'offers'
+    id         = db.Column(db.Integer, primary_key=True)
+    project_id = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=False)
+    contact_id = db.Column(db.Integer, db.ForeignKey('contacts.id'), nullable=True)
+
+    amount      = db.Column(db.Float)             # rent per annum, or the price
+    amount_unit = db.Column(db.String(10), default='pa')   # pa / pcm / sale
+    lease_years      = db.Column(db.Float)
+    break_clause     = db.Column(db.String(120))
+    start_date       = db.Column(db.Date)
+    rent_free_months = db.Column(db.Float)
+    deposit          = db.Column(db.Float)
+    conditions       = db.Column(db.Text)
+    received_date    = db.Column(db.Date)
+    status           = db.Column(db.String(20), default='Submitted')
+
+    # Set when the offer has been turned into a transaction, so it is only
+    # ever done once and the two records point at each other.
+    transaction_id = db.Column(db.Integer, db.ForeignKey('transactions.id'),
+                               nullable=True)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_by = db.Column(db.String(100))
+
+    project     = db.relationship('Project', backref=db.backref(
+        'offers', lazy=True, cascade='all, delete-orphan'))
+    contact     = db.relationship('Contact', backref=db.backref('offers', lazy=True))
+    transaction = db.relationship('Transaction', foreign_keys=[transaction_id])
+
+    @property
+    def is_letting(self):
+        """Whether this is an offer to rent. Read from the instruction, so an
+        offer cannot disagree with what is being offered."""
+        kind = (self.project.instruction_type if self.project is not None else '') or ''
+        return 'to let' in kind.lower()
+
+    @property
+    def display_amount(self):
+        if not self.amount:
+            return '—'
+        if not self.is_letting:
+            return f'£{self.amount:,.0f}'
+        per = {'pcm': 'per month'}.get((self.amount_unit or 'pa').lower(), 'per annum')
+        return f'£{self.amount:,.0f} {per}'
+
+    @property
+    def rent_pa(self):
+        """The offer as a yearly rent, whichever way it was entered."""
+        if not self.amount or not self.is_letting:
+            return None
+        return self.amount * 12 if (self.amount_unit or 'pa').lower() == 'pcm' else self.amount
+
+    @property
+    def lease_end(self):
+        """When the term would end, from its start and its length."""
+        if not self.start_date or not self.lease_years:
+            return None
+        return self.start_date + timedelta(days=round(float(self.lease_years) * 365.25))
+
+    @property
+    def display_term(self):
+        if not self.lease_years:
+            return '—'
+        years = float(self.lease_years)
+        whole = int(years)
+        if years == whole:
+            return f'{whole} year' + ('' if whole == 1 else 's')
+        return f'{years:g} years'
+
+    @property
+    def landlord_contact(self):
+        """Whose property it is. The instruction's client, never re-entered."""
+        project = self.project
+        if project is None:
+            return None
+        return project.client_contact if getattr(project, 'client_contact', None) else None
+
+
 class ProjectApplicant(db.Model):
     __tablename__ = 'project_applicants'
     id          = db.Column(db.Integer, primary_key=True)
@@ -5682,6 +5784,8 @@ def project_detail(id):
                            matches=matches, registered_ids=registered_ids,
                            activity=activity, enquiries=enquiries,
                            properties=Property.query.order_by(Property.address).all(),
+                           all_contacts=Contact.query.order_by(Contact.last_name,
+                                                               Contact.first_name).all(),
                            notes_timeline=notes_timeline, pub=pub)
 
 
@@ -5760,6 +5864,165 @@ def project_edit(id):
         return _back_to('project_detail', id=project.id)
     return render_template('projects/form.html', properties=properties, project=project,
                            v=project_form_values(project), errors={})
+
+
+# ── Offers ──────────────────────────────────────────────────────────────────
+
+def _offer_from_form(offer, form):
+    """Read an offer off its form. Nothing here is a copy of the instruction:
+    the property, the landlord and the client are read from it when needed."""
+    offer.contact_id       = _fint(form.get('contact_id'))
+    offer.amount           = _fnum(form.get('amount'))
+    offer.amount_unit      = (form.get('amount_unit') or 'pa').strip() or 'pa'
+    offer.lease_years      = _fnum(form.get('lease_years'))
+    offer.break_clause     = _ftext(form.get('break_clause'))
+    offer.start_date       = _parse_date(form.get('start_date'))
+    offer.rent_free_months = _fnum(form.get('rent_free_months'))
+    offer.deposit          = _fnum(form.get('deposit'))
+    offer.conditions       = _ftext(form.get('conditions'))
+    offer.received_date    = _parse_date(form.get('received_date')) or date.today()
+    status = (form.get('status') or '').strip()
+    offer.status = status if status in OFFER_STATUSES else (offer.status or 'Submitted')
+    return offer
+
+
+@app.route('/projects/<int:id>/offers/add', methods=['POST'])
+@requires('create')
+def offer_add(id):
+    project = Project.query.get_or_404(id)
+    offer = _offer_from_form(Offer(project_id=project.id,
+                                   created_by=getattr(current_user, 'username', None)),
+                             request.form)
+    if not offer.amount:
+        flash('An offer needs a figure.', 'error')
+        return _back_to('project_detail', id=id)
+    db.session.add(offer)
+    db.session.commit()
+    audit('create', entity='Offer', entity_id=offer.id,
+          detail=f'{offer.display_amount} on {project.name}')
+    flash('Offer recorded.', 'success')
+    return _back_to('project_detail', id=id)
+
+
+@app.route('/offers/<int:id>/save', methods=['POST'])
+@requires('edit')
+def offer_save(id):
+    offer = Offer.query.get_or_404(id)
+    was = offer.status
+    _offer_from_form(offer, request.form)
+    db.session.commit()
+    audit('edit', entity='Offer', entity_id=offer.id,
+          detail=f'{was} to {offer.status}' if was != offer.status else 'details')
+    flash('Offer updated.', 'success')
+    return _back_to('project_detail', id=offer.project_id)
+
+
+@app.route('/offers/<int:id>/delete', methods=['POST'])
+@requires('delete')
+def offer_delete(id):
+    offer = Offer.query.get_or_404(id)
+    project_id = offer.project_id
+    db.session.delete(offer)
+    db.session.commit()
+    audit('delete', entity='Offer', entity_id=id)
+    flash('Offer removed.', 'success')
+    return _back_to('project_detail', id=project_id)
+
+
+@app.route('/offers/<int:id>/transaction', methods=['POST'])
+@requires('create')
+def offer_to_transaction(id):
+    """Turn an accepted offer into a transaction, without typing it again.
+
+    Everything the transaction needs is already on the offer or on the
+    instruction behind it: the property, the two sides, the rent or the price,
+    the term, the break and the rent-free period. The two records are joined
+    afterwards, so the offer knows what became of it and cannot be turned into
+    a second transaction by pressing the button twice.
+    """
+    offer = Offer.query.get_or_404(id)
+    project = offer.project
+
+    if offer.status != 'Accepted':
+        flash('Only an accepted offer becomes a transaction. Mark it accepted '
+              'first.', 'warning')
+        return _back_to('project_detail', id=offer.project_id)
+    if offer.transaction_id:
+        flash('That offer is already on a transaction.', 'warning')
+        return redirect(url_for('transaction_detail', id=offer.transaction_id))
+    if project is None or not project.property_id:
+        flash('The instruction has no property on it, so there is nothing to '
+              'record the transaction against.', 'error')
+        return _back_to('project_detail', id=offer.project_id)
+
+    letting = offer.is_letting
+    landlord = project.client_contact
+    applicant = offer.contact
+
+    t = Transaction(
+        property_id=project.property_id,
+        project_id=project.id,
+        transaction_type='Leasehold' if letting else 'Capital',
+        tenure_type='Leasehold' if letting else None,
+        transaction_date=date.today(),
+        status='Terms Agreed',
+        fee_earner_id=project.fee_earner_id or _fid(None),
+        # The two sides, named as this kind of deal names them.
+        landlord=(landlord.full_name if letting and landlord is not None else None),
+        tenant=(applicant.full_name if letting and applicant is not None else None),
+        vendor=(landlord.full_name if not letting and landlord is not None else None),
+        purchaser=(applicant.full_name if not letting and applicant is not None else None),
+        client=(landlord.full_name if landlord is not None else project.client),
+        rent_pa=offer.rent_pa,
+        value=(None if letting else offer.amount),
+        agreed_value=(offer.rent_pa if letting else offer.amount),
+        lease_start=offer.start_date,
+        lease_end=offer.lease_end,
+        break_clause=offer.break_clause,
+        no_break=not bool(offer.break_clause),
+        incentive_years=((offer.rent_free_months or 0) / 12.0
+                         if offer.rent_free_months else None),
+        terms_agreed_date=date.today(),
+        notes=offer.conditions,
+    )
+    db.session.add(t)
+    db.session.flush()
+    if not t.reference:
+        t.reference = next_transaction_reference()
+    offer.transaction_id = t.id
+    db.session.commit()
+    audit('create', entity='Transaction', entity_id=t.id,
+          detail=f'from offer {offer.id}')
+    flash('Transaction created from the accepted offer.', 'success')
+    return redirect(url_for('transaction_detail', id=t.id))
+
+
+@app.route('/offers/<int:id>/heads-of-terms')
+@requires('edit')
+def offer_heads_of_terms(id):
+    """The heads of terms for an accepted offer, as a document.
+
+    Every line is read from a record the CRM already holds, so nothing is
+    typed twice and the document cannot disagree with the file it came from.
+    """
+    offer = Offer.query.get_or_404(id)
+    if offer.status != 'Accepted':
+        flash('Heads of terms are drawn up once the offer is accepted.',
+              'warning')
+        return _back_to('project_detail', id=offer.project_id)
+    try:
+        import heads_of_terms
+        pdf, name = heads_of_terms.build(offer)
+    except Exception as ex:
+        app.logger.error('Heads of terms failed for offer %s: %s', offer.id, ex)
+        flash(f'The heads of terms could not be produced: {ex}', 'error')
+        return _back_to('project_detail', id=offer.project_id)
+
+    audit('download', entity='Offer', entity_id=offer.id, detail='heads of terms')
+    from flask import Response
+    return Response(pdf, mimetype='application/pdf',
+                    headers={'Content-Disposition':
+                             f'attachment; filename="{name}"'})
 
 
 @app.route('/projects/<int:id>/delete', methods=['POST'])
