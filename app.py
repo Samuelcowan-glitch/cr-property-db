@@ -594,6 +594,26 @@ def money_gbp(amount, blank='—'):
     return f'£{float(amount):,.2f}'
 
 
+def _listing_service_charge(listing):
+    """The service charge on a listing, in words, or None where there is none.
+
+    Written once and read by both the brochure and the website, so the two
+    cannot phrase the same figure differently. A comment typed by hand wins,
+    because somebody has said it better than a number can; otherwise it is
+    "Included" where the charge is marked not applicable, or the figure per
+    square foot.
+    """
+    if listing is None:
+        return None
+    comment = (getattr(listing, 'service_charge_comment', None) or '').strip()
+    if comment:
+        return comment
+    if getattr(listing, 'service_charge_na', False):
+        return 'Included'
+    charge = getattr(listing, 'service_charge', None)
+    return f'{money_gbp(charge)} per sq ft' if charge else None
+
+
 def money_short(amount):
     """A sum for a chart axis, where the pennies would only be noise."""
     if amount is None:
@@ -9784,11 +9804,7 @@ def particulars_data(project):
             'Included' if getattr(listing, 'rateable_value_na', False) else
             (f"Rateable value {money_gbp(listing.rateable_value)}"
              if listing and listing.rateable_value else None)),
-        'service_charge': first(
-            getattr(listing, 'service_charge_comment', None),
-            ('Included' if getattr(listing, 'service_charge_na', False) else
-             (f"{money_gbp(listing.service_charge)} per sq ft"
-              if listing and listing.service_charge else None))),
+        'service_charge': _listing_service_charge(listing),
         'epc': getattr(listing, 'epc_band', None),
         'accommodation': size_line,
         'specification': getattr(listing, 'build_status', None),
@@ -11381,6 +11397,13 @@ def api_listings():
                 'floorPlanUrl':  (base + url_for('listing_floorplan_download', id=l.id)) if l.floor_plan_size else None,
                 'pricePerSqft':  round((l.listing_price or 0) / int(l.size or p.size), 2)
                                  if (unit == 'pa' and int(l.size or p.size or 0) > 0) else None,
+                # The service charge and the EPC as the listing holds them —
+                # the same fields the CRM edits and the brochure prints, sent
+                # out rather than kept a second time for the website. Written
+                # out here so the site has the words to show and does not have
+                # to know how a service charge is phrased.
+                'serviceCharge': _listing_service_charge(l),
+                'epc':           (l.epc_band or None),
             })
     resp = jsonify(result)
     # Always serve fresh data so admin changes (remove/toggle) show on the
