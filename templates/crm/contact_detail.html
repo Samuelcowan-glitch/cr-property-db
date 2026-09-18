@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% import "crm/_contact_roles.html" as cr %}
 {% import "crm/_requirements.html" as rq %}
+{% import "crm/_fields.html" as ff %}
 {% block title %}{{ contact.full_name }}{% endblock %}
 {% block topbar_title %}Contact{% endblock %}
 {% block topbar_actions %}
@@ -120,19 +121,7 @@
           </select>
         </div>
         <div class="fcell fcell--label">Agent</div>
-        <div class="fcell fcell--edit">{% set _people = fee_earners() %}
-      <select name="fee_earner_id">
-        {% if not (_people|length == 1 and not contact.fee_earner_id) %}
-        <option value="">Not assigned</option>
-        {% endif %}
-        {% for _p in _people %}
-        <option value="{{ _p.id }}"
-                {{ 'selected' if (contact.fee_earner_id and contact.fee_earner_id|string == _p.id|string)
-                               or (not contact.fee_earner_id and _people|length == 1) }}>
-          {{ _p.display_name }}
-        </option>
-        {% endfor %}
-      </select></div>
+        <div class="fcell fcell--edit">{{ ff.fee_earner_control(contact.fee_earner_id) }}</div>
       </div>
     </div>
 

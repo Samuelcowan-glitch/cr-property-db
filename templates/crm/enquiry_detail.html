@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "crm/_fields.html" as ff %}
 {% block title %}{{ e.subject }}{% endblock %}
 {% block topbar_title %}Enquiry{% endblock %}
 {% block topbar_actions %}
@@ -165,20 +166,7 @@
           </select>
         </div>
         <div class="fcell fcell--label">Negotiator</div>
-        <div class="fcell fcell--edit">{% set _people = fee_earners() %}
-          <select name="fee_earner_id">
-            {% if not (_people|length == 1 and not e.fee_earner_id) %}
-            <option value="">Not assigned</option>
-            {% endif %}
-            {% for _p in _people %}
-            <option value="{{ _p.id }}"
-                    {{ 'selected' if (e.fee_earner_id and e.fee_earner_id|string == _p.id|string)
-                                   or (not e.fee_earner_id and _people|length == 1) }}>
-              {{ _p.display_name }}
-            </option>
-            {% endfor %}
-          </select>
-        </div>
+        <div class="fcell fcell--edit">{{ ff.fee_earner_control(e.fee_earner_id) }}</div>
       </div>
       <div class="frow">
         <div class="fcell fcell--label">Status</div>

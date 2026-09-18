@@ -6577,6 +6577,10 @@ def contact_new():
             email=request.form.get('email'),
             contact_type=(request.form.get('contact_type')
                           if request.form.get('contact_type') in CONTACT_TYPES else None),
+            # Added here rather than left out: a contact belongs to whoever is
+            # acting, like everything else on the CRM. With one fee earner
+            # this settles itself.
+            fee_earner_id=_fid(request.form.get('fee_earner_id')),
             notes=request.form.get('notes'),
             req_category=request.form.get('req_category') or None,
             req_property_type=request.form.get('req_property_type') or None,
@@ -7219,16 +7223,24 @@ def _fcontact(v):
 
 
 def _fid(v):
-    """A fee earner's id, or nothing.
+    """A fee earner's id.
 
     Anything that is not an active account allowed to carry a fee is refused
     rather than stored, so a name cannot be invented by editing the request.
+
+    With one fee earner in the office, anything else — a blank, a name that
+    matches no account, an id edited into the request — comes back as that one
+    person rather than as nothing. Every record then carries a fee earner
+    however it was made: by hand, from the website, from a portal lead. It
+    stops being automatic the moment a second account exists, because then
+    there is a real choice and the CRM must not make it for anybody.
     """
     raw = str(v or '').strip()
-    if not raw.isdigit():
-        return None
-    chosen = int(raw)
-    return chosen if any(p.id == chosen for p in fee_earners()) else None
+    chosen = int(raw) if raw.isdigit() else None
+    if chosen is not None and any(p.id == chosen for p in fee_earners()):
+        return chosen
+    sole = default_fee_earner()
+    return sole.id if sole is not None else None
 
 
 def _fcouncil(v):
@@ -10493,6 +10505,12 @@ def api_enquiry():
         enquiry_type=enquiry_type,
         status='Open',
         source='Website',
+        # A lead off the website belongs to somebody the moment it lands, the
+        # same as one taken over the telephone. With one fee earner in the
+        # office that is settled; with more it is left for the office to
+        # assign, because nobody should be given work by a web form.
+        fee_earner_id=(default_fee_earner().id
+                       if default_fee_earner() is not None else None),
         contact_id=contact.id if contact else None,
         property_id=prop.id if prop else None,
         project_id=proj.id if proj else None,

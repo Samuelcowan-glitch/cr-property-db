@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "crm/_fields.html" as ff %}
 {% block title %}Transactions{% endblock %}
 {% block topbar_title %}Transactions{% endblock %}
 {% block topbar_actions %}
@@ -484,15 +485,7 @@
       {% endfor %}
     </select>
 
-    <select name="fee_earner_id">
-      <option value="">All fee earners</option>
-      {% for person in fee_earners() %}
-      <option value="{{ person.id }}"
-              {{ 'selected' if args.get('fee_earner_id')|string == person.id|string }}>
-        {{ person.display_name }}
-      </option>
-      {% endfor %}
-    </select>
+    {{ ff.fee_earner_filter(args.get('fee_earner_id')) }}
 
     <select name="client">
       <option value="">All clients</option>

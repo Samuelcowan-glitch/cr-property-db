@@ -1,3 +1,5 @@
+{% import "crm/_fields.html" as ff %}
+
 {# The person we act for, named by what they are to this instruction. #}
 {% macro owner_label(instruction_type) -%}
   {%- if instruction_type == INSTRUCTION_FOR_SALE -%}Seller
@@ -108,19 +110,7 @@
     {% endif %}
     <div class="fcell fcell--label">Fee earner</div>
     <div class="fcell fcell--edit">
-      {% set people = fee_earners() %}
-      <select name="fee_earner_id" form="{{ form_id }}">
-        {% if not (people|length == 1 and not v.get('fee_earner_id')) %}
-        <option value="">Not assigned</option>
-        {% endif %}
-        {% for person in people %}
-        <option value="{{ person.id }}"
-                {{ 'selected' if (v.get('fee_earner_id') and v.get('fee_earner_id')|string == person.id|string)
-                               or (not v.get('fee_earner_id') and people|length == 1) }}>
-          {{ person.display_name }}
-        </option>
-        {% endfor %}
-      </select>
+      {{ ff.fee_earner_control(v.get('fee_earner_id'), form_id) }}
     </div>
   </div>
 

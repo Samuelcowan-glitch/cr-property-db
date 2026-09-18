@@ -13,28 +13,43 @@
    Pass the record, or nothing for a new one — with a single fee earner in the
    office, a new record is assigned to them and an existing one is left alone.
 #}
+{# The control itself, wherever a fee earner is recorded.
+
+   With one fee earner in the office there is nothing to choose, so nothing is
+   offered: the name is shown and the id is posted with the form, and the
+   record still carries who it is rather than a blank. A second account makes
+   the list come back on every page at once, because every page asks for the
+   control here rather than writing out a select of its own. #}
+{% macro fee_earner_control(current_id, form_id=None, required=false) %}
+{% set people = fee_earners() %}
+{% if people|length == 1 %}
+{% set only = people[0] %}
+<span class="fval" data-fee-earner>{{ only.display_name }}</span>
+<input type="hidden" name="fee_earner_id" value="{{ only.id }}"
+       {% if form_id %}form="{{ form_id }}"{% endif %}>
+{% else %}
+<select name="fee_earner_id" {% if form_id %}form="{{ form_id }}"{% endif %} {{ 'required' if required }}>
+  {% if not required %}<option value="">Not assigned</option>{% endif %}
+  {% for person in people %}
+  <option value="{{ person.id }}"
+          {{ 'selected' if current_id and current_id|string == person.id|string }}>
+    {{ person.display_name }}
+  </option>
+  {% endfor %}
+</select>
+{% endif %}
+{% endmacro %}
+
+
 {% macro fee_earner_field(current_id, form_id, label='Fee earner', errors={},
                           required=false, legacy=None, full_row=false) %}
-{% set people = fee_earners() %}
-{% set only_one = people|length == 1 %}
 <div class="frow{{ ' frow--full' if full_row }}">
   <div class="fcell fcell--label">{{ label }}{% if required %} <span class="req">*</span>{% endif %}</div>
   <div class="fcell fcell--edit{{ ' is-invalid' if errors.get('fee_earner_id') }}">
-    <select name="fee_earner_id" form="{{ form_id }}" {{ 'required' if required }}>
-      {% if not (only_one and not current_id) %}
-      <option value="">Not assigned</option>
-      {% endif %}
-      {% for person in people %}
-      <option value="{{ person.id }}"
-              {{ 'selected' if (current_id and current_id == person.id)
-                             or (not current_id and only_one) }}>
-        {{ person.display_name }}
-      </option>
-      {% endfor %}
-    </select>
+    {{ fee_earner_control(current_id, form_id, required) }}
     {% if errors.get('fee_earner_id') %}
     <span class="fcell-error">{{ errors['fee_earner_id'] }}</span>
-    {% elif legacy and not current_id %}
+    {% elif legacy and not current_id and fee_earners()|length > 1 %}
     <span class="fcell-hint">
       Recorded as &ldquo;{{ legacy }}&rdquo;, which matches no account. Choose who it is.
     </span>
@@ -44,8 +59,11 @@
 {% endmacro %}
 
 
-{# The same thing as a filter, where a blank means "everybody". #}
+{# The same thing as a filter, where a blank means "everybody". With one fee
+   earner every record is theirs, so the filter would only ever narrow a list
+   to itself; it is left out until there is a second. #}
 {% macro fee_earner_filter(selected, name='fee_earner_id') %}
+{% if fee_earners()|length > 1 %}
 <select name="{{ name }}">
   <option value="">All fee earners</option>
   {% for person in fee_earners() %}
@@ -54,4 +72,5 @@
   </option>
   {% endfor %}
 </select>
+{% endif %}
 {% endmacro %}
