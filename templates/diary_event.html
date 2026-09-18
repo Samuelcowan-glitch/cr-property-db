@@ -35,9 +35,11 @@
     <div class="rec-col">
       <div class="box">
         <div class="box-head">Appointment</div>
+        {# Built from the type, the contact and the property, so it cannot stop
+           agreeing with the appointment it names. #}
         <div class="frow">
           <div class="fcell fcell--label">Title</div>
-          <div class="fcell fcell--edit"><input type="text" name="title" value="{{ ev.title }}" required></div>
+          <div class="fcell"><strong>{{ ev.title }}</strong></div>
         </div>
         <div class="frow">
           <div class="fcell fcell--label">Starts</div>
@@ -54,8 +56,10 @@
               {% endfor %}
             </select>
           </div>
-          <div class="fcell fcell--label">Who</div>
-          <div class="fcell fcell--edit"><input type="text" name="owner" value="{{ ev.owner or '' }}"></div>
+          <div class="fcell fcell--label">Fee earner</div>
+          <div class="fcell">{{ ev.owner or '—' }}
+            <input type="hidden" name="owner" value="{{ ev.owner or '' }}">
+          </div>
         </div>
         <div class="frow">
           <div class="fcell fcell--label">Property <span style="color:#c62828">&nbsp;*</span></div>
@@ -68,14 +72,22 @@
             </select>
           </div>
         </div>
-        <div class="frow">
+        {# The property's address by default, because that is where a viewing
+           is; typed over where the meeting is somewhere else. #}
+        <div class="frow frow--full">
           <div class="fcell fcell--label">Location</div>
-          <div class="fcell {{ 'is-empty' if not ev.linked_prop }}">
-            {% if ev.linked_prop %}
-              <a href="{{ url_for('property_detail', id=ev.linked_prop.id) }}">{{ ev.place }}</a>
-            {% else %}
-              Choose a property above — its address becomes the location.
-            {% endif %}
+          <div class="fcell fcell--edit">
+            <input type="text" name="location" value="{{ ev.location or '' }}"
+                   placeholder="Taken from the property">
+            <span class="fcell-hint">
+              {% if ev.linked_prop %}
+              The property is
+              <a href="{{ url_for('property_detail', id=ev.linked_prop.id) }}">{{ ev.place }}</a>.
+              Clear this box to go back to its address.
+              {% else %}
+              Choose a property above and its address is used.
+              {% endif %}
+            </span>
           </div>
         </div>
         <div class="frow">
@@ -117,6 +129,60 @@
         </div>
       </div>
 
+      {# Drafted here and sent by hand. The address, the date and the time are
+         read from the appointment, so the note cannot say one thing while the
+         diary says another — and nothing goes out until somebody sends it. #}
+      {% set draft = appointment_email(ev) %}
+      <div class="box" id="email-details">
+        <div class="box-head">
+          <span class="box-title">Email details</span>
+          {% if ev.contact %}
+          <span class="box-actions">to {{ ev.contact.full_name }}</span>
+          {% endif %}
+        </div>
+        {% if not ev.contact %}
+        <div class="empty">
+          Link a contact above and the confirmation is written for you.
+        </div>
+        {% elif not draft.to %}
+        <div class="empty">
+          {{ ev.contact.full_name }} has no email address on their record, so
+          there is nowhere to send this.
+          <a href="{{ url_for('contact_detail', id=ev.contact.id) }}">Add one</a>.
+        </div>
+        {% else %}
+        <div class="frow frow--full">
+          <div class="fcell fcell--label">To</div>
+          <div class="fcell">{{ draft.to }}</div>
+        </div>
+        <div class="frow frow--full">
+          <div class="fcell fcell--label">Subject</div>
+          <div class="fcell fcell--edit">
+            <input type="text" name="subject" value="{{ draft.subject }}"
+                   form="email-form">
+          </div>
+        </div>
+        <div class="frow frow--full">
+          <div class="fcell fcell--label fcell--top">Message</div>
+          <div class="fcell fcell--edit">
+            <textarea name="body" rows="12" form="email-form">{{ draft.body }}</textarea>
+          </div>
+        </div>
+        <div class="frow frow--full">
+          <div class="fcell fcell--label"></div>
+          <div class="fcell">
+            <button type="submit" class="btn btn-primary btn-sm" form="email-form">
+              Send confirmation
+            </button>
+            <span class="fcell-hint">
+              Goes out from the office mailbox and is recorded on
+              {{ ev.contact.first_name }}'s journal.
+            </span>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+
       {% if ev.from_outlook %}
       <div class="box">
         <div class="box-head">Outlook</div>
@@ -128,6 +194,14 @@
       {% endif %}
     </div>
   </div>
+</form>
+
+{# The confirmation is its own form — a form cannot be nested inside another,
+   and the fields above point back here by id. #}
+<form id="email-form" method="post"
+      action="{{ url_for('diary_event_email', id=ev.id) }}">
+  <input type="hidden" name="to_address"
+         value="{{ ev.contact.email if ev.contact and ev.contact.email else '' }}">
 </form>
 
 <form method="post" action="{{ url_for('diary_event_delete', id=ev.id) }}" class="confirm-delete" style="margin-top:10px">

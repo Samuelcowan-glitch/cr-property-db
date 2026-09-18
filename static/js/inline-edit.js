@@ -83,6 +83,12 @@
   // Panels that load a record after the page has opened call this themselves.
   window.CRInlineEdit = {start: start};
 
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
-  else start();
+  // Wrapped, not passed straight in: a listener is handed the event, and
+  // start() reads its argument as the root to search. (event).querySelectorAll
+  // throws, so on any load slow enough to still be parsing when this ran,
+  // inline editing — the Save button's state and the unsaved-changes warning —
+  // never started at all.
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () { start(); });
+  } else { start(); }
 })();

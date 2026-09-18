@@ -158,18 +158,6 @@
     {# The CRM's boxed form-grid puts labels in their own column, which is too
        tight for a 520px dialog — this one stacks label over field instead. #}
     <div class="cal-form">
-      <div class="cal-field wide">
-        <label for="ev-title">Title</label>
-        <input type="text" id="ev-title" name="title" placeholder="e.g. Viewing — 57B New Kings Road" required>
-      </div>
-      <div class="cal-field">
-        <label for="ev-start">Starts</label>
-        <input type="datetime-local" id="ev-start" name="start" required>
-      </div>
-      <div class="cal-field">
-        <label for="ev-end">Ends</label>
-        <input type="datetime-local" id="ev-end" name="end" required>
-      </div>
       <div class="cal-field">
         <label for="ev-type">Type</label>
         <select id="ev-type" name="event_type">
@@ -179,8 +167,17 @@
         </select>
       </div>
       <div class="cal-field">
-        <label for="ev-owner">Who</label>
-        <input type="text" id="ev-owner" name="owner" value="{{ current_user.username }}">
+        <label for="ev-project">Instruction</label>
+        <select id="ev-project" name="project_id" data-search
+                data-placeholder="Search instructions…">
+          <option value="">— Not about an instruction —</option>
+          {% for p in projects %}
+          <option value="{{ p.id }}" data-property="{{ p.property_id or '' }}"
+                  data-instruction="{{ p.instruction_type or '' }}">
+            {{ p.name }}{% if p.property %} — {{ p.property.address }}{% endif %}
+          </option>
+          {% endfor %}
+        </select>
       </div>
       <div class="cal-field wide">
         <label for="ev-property">Property <span class="cal-req">*</span></label>
@@ -189,10 +186,56 @@
         <select id="ev-property" name="property_id" required data-search>
           <option value="">— Choose the property —</option>
           {% for p in properties %}
-          <option value="{{ p.id }}">{{ p.address }}{% if p.postcode %}, {{ p.postcode }}{% endif %}</option>
+          <option value="{{ p.id }}" data-address="{{ p.address }}{% if p.postcode %}, {{ p.postcode }}{% endif %}">
+            {{ p.address }}{% if p.postcode %}, {{ p.postcode }}{% endif %}
+          </option>
           {% endfor %}
         </select>
-        <p class="cal-hint">The property's address becomes the appointment location.</p>
+      </div>
+
+      {# Who it is with, named for what the appointment is. A viewing on a
+         letting is with a tenant and one on a sale with a buyer, so the label
+         follows the instruction as well as the type. Everyone is listed —
+         somebody's type is shown beside their name — because a list that hid
+         them would send you off to make a second record of a person the CRM
+         already holds. #}
+      <div class="cal-field wide">
+        <label for="ev-contact"><span id="ev-contact-label">Contact</span></label>
+        <select id="ev-contact" name="contact_id" data-search
+                data-placeholder="Search name, company or email…">
+          <option value="">— Choose a contact —</option>
+          {% for c in contacts %}
+          <option value="{{ c.id }}" data-name="{{ c.full_name }}"
+                  data-type="{{ c.contact_type or '' }}">
+            {{ c.full_name }}{% if c.contact_type %} — {{ c.contact_type }}{% endif %}
+            {%- if c.organisation %} · {{ c.organisation.name }}{% endif %}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="cal-field">
+        <label for="ev-start">Starts</label>
+        <input type="datetime-local" id="ev-start" name="start" required>
+      </div>
+      <div class="cal-field">
+        <label for="ev-end">Ends</label>
+        <input type="datetime-local" id="ev-end" name="end" required>
+      </div>
+
+      <div class="cal-field wide">
+        <label for="ev-location">Location</label>
+        <input type="text" id="ev-location" name="location"
+               placeholder="Taken from the property">
+        <p class="cal-hint">
+          The property's address, unless the meeting is somewhere else.
+        </p>
+      </div>
+
+      {# Never typed. Shown so it is clear what is going in the diary. #}
+      <div class="cal-field wide">
+        <label>Title</label>
+        <p class="cal-title-preview" id="ev-title-preview">Appointment</p>
       </div>
     </div>
     <div class="form-actions cal-actions">

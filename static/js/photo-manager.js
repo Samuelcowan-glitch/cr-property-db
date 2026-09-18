@@ -144,6 +144,10 @@
   }
 
   window.CRPhotoManager = {start: start};
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
-  else start();
+  // Wrapped: a listener is handed the event, and start() reads its argument as
+  // the root to search, so passing it straight in threw and the photo manager
+  // never started on a load still parsing when this ran.
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () { start(); });
+  } else { start(); }
 })();

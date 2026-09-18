@@ -2212,13 +2212,139 @@ class User(UserMixin, db.Model):
 # They stay far enough apart to be told apart at a glance, and every block
 # carries its type in words as well, so none of this rests on colour alone.
 EVENT_TYPES = {
-    'viewing':     ('Viewing',     '#2e2c71'),   # the mark's navy
-    'call':        ('Call',        '#1d6f66'),   # teal
-    'meeting':     ('Meeting',     '#6b3f6e'),   # plum
-    'inspection':  ('Inspection',  '#b07213'),   # amber
-    'reminder':    ('Reminder',    '#d3402c'),   # the mark's red
-    'appointment': ('Appointment', '#6b6858'),   # warm grey
+    'viewing':          ('Viewing',          '#2e2c71'),   # the mark's navy
+    'valuation':        ('Valuation',        '#1d6f66'),   # teal
+    'landlord_meeting': ('Landlord Meeting', '#3a3785'),
+    'tenant_meeting':   ('Tenant Meeting',   '#2e2c71'),
+    'buyer_meeting':    ('Buyer Meeting',    '#6b3f6e'),   # plum
+    'call':             ('Call',             '#1d6f66'),
+    'meeting':          ('Meeting',          '#6b3f6e'),
+    'inspection':       ('Inspection',       '#b07213'),   # amber
+    'reminder':         ('Reminder',         '#d3402c'),   # the mark's red
+    'appointment':      ('Appointment',      '#6b6858'),   # warm grey
 }
+
+# Who an appointment is with. A viewing is the one that cannot be written down
+# here, because it depends on the instruction: somebody viewing a unit To Let
+# is a tenant and somebody viewing one For Sale is a buyer. The rest are
+# named by what they are.
+APPOINTMENT_SIDES = {
+    'valuation':        ('Landlord', 'Seller'),
+    'landlord_meeting': ('Landlord',),
+    'tenant_meeting':   ('Tenant',),
+    'buyer_meeting':    ('Buyer',),
+    'inspection':       ('Landlord', 'Tenant'),
+}
+
+
+def appointment_contact_kinds(event_type, project=None):
+    """Which kind of contact an appointment of this type is with.
+
+    An empty tuple means it is not a kind of appointment that is with anybody
+    in particular — a call, a reminder — so the whole book is offered.
+    """
+    kind = (event_type or '').strip()
+    if kind == 'viewing':
+        side = instruction_side(project.instruction_type if project is not None else None)
+        return {'tenant': ('Tenant',), 'buyer': ('Buyer',)}.get(side, ('Tenant', 'Buyer'))
+    return APPOINTMENT_SIDES.get(kind, ())
+
+
+def appointment_contact_label(event_type, project=None):
+    """What to call the contact box for this kind of appointment."""
+    kinds = appointment_contact_kinds(event_type, project)
+    if not kinds:
+        return 'Contact'
+    return ' or '.join(kinds)
+
+
+def appointment_title(event_type, contact=None, prop=None):
+    """The line an appointment reads as in the diary.
+
+    Built from what the appointment is, who it is with and where — never
+    typed. Somebody making six viewings in a morning should not be writing
+    out six titles, and a title typed by hand is the one thing on the record
+    that stops agreeing with it when the appointment moves.
+
+    Viewing – Richard Hockney – 1 Stanley Bridge Studios
+    """
+    label = EVENT_TYPES.get((event_type or '').strip(),
+                            EVENT_TYPES['appointment'])[0]
+    parts = [label]
+    if contact is not None:
+        name = (contact.full_name or '').strip()
+        if name:
+            parts.append(name)
+    if prop is not None:
+        # The street address only. The town and postcode are on the record
+        # already and would push the useful part off the end of a diary chip.
+        where = (prop.address or '').split(',')[0].strip()
+        if where:
+            parts.append(where)
+    return ' – '.join(parts)
+
+
+def appointment_map_link(location):
+    """A link that opens the location in a map, for the confirmation email."""
+    where = (location or '').strip()
+    if not where:
+        return None
+    from urllib.parse import quote_plus
+    return f'https://www.google.com/maps/search/?api=1&query={quote_plus(where)}'
+
+
+def _clock(when):
+    """Half past two in the afternoon, written the way the office writes it."""
+    hour = when.hour % 12 or 12
+    suffix = 'am' if when.hour < 12 else 'pm'
+    return f'{hour}.{when.minute:02d}{suffix}' if when.minute else f'{hour}{suffix}'
+
+
+def appointment_email(ev):
+    """The confirmation an appointment is worth sending, written out.
+
+    Drafted rather than sent: the page shows it and somebody presses send. The
+    address, the date and the time are read from the appointment, and the
+    address again from the property behind it, so the note cannot say one
+    thing while the diary says another.
+    """
+    contact = ev.contact
+    when = to_london(ev.start_at)
+    label = EVENT_TYPES.get(ev.event_type or 'appointment',
+                            EVENT_TYPES['appointment'])[0].lower()
+    where = (ev.location or '').strip()
+    short = where.split(',')[0].strip() or where
+
+    earner = default_fee_earner()
+    signed = ((earner.display_name if earner is not None else 'Benjamin Cowan')
+              or 'Benjamin Cowan').split(' ')[0]
+
+    greeting = (contact.first_name or '').strip() if contact is not None else ''
+    lines = [f'Hi {greeting},' if greeting else 'Hello,', '']
+    lines.append(f'Just confirming our {label} at {short} on '
+                 f'{when:%A %-d %B} at {_clock(when)}.')
+    if where:
+        lines += ['', 'The address is:', where]
+        link = appointment_map_link(where)
+        if link:
+            lines += ['', f'Directions: {link}']
+    lines += ['', 'I look forward to seeing you there.', '',
+              'Kind regards,', signed]
+
+    return {
+        'to': (contact.email or '').strip() if contact is not None else '',
+        'subject': f'{EVENT_TYPES.get(ev.event_type or "appointment", EVENT_TYPES["appointment"])[0]}'
+                   f' — {short} — {when:%a %-d %B}' if short
+                   else f'Appointment — {when:%a %-d %B}',
+        'body': '\n'.join(lines),
+    }
+
+
+app.jinja_env.globals['appointment_contact_label'] = appointment_contact_label
+app.jinja_env.globals['appointment_contact_kinds'] = appointment_contact_kinds
+app.jinja_env.globals['appointment_title'] = appointment_title
+app.jinja_env.globals['appointment_email'] = appointment_email
+app.jinja_env.globals['appointment_map_link'] = appointment_map_link
 LONDON = 'Europe/London'
 
 
@@ -2833,6 +2959,9 @@ def diary():
     owners = sorted({o[0] for o in db.session.query(DiaryEvent.owner).distinct() if o[0]})
     properties = Property.query.order_by(Property.address).all()
     return render_template('diary.html', properties=properties,
+                           contacts=Contact.query.order_by(Contact.last_name,
+                                                           Contact.first_name).all(),
+                           projects=Project.query.order_by(Project.name).all(),
                            view=view, anchor=anchor, start=start, end=end,
                            events=events, event_types=EVENT_TYPES,
                            selected_types=types, owner=owner, owners=owners,
@@ -2861,19 +2990,27 @@ def diary_event_new():
         flash('Choose the property this appointment is at.', 'warning')
         return _back_to('diary')
 
+    kind = (request.form.get('event_type')
+            if request.form.get('event_type') in EVENT_TYPES else 'appointment')
+    contact = Contact.query.get(_fint(request.form.get('contact_id')) or 0)
+
     ev = DiaryEvent(
-        title=(request.form.get('title') or 'Appointment').strip(),
+        # Never typed: built from what the appointment is, who it is with and
+        # where, so six viewings in a morning are not six titles to write.
+        title=appointment_title(kind, contact, prop),
         start_at=from_london(start), end_at=from_london(end),
-        event_type=request.form.get('event_type') if request.form.get('event_type') in EVENT_TYPES else 'appointment',
+        event_type=kind,
         owner=(request.form.get('owner') or getattr(current_user, 'username', None)),
         notes=_ftext(request.form.get('notes')),
-        contact_id=_fint(request.form.get('contact_id')),
+        contact_id=contact.id if contact is not None else None,
         property_id=prop.id,
         project_id=_fint(request.form.get('project_id')),
         enquiry_id=_fint(request.form.get('enquiry_id')),
         created_by=getattr(current_user, 'username', None),
     )
-    ev.location = property_address(prop)   # a readable copy for older views and Outlook
+    # The property's address unless somebody has said otherwise — a viewing is
+    # at the property, but a meeting about it may be anywhere.
+    ev.location = _ftext(request.form.get('location')) or property_address(prop)
     db.session.add(ev)
     db.session.commit()
     audit('create', entity='DiaryEvent', entity_id=ev.id, detail=ev.event_type)
@@ -2889,8 +3026,6 @@ def diary_event(id):
     if request.method == 'POST':
         if not current_user.can('edit'):
             abort(403)
-        if 'title' in request.form:
-            ev.title = request.form.get('title') or ev.title
         for field in ('notes', 'owner'):
             if field in request.form:
                 setattr(ev, field, _ftext(request.form.get(field)))
@@ -2921,7 +3056,15 @@ def diary_event(id):
         if ev.end_at <= ev.start_at:
             flash('The end time must be after the start time.', 'warning')
             return redirect(url_for('diary_event', id=ev.id))
-        ev.location = property_address(Property.query.get(ev.property_id) if ev.property_id else None)
+        # The location is the property's address unless somebody has typed
+        # another, and the title follows the type, the contact and the
+        # property so it never disagrees with the appointment it names.
+        prop = Property.query.get(ev.property_id) if ev.property_id else None
+        if 'location' in request.form:
+            ev.location = _ftext(request.form.get('location')) or property_address(prop)
+        elif not ev.location:
+            ev.location = property_address(prop)
+        ev.title = appointment_title(ev.event_type, ev.contact, prop)
         db.session.commit()
         audit('edit', entity='DiaryEvent', entity_id=ev.id)
         ms_sync.push_event(app, db, ev)      # keep Outlook in step
@@ -2953,6 +3096,57 @@ def diary_event_move(id):
     audit('edit', entity='DiaryEvent', entity_id=ev.id, detail='moved or resized')
     ms_sync.push_event(app, db, ev)          # keep Outlook in step
     return jsonify({'ok': True, 'start': data['start'], 'end': data['end']})
+
+
+@app.route('/diary/event/<int:id>/email', methods=['POST'])
+@requires('edit')
+def diary_event_email(id):
+    """Send the contact the confirmation drafted on the appointment.
+
+    What is sent is what the page showed, so nothing is composed behind
+    somebody's back, and the note goes on the contact's journal afterwards —
+    the CRM should be able to say what was sent and when.
+    """
+    from email_sync import send_email, check_configured
+    ev = DiaryEvent.query.get_or_404(id)
+    back = redirect(url_for('diary_event', id=ev.id))
+
+    if not check_configured():
+        flash('Email is not set up yet — add the Microsoft details on the '
+              'Microsoft 365 page and this will send.', 'warning')
+        return back
+
+    to_addr = (request.form.get('to_address') or '').strip()
+    subject = (request.form.get('subject') or '').strip()
+    body    = (request.form.get('body') or '').strip()
+    if not to_addr:
+        flash('That contact has no email address on their record, so there is '
+              'nowhere to send this.', 'warning')
+        return back
+    if not subject or not body:
+        flash('The message needs a subject and something to say.', 'warning')
+        return back
+
+    try:
+        send_email(to_addr, subject, f"<p>{'<br>'.join(body.splitlines())}</p>")
+    except Exception as ex:
+        app.logger.error('Appointment email failed for %s: %s', ev.id, ex)
+        flash(f'The email did not send: {ex}', 'error')
+        return back
+
+    # Recorded against the contact, so the journal shows what they were told.
+    if ev.contact_id:
+        db.session.add(ContactActivity(
+            contact_id=ev.contact_id, kind='email',
+            body=f'{subject}\n\n{body}',
+            author=getattr(current_user, 'username', None)))
+        contact = Contact.query.get(ev.contact_id)
+        if contact is not None:
+            contact.last_contact_date = date.today()
+        db.session.commit()
+    audit('email', entity='DiaryEvent', entity_id=ev.id, detail=to_addr)
+    flash(f'Confirmation sent to {to_addr}.', 'success')
+    return back
 
 
 @app.route('/diary/event/<int:id>/delete', methods=['POST'])

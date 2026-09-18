@@ -179,7 +179,96 @@
     });
   }
 
+  /* ── The new-appointment form keeps itself in step ────────────────────────
+     Three things follow from what is chosen, and none of them is worth typing:
+
+       - who the appointment is with is named for what it is. A viewing on a
+         letting is with a tenant and one on a sale with a buyer, so the label
+         follows the instruction as well as the type;
+       - choosing an instruction fills in the property it is about;
+       - the location is the property's address until somebody types another,
+         and the title is built from the type, the contact and the property.
+
+     The title the server writes on save is built the same way, so this is a
+     preview of what will be recorded, never the thing itself. */
+  var SIDES = {
+    valuation:        ['Landlord', 'Seller'],
+    landlord_meeting: ['Landlord'],
+    tenant_meeting:   ['Tenant'],
+    buyer_meeting:    ['Buyer'],
+    inspection:       ['Landlord', 'Tenant']
+  };
+
+  function chosen(sel) {
+    return sel && sel.selectedIndex >= 0 ? sel.options[sel.selectedIndex] : null;
+  }
+
+  function appointmentForm() {
+    var type = document.getElementById('ev-type');
+    var project = document.getElementById('ev-project');
+    var property = document.getElementById('ev-property');
+    var contact = document.getElementById('ev-contact');
+    var location = document.getElementById('ev-location');
+    var label = document.getElementById('ev-contact-label');
+    var preview = document.getElementById('ev-title-preview');
+    if (!type || !property || !contact) return;
+
+    // Only while it has not been typed into by hand.
+    var locationTouched = false;
+    if (location) location.addEventListener('input', function () { locationTouched = true; });
+
+    function wanted() {
+      if (type.value === 'viewing') {
+        var instruction = ((chosen(project) || {}).dataset || {}).instruction || '';
+        var lower = instruction.toLowerCase();
+        if (lower.indexOf('to let') !== -1) return ['Tenant'];
+        if (lower.indexOf('for sale') !== -1) return ['Buyer'];
+        return ['Tenant', 'Buyer'];
+      }
+      return SIDES[type.value] || [];
+    }
+
+    function refresh() {
+      var kinds = wanted();
+      if (label) label.textContent = kinds.length ? kinds.join(' or ') : 'Contact';
+
+      if (location && !locationTouched) {
+        var addr = ((chosen(property) || {}).dataset || {}).address || '';
+        location.value = addr;
+      }
+
+      if (preview) {
+        var parts = [type.options[type.selectedIndex].textContent.trim()];
+        var who = ((chosen(contact) || {}).dataset || {}).name || '';
+        if (who) parts.push(who);
+        var addr2 = ((chosen(property) || {}).dataset || {}).address || '';
+        var where = addr2.split(',')[0].trim();
+        if (where) parts.push(where);
+        preview.textContent = parts.join(' – ');
+      }
+    }
+
+    // Choosing an instruction fills in the property it is about, rather than
+    // asking for the same thing twice.
+    if (project) {
+      project.addEventListener('change', function () {
+        var pid = ((chosen(project) || {}).dataset || {}).property || '';
+        if (pid) {
+          property.value = pid;
+          // The searchable wrapper, where one is in use, redraws from this.
+          property.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        refresh();
+      });
+    }
+    [type, property, contact].forEach(function (el) {
+      el.addEventListener('change', refresh);
+    });
+    refresh();
+  }
+
   function start() {
+    appointmentForm();
     var root = document.querySelector('[data-calendar]');
     if (!root) return;
     layout(root);
