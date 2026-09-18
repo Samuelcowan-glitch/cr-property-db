@@ -320,18 +320,27 @@
 
       <!-- Row 2: Size + Rent -->
       <div class="form-grid cols-3" style="margin-bottom:14px">
+        {# The size is the instruction's, not this form's.
+
+           It was an input named "value" — the transaction's money column —
+           which meant the floor area was being typed into the field that
+           holds a sale price, and that nobody had filled it in from the
+           project, so the rate per square foot below could never work out.
+           It is read from the instruction now and shown, and the rate
+           calculates the moment a rent is entered. #}
         <div class="form-group">
           <label>Size</label>
-          <div style="display:flex;gap:6px">
-            <input type="number" name="value" id="lease-size" step="0.01"
-                   value="{{ trans.value if trans and trans.value else '' }}" placeholder="Area" style="flex:2"
-                   oninput="calcHeadlineRatePsf()" onchange="calcHeadlineRatePsf()">
-            <select name="size_units" style="flex:1" onchange="calcHeadlineRatePsf()">
-              {% for u in ['sq ft','sq m','acres'] %}
-              <option value="{{ u }}" {{ 'selected' if trans and trans.size_units == u else '' }}>{{ u }}</option>
-              {% endfor %}
-            </select>
-          </div>
+          <div class="calc-value" id="lease-size-display">&mdash;</div>
+          <input type="hidden" id="lease-size" value="">
+          <p class="ps-note" style="margin-top:3px">From the instruction.</p>
+        </div>
+        <div class="form-group">
+          <label>Measured in</label>
+          <select name="size_units" onchange="calcHeadlineRatePsf()">
+            {% for u in ['sq ft','sq m','acres'] %}
+            <option value="{{ u }}" {{ 'selected' if trans and trans.size_units == u else '' }}>{{ u }}</option>
+            {% endfor %}
+          </select>
         </div>
         <div class="form-group">
           <label>Measurement Basis</label>
@@ -767,20 +776,39 @@ calcLeaseLength();
     // The analysis fields read the property's category from here.
     sel.setAttribute('data-category', d.category || '');
     sel.setAttribute('data-ruse', d.residential_use || '');
+
+    // The floor area comes from the instruction, and the rate per square foot
+    // is worked out from it. Neither is asked for: the summary above was
+    // already showing the size while the field the calculator reads sat empty,
+    // so the rate stayed at a dash however much rent was entered.
+    var sizeField = document.getElementById('lease-size');
+    var sizeShown = document.getElementById('lease-size-display');
+    if (sizeField) sizeField.value = d.size || '';
+    if (sizeShown) {
+      sizeShown.textContent = d.size
+        ? Number(d.size).toLocaleString('en-GB') + ' ' + (d.size_units || 'sq ft')
+        : '—';
+    }
     setIfEmpty('size_units', d.size_units);
     setIfEmpty('agreed_value', d.agreed_value);
     setIfEmpty('fee_percent', d.fee_percent);
     setIfEmpty('fixed_fee', d.fixed_fee);
+    // The owner is filled in by fillOwnerFromProject below, and by nothing
+    // else. Setting the field here as well looked harmless and was not: that
+    // function leaves a field alone once it holds a name, so filling it first
+    // made it return before it could put the search away, and the landlord
+    // the project already knew sat there as an empty search box with their
+    // name stored invisibly behind it.
     if (d.deal_kind === 'sale') {
       setIfEmpty('value', d.value);
-      setIfEmpty('vendor', d.owner_name || d.landlord_name);
     } else {
       setIfEmpty('rent_pa', d.rent_pa);
-      setIfEmpty('landlord', d.owner_name || d.landlord_name);
     }
     var feeType = document.querySelector('[name="fee_type"]');
     if (feeType && !feeType.value && d.fee_type) feeType.value = d.fee_type;
     if (window.fillOwnerFromProject) { window.fillOwnerFromProject(d); }
+    // Now that both the rent and the size are known, work out the rate.
+    if (window.calcHeadlineRatePsf) window.calcHeadlineRatePsf();
     show(d);
   }
   function load() {
