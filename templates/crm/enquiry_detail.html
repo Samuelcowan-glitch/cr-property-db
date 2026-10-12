@@ -73,8 +73,15 @@
   <div><dt>Mobile</dt>
     <dd>{% if e.contact and e.contact.mobile %}<a href="tel:{{ e.contact.mobile|replace(' ','') }}">{{ e.contact.mobile }}</a>{% else %}—{% endif %}</dd></div>
   <div><dt>Source</dt><dd>{{ e.source or 'Manual' }}</dd></div>
+  {# The instruction this enquiry is about, by its own reference as well as
+     its name. The enquiry keeps its own id; this is the instruction's. #}
   <div><dt>Linked project</dt>
-    <dd>{% if e.linked_project %}<a href="{{ url_for('project_detail', id=e.linked_project.id) }}">{{ e.linked_project.name }}</a>{% else %}—{% endif %}</dd></div>
+    <dd>{% if e.linked_project %}
+      <a href="{{ url_for('project_detail', id=e.linked_project.id) }}">
+        {%- if e.linked_project.project_ref -%}
+          <strong>{{ e.linked_project.project_ref }}</strong> &middot;
+        {% endif %}{{ e.linked_project.name }}</a>
+    {% else %}&mdash;{% endif %}</dd></div>
 </dl>
 
 <div class="rec-cols">
@@ -160,6 +167,7 @@
             <option value="">— Not about a specific instruction —</option>
             {% for p in all_projects %}
             <option value="{{ p.id }}" {{ 'selected' if e.project_id == p.id }}>
+              {%- if p.project_ref %}{{ p.project_ref }} &middot; {% endif -%}
               {{ p.name }}{% if p.property %} — {{ p.property.address }}{% endif %}
             </option>
             {% endfor %}
