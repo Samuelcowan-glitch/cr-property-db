@@ -4727,13 +4727,16 @@ def allocate_project_ref(instruction_type):
         # First call for this series on this database. Start above anything
         # already carrying that letter, so a number is never issued twice.
         highest = 0
-        prefix = letter
         for (ref,) in db.session.query(Project.project_ref).filter(
                 Project.project_ref.isnot(None)).all():
             text_ref = str(ref).strip().upper()
-            if not text_ref.startswith(prefix):
+            # Tolerate a reference written without the CR- prefix: earlier
+            # numbering passes used the bare letter.
+            if text_ref.startswith(PROJECT_REF_PREFIX.upper()):
+                text_ref = text_ref[len(PROJECT_REF_PREFIX):]
+            if not text_ref.startswith(letter):
                 continue
-            tail = text_ref[len(prefix):]
+            tail = text_ref[len(letter):]
             # Guard against L matching MA001 and the like.
             if tail[:1].isalpha():
                 continue
@@ -4746,7 +4749,7 @@ def allocate_project_ref(instruction_type):
 
     row.value = (row.value or 0) + 1
     db.session.flush()
-    return f'{letter}{row.value:03d}'
+    return format_project_ref(series, row.value)
 
 
 def next_transaction_reference():
@@ -5719,6 +5722,10 @@ app.jinja_env.globals['INSTRUCTION_APPRAISAL'] = INSTRUCTION_APPRAISAL
 app.jinja_env.globals['INSTRUCTION_TYPES'] = INSTRUCTION_TYPES
 
 
+# Every project reference opens with this, then the series letter, then the
+# number within that series: CR-L001, CR-S001, CR-MA001.
+PROJECT_REF_PREFIX = 'CR-'
+
 # Reference series. One sequence per kind of instruction, so a letting and a
 # sale never share a number and each counts up on its own.
 PROJECT_REF_SERIES = {
@@ -5770,6 +5777,15 @@ def project_ref_series(instruction_type):
         if word in low:
             return series
     return 'prospect'
+
+
+def format_project_ref(series, number):
+    """Build a reference from its series and number, e.g. ('sale', 4) -> CR-S004.
+
+    The one place the shape of a reference is decided, so the allocator and the
+    one-off clean-up cannot drift apart.
+    """
+    return f'{PROJECT_REF_PREFIX}{PROJECT_REF_SERIES[series]}{number:03d}'
 
 
 def instruction_type_ok(value, existing=None):
@@ -12603,7 +12619,7 @@ def _migrate_project_references():
             if 'ref_counters' not in insp.get_table_names():
                 db.create_all()
 
-            marker = 'project_renumbered_by_type'
+            marker = 'project_renumbered_cr_prefix'
             done = db.session.query(RefCounter).filter_by(
                 name=marker).one_or_none()
 
@@ -12626,8 +12642,7 @@ def _migrate_project_references():
                 for proj in projects:
                     series = project_ref_series(proj.instruction_type)
                     counts[series] = counts.get(series, 0) + 1
-                    proj.project_ref = \
-                        f'{PROJECT_REF_SERIES[series]}{counts[series]:03d}'
+                    proj.project_ref = format_project_ref(series, counts[series])
 
                 for series, total in counts.items():
                     row = db.session.query(RefCounter).filter_by(
