@@ -12347,6 +12347,66 @@ def admin_ms_contacts_push():
     return redirect(url_for('admin_microsoft'))
 
 
+# ── Enquiries: clearing out the ones that were ordinary emails ───────────────
+
+# An enquiry is a lead. These are the sources a lead actually arrives from.
+GENUINE_ENQUIRY_SOURCES = ('Website', 'Zoopla', 'Rightmove', 'OnTheMarket')
+
+
+def _email_sourced_enquiries():
+    """The enquiries the old mailbox sync made out of ordinary emails.
+
+    Only those: anything from the website or a portal is a real lead, and
+    anything entered by hand is somebody's own work. Both are left alone.
+    """
+    return (Enquiry.query
+            .filter(db.func.lower(db.func.coalesce(Enquiry.source, '')) == 'email')
+            .order_by(Enquiry.created_at.desc()))
+
+
+@app.route('/admin/enquiry-cleanup', methods=['GET'])
+@requires('publish')
+def admin_enquiry_cleanup():
+    """What would be removed from the enquiries, shown before anything goes.
+
+    The mailbox sync used to turn every incoming email into an enquiry. It no
+    longer does. This lists what that left behind so it can be read over first
+    -- nothing is deleted until the button on this page is pressed.
+    """
+    doomed = _email_sourced_enquiries().all()
+    by_source = {}
+    for e in Enquiry.query.all():
+        key = (e.source or '(none)')
+        by_source[key] = by_source.get(key, 0) + 1
+    return render_template('admin/enquiry_cleanup.html',
+                           doomed=doomed, by_source=sorted(by_source.items()),
+                           total=Enquiry.query.count(),
+                           genuine=GENUINE_ENQUIRY_SOURCES)
+
+
+@app.route('/admin/enquiry-cleanup/run', methods=['POST'])
+@requires('publish')
+def admin_enquiry_cleanup_run():
+    """Remove the enquiries that were only ever emails, and their notes."""
+    if (request.form.get('confirm') or '').strip().lower() != 'remove':
+        flash('Nothing was removed. Type "remove" to confirm.', 'error')
+        return redirect(url_for('admin_enquiry_cleanup'))
+
+    doomed = _email_sourced_enquiries().all()
+    removed = 0
+    for enq in doomed:
+        EnquiryNote.query.filter_by(enquiry_id=enq.id).delete(
+            synchronize_session=False)
+        db.session.delete(enq)
+        removed += 1
+    db.session.commit()
+    audit('delete', entity='Enquiry', entity_id=None,
+          detail=f'{removed} email-sourced enquiries removed')
+    flash(f'{removed} enquiries that were ordinary emails have been removed. '
+          'Website and portal enquiries were not touched.', 'success')
+    return redirect(url_for('admin_enquiry_cleanup'))
+
+
 @app.route('/admin/zoopla', methods=['GET'])
 @requires('publish')
 def admin_zoopla():

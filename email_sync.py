@@ -263,35 +263,25 @@ def sync_inbox(db, Contact, Enquiry, EnquiryNote):
             counts['leads'] += 1
             continue
 
-        # Find or create contact
+        # Everything from here down is ordinary correspondence: a reply, a
+        # solicitor, a supplier, a landlord. An enquiry is a lead, and a lead
+        # arrives from the website or from a portal -- both handled above. So
+        # nothing here creates one.
+        #
+        # What it still does is thread a reply onto an enquiry that already
+        # exists, which is why the mailbox is read at all. No enquiry to thread
+        # it onto means there is nothing to file, and the message is left where
+        # it is.
         contact = Contact.query.filter_by(email=from_addr).first()
-        if not contact:
-            parts   = from_name.split(' ', 1)
-            contact = Contact(
-                first_name=parts[0] or 'Unknown',
-                last_name=parts[1] if len(parts) > 1 else '.',
-                email=from_addr,
-                contact_type='Prospect',
-            )
-            db.session.add(contact)
-            db.session.flush()
+        if contact is None:
+            continue
 
-        # Find most recent open enquiry for this contact, or create one
         enquiry = Enquiry.query.filter_by(
             contact_id=contact.id, status='Open'
         ).order_by(Enquiry.created_at.desc()).first()
 
-        if not enquiry:
-            enquiry = Enquiry(
-                subject=f'Email — {subject[:100]}',
-                enquiry_type='Other',
-                status='Open',
-                source='Email',
-                contact_id=contact.id,
-                received_date=received_at.date(),
-            )
-            db.session.add(enquiry)
-            db.session.flush()
+        if enquiry is None:
+            continue
 
         note = EnquiryNote(
             enquiry_id=enquiry.id,

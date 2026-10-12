@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Enquiries clean-up{% endblock %}
+{% block topbar_title %}Enquiries clean-up{% endblock %}
+
+{#
+   The mailbox sync used to turn every incoming email into an enquiry. It no
+   longer does. This page shows what that left behind, so it can be read over
+   before anything is removed.
+
+   Only enquiries whose source is "Email" are listed. A website enquiry, a
+   portal lead and anything entered by hand are all left alone.
+#}
+
+{% block content %}
+<div class="rec-page">
+
+  <div class="fin-band"><h3>What the enquiries are made of</h3></div>
+  <div class="box box--grid">
+    {% for source, count in by_source %}
+    <div class="frow">
+      <div class="fcell fcell--label">{{ source }}</div>
+      <div class="fcell fcell--edit fcell--readonly">
+        <strong>{{ count }}</strong>
+        <span class="ro-note">
+          {% if source|lower == 'email' %}
+            &mdash; ordinary emails, listed below for removal
+          {% elif source in genuine %}
+            &mdash; genuine leads, kept
+          {% else %}
+            &mdash; entered by hand, kept
+          {% endif %}
+        </span>
+      </div>
+    </div>
+    {% endfor %}
+    <div class="frow">
+      <div class="fcell fcell--label">Total</div>
+      <div class="fcell fcell--edit fcell--readonly"><strong>{{ total }}</strong></div>
+    </div>
+  </div>
+
+  <div class="fin-band"><h3>Would be removed ({{ doomed|length }})</h3></div>
+
+  {% if not doomed %}
+  <p class="muted" style="margin:10px 0;">
+    Nothing to remove. Every enquiry on record came from the website, a portal,
+    or somebody entering it themselves.
+  </p>
+  {% else %}
+  <p class="muted" style="margin:0 0 12px;font-size:.85rem;">
+    These were created by the mailbox sync from ordinary email. Their email
+    notes go with them. Read the list before confirming &mdash; once removed
+    they cannot be brought back.
+  </p>
+
+  <div class="box">
+    <table class="tbl">
+      <thead>
+        <tr><th>Received</th><th>Subject</th><th>Type</th><th>Contact</th><th>Status</th></tr>
+      </thead>
+      <tbody>
+        {% for e in doomed %}
+        <tr>
+          <td>{{ e.received_date.strftime('%d %b %Y') if e.received_date else '—' }}</td>
+          <td>{{ e.subject }}</td>
+          <td>{{ e.enquiry_type or '—' }}</td>
+          <td>{{ e.contact.full_name if e.contact else '—' }}</td>
+          <td>{{ e.status or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <form method="post" action="{{ url_for('admin_enquiry_cleanup_run') }}"
+        style="margin:18px 0;display:flex;gap:10px;align-items:center;">
+    {# Typed rather than clicked, because it cannot be undone. #}
+    <label style="font-size:.9rem;">Type <strong>remove</strong> to confirm:</label>
+    <input type="text" name="confirm" autocomplete="off" required
+           style="width:140px;padding:9px 12px;border:1px solid rgba(14,31,68,.18);">
+    <button type="submit" class="btn btn-primary">
+      Remove {{ doomed|length }} enquir{{ 'y' if doomed|length == 1 else 'ies' }}
+    </button>
+  </form>
+  {% endif %}
+
+  <p class="muted" style="font-size:.85rem;margin-top:20px;">
+    Going forward the mailbox sync creates an enquiry only for a website or
+    portal lead. An ordinary email is still filed as a note against an enquiry
+    that already exists, so replies keep threading; it no longer starts one.
+  </p>
+</div>
+{% endblock %}
