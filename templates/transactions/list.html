@@ -324,106 +324,128 @@
     </div>
   </div>
 
-  <!-- ════ How the office is doing ════ -->
+  <!-- ════ Agency performance ════ -->
   <div class="fin-band">
-    <h3>How the office is doing</h3>
-    <span class="fin-note">
-      Worked out from dates already on the records &mdash; nothing here is estimated
-    </span>
+    <h3>Agency Performance</h3>
   </div>
 
-  <div class="fin-pair">
-    <div class="fin-panel">
-      <div class="fin-panel-head">Speed and conversion</div>
+  {# Four readings of how the agency is trading. Each one is a figure first,
+     with what it is measured across underneath it, and a meter where the
+     figure is a proportion of something. #}
+  <div class="perf-cards">
 
-      <div class="stat-row">
-        <span class="stat-label">Deals won</span>
-        <span class="stat-value">
-          {%- if extras.conversion is not none -%}
-            {{ '%g'|format(extras.conversion) }}%
-          {%- else -%}<span class="stat-none">Nothing settled yet</span>{%- endif -%}
-        </span>
-        <span class="stat-note">
-          {%- if extras.conversion is not none -%}
-            {{ dash.completed_count }} completed against {{ extras.lost_count }} fallen through
-          {%- else -%}
-            No completions or fall-throughs to compare
-          {%- endif -%}
-        </span>
-      </div>
-
-      <div class="stat-row">
-        <span class="stat-label">Instruction to completion</span>
-        <span class="stat-value">
-          {%- if extras.days_to_complete is not none -%}
-            {{ extras.days_to_complete }} days
-          {%- else -%}<span class="stat-none">&mdash;</span>{%- endif -%}
-        </span>
-        <span class="stat-note">
-          {%- if extras.days_to_complete is not none -%}
-            Average across {{ extras.completions_measured }} completed
-          {%- else -%}
-            Needs a start date and a completion date on the same record
-          {%- endif -%}
-        </span>
-      </div>
-
-      <div class="stat-row">
-        <span class="stat-label">Invoice to payment</span>
-        <span class="stat-value">
-          {%- if extras.days_to_paid is not none -%}
-            {{ extras.days_to_paid }} days
-          {%- else -%}<span class="stat-none">&mdash;</span>{%- endif -%}
-        </span>
-        <span class="stat-note">
-          {%- if extras.days_to_paid is not none -%}
-            Average across {{ extras.payments_measured }} payment{{ '' if extras.payments_measured == 1 else 's' }}
-          {%- else -%}
-            No payments recorded against an invoice yet
-          {%- endif -%}
-        </span>
-      </div>
-
-      <div class="stat-foot">
-        Pipeline is discounted by stage:
-        {% for status, weight in extras.weights %}{% if weight %}{{ status }}
-        {{ (weight * 100)|round|int }}%{{ ', ' if not loop.last }}{% endif %}{% endfor %}.
-      </div>
-    </div>
-
-    <div class="fin-panel">
-      <div class="fin-panel-head">By fee earner</div>
-      {% if extras.board %}
-      <div class="table-scroll">
-        <table class="pay-table">
-          <thead>
-            <tr>
-              <th>Fee earner</th>
-              <th class="num">Completed</th>
-              <th class="num">In progress</th>
-              <th class="num">Billed</th>
-              <th class="num">Received</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for r in extras.board %}
-            <tr>
-              <td>{{ r.name }}</td>
-              <td class="num">{{ r.completed }}</td>
-              <td class="num">{{ r.live }}</td>
-              <td class="num">{{ money_gbp(r.billed) if r.billed else '—' }}</td>
-              <td class="num">{{ money_gbp(r.received) if r.received else '—' }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
+    <div class="perf-card">
+      <span class="perf-top">
+        <svg class="perf-icon" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M2 11.5 6 7l3 3 5-6"/><path d="M14 4h-3.2M14 4v3.2"/>
+        </svg>
+        Deals completed
+      </span>
+      <span class="perf-figure">{{ '{:,}'.format(dash.completed_count) }}</span>
+      {% if dash.total_count %}
+      {% set done_pct = (dash.completed_count / dash.total_count * 100)|round|int %}
+      <span class="perf-meter"><i style="width:{{ done_pct }}%"></i></span>
+      <span class="perf-note">{{ done_pct }}% of {{ '{:,}'.format(dash.total_count) }} on the books</span>
       {% else %}
-      <div class="empty" style="padding:14px 11px">
-        No transaction has a fee earner against it yet.
-      </div>
+      <span class="perf-note">Nothing on the books yet</span>
       {% endif %}
     </div>
+
+    <div class="perf-card">
+      <span class="perf-top">
+        <svg class="perf-icon" viewBox="0 0 16 16" aria-hidden="true">
+          <circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/>
+        </svg>
+        Instruction to completion
+      </span>
+      {% if extras.days_to_complete is not none %}
+      <span class="perf-figure">{{ extras.days_to_complete }}<small>days</small></span>
+      <span class="perf-note">Average across {{ extras.completions_measured }} completed</span>
+      {% else %}
+      <span class="perf-figure is-none">&mdash;</span>
+      <span class="perf-note">Needs a start and a completion date on one record</span>
+      {% endif %}
+    </div>
+
+    <div class="perf-card">
+      <span class="perf-top">
+        <svg class="perf-icon" viewBox="0 0 16 16" aria-hidden="true">
+          <rect x="2.5" y="3" width="11" height="10" rx="1"/>
+          <path d="M5 6.5h6M5 9.5h3.5"/>
+        </svg>
+        Invoice to payment
+      </span>
+      {% if extras.days_to_paid is not none %}
+      <span class="perf-figure">{{ extras.days_to_paid }}<small>days</small></span>
+      <span class="perf-note">
+        Average across {{ extras.payments_measured }} payment{{ '' if extras.payments_measured == 1 else 's' }}
+      </span>
+      {% else %}
+      <span class="perf-figure is-none">&mdash;</span>
+      <span class="perf-note">No payments recorded against an invoice yet</span>
+      {% endif %}
+    </div>
+
+    <div class="perf-card">
+      <span class="perf-top">
+        <svg class="perf-icon" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M8 2v12"/><path d="M11 4.8A3 3 0 0 0 8.6 3.6h-1A2.2 2.2 0 0 0 7.4 8h1.2a2.2 2.2 0 0 1 .2 4.4h-1A3 3 0 0 1 5 11.2"/>
+        </svg>
+        Deals won
+      </span>
+      {% if extras.conversion is not none %}
+      <span class="perf-figure">{{ '%g'|format(extras.conversion) }}<small>%</small></span>
+      <span class="perf-meter"><i style="width:{{ extras.conversion|round|int }}%"></i></span>
+      <span class="perf-note">
+        {{ dash.completed_count }} completed against {{ extras.lost_count }} fallen through
+      </span>
+      {% else %}
+      <span class="perf-figure is-none">&mdash;</span>
+      <span class="perf-note">No completions or fall-throughs to compare</span>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="fin-panel perf-board">
+    <div class="fin-panel-head">By fee earner</div>
+    {% if extras.board %}
+    {# The same figures as before, with a bar behind the billed column so the
+       shares read at a glance as well as to the penny. #}
+    {% set top_billed = extras.board|map(attribute='billed')|select|list|max if extras.board|map(attribute='billed')|select|list else 0 %}
+    <div class="table-scroll">
+      <table class="pay-table perf-table">
+        <thead>
+          <tr>
+            <th>Fee earner</th>
+            <th class="num">Completed</th>
+            <th class="num">In progress</th>
+            <th class="num">Billed</th>
+            <th class="num">Received</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in extras.board %}
+          <tr>
+            <td class="perf-who">{{ r.name }}</td>
+            <td class="num">{{ r.completed }}</td>
+            <td class="num">{{ r.live }}</td>
+            <td class="num perf-bar-cell">
+              {% if r.billed and top_billed %}
+              <span class="perf-bar" style="--share:{{ (r.billed / top_billed * 100)|round|int }}%"></span>
+              {% endif %}
+              <span class="perf-bar-figure">{{ money_gbp(r.billed) if r.billed else '—' }}</span>
+            </td>
+            <td class="num">{{ money_gbp(r.received) if r.received else '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty" style="padding:14px 11px">
+      No transaction has a fee earner against it yet.
+    </div>
+    {% endif %}
   </div>
 
   <!-- ════ The transactions themselves ════ -->

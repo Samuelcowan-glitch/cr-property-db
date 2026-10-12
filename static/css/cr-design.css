@@ -699,3 +699,117 @@ a:hover { color: var(--cr-red); }
   .card, .kpi, .kpi-card, .stat-tile { box-shadow: none; clip-path: none; }
   .sidebar, .topbar-actions { display: none !important; }
 }
+
+/* ── Agency performance ───────────────────────────────────────────────────
+   The trading figures, read as an instrument panel rather than a report: the
+   number first and large, the label above it in small tracked capitals, and a
+   meter underneath wherever the figure is a share of something. The meters
+   are what make the panel scan in a second instead of a minute. */
+
+.perf-cards {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  margin-bottom: 10px;
+}
+.perf-card {
+  flex: 1 1 210px; min-width: 0;
+  position: relative;
+  background: var(--cr-card);
+  border: var(--cr-hair) solid var(--cr-rule);
+  border-radius: 0 var(--cr-chamfer) 0 0;
+  padding: 11px 13px 12px;
+  display: flex; flex-direction: column; gap: 3px;
+  transition: border-color .18s var(--cr-ease), transform .18s var(--cr-ease);
+}
+.perf-card:hover {
+  border-color: var(--cr-navy);
+  transform: translateY(-1px);
+}
+/* A hairline of the mark's red down the leading edge, as the sidebar has. */
+.perf-card::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 2px;
+  background: var(--cr-red); opacity: .55;
+}
+.perf-top {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 10px; font-weight: var(--w-label);
+  letter-spacing: var(--cr-track); text-transform: uppercase;
+  color: var(--cr-muted);
+}
+.perf-icon {
+  width: 13px; height: 13px; flex: none;
+  fill: none; stroke: var(--cr-red); stroke-width: 1.3;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.perf-figure {
+  font-family: var(--cr-mono);
+  font-size: 27px; line-height: 1.05; font-weight: var(--w-figure);
+  color: var(--cr-ink);
+  font-variant-numeric: tabular-nums lining-nums;
+  letter-spacing: -.01em;
+  display: flex; align-items: baseline; gap: 4px;
+}
+.perf-figure small {
+  font-size: 12px; font-weight: var(--w-label); letter-spacing: var(--cr-track);
+  text-transform: uppercase; color: var(--cr-muted);
+}
+.perf-figure.is-none { color: var(--cr-rule); }
+.perf-meter {
+  display: block; height: 3px; margin: 5px 0 1px;
+  background: var(--cr-rule-soft);
+  overflow: hidden;
+}
+.perf-meter > i {
+  display: block; height: 100%;
+  background: var(--cr-navy);
+  /* Drawn on load so the panel arrives rather than simply being there. */
+  animation: perf-fill .5s var(--cr-ease) both;
+}
+@keyframes perf-fill { from { transform: scaleX(0); transform-origin: left; } }
+.perf-note {
+  font-size: 11px; line-height: 1.4; color: var(--cr-muted);
+}
+
+/* By fee earner: the table keeps every column, with the billed share drawn
+   behind the figure so the board reads as a ranking too. */
+.perf-board { margin-bottom: 4px; }
+.perf-table .perf-who {
+  font-weight: var(--w-label); color: var(--cr-ink);
+}
+.perf-table .perf-bar-cell { position: relative; }
+.perf-bar {
+  position: absolute; right: 9px; top: 50%; translate: 0 -50%;
+  height: 15px; width: var(--share, 0%);
+  background: var(--cr-navy); opacity: .09;
+  animation: perf-fill .5s var(--cr-ease) both;
+}
+.perf-bar-figure { position: relative; }
+
+@media (max-width: 760px) {
+  .perf-card { flex-basis: 45%; }
+  .perf-figure { font-size: 23px; }
+}
+
+/* ── Figures, everywhere ──────────────────────────────────────────────────
+   Money and counts are set in the mono face with tabular figures, so a column
+   of them lines up on the decimal wherever it appears. */
+.kpi-figure, .fin-total, .stat-value, .num, td.num, .perf-figure {
+  font-variant-numeric: tabular-nums lining-nums;
+}
+.kpi-figure { letter-spacing: -.01em; }
+
+/* ── Tables ───────────────────────────────────────────────────────────────
+   A row lights under the cursor rather than changing colour, so scanning down
+   a long list keeps its place without the page flickering. */
+.table tbody tr, .pay-table tbody tr {
+  transition: background .14s var(--cr-ease), box-shadow .14s var(--cr-ease);
+}
+.table tbody tr:hover, .pay-table tbody tr:hover {
+  background: var(--cr-card);
+  box-shadow: inset 2px 0 0 var(--cr-red);
+}
+
+/* ── Micro-interactions ───────────────────────────────────────────────────
+   Nothing moves far or for long. The point is that the interface answers. */
+.kpi { transition: border-color .18s var(--cr-ease), transform .18s var(--cr-ease); }
+.kpi:hover { border-color: var(--cr-rule); transform: translateY(-1px); }
+.sidebar-nav a { transition: background .16s var(--cr-ease), color .16s var(--cr-ease); }
