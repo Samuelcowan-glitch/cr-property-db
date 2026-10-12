@@ -50,9 +50,10 @@
       {{ _err(errors, 'name') }}
     </div>
     <div class="fcell fcell--label">Reference</div>
-    <div class="fcell fcell--edit">
-      <input type="text" name="project_ref" value="{{ v.get('project_ref') or '' }}"
-             placeholder="e.g. CR/2026/001" form="{{ form_id }}">
+    {# Assigned by the system when the project is saved, then fixed for good,
+       so there is nothing to type here and nothing to post. #}
+    <div class="fcell fcell--edit fcell--readonly">
+      <span class="ro-note">Assigned automatically on save</span>
     </div>
   </div>
   {% endif %}
@@ -85,9 +86,9 @@
     </div>
     {% else %}
     <div class="fcell fcell--label">Reference</div>
-    <div class="fcell fcell--edit">
-      <input type="text" name="project_ref" value="{{ v.get('project_ref') or '' }}"
-             placeholder="e.g. CR/2026/001" form="{{ form_id }}">
+    {# Permanently this project's number: shown, never edited. #}
+    <div class="fcell fcell--edit fcell--readonly">
+      <strong>{{ v.get('project_ref') or '—' }}</strong>
     </div>
     {% endif %}
   </div>

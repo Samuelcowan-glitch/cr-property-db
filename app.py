@@ -1754,12 +1754,27 @@ FOLDER_LABELS = {
 }
 
 
+class RefCounter(db.Model):
+    """The high-water mark for an auto-assigned reference series.
+
+    One row per series. The value only ever counts up, so a number is handed
+    out once and never again -- deleting the project it belonged to does not
+    release it, and no other project is renumbered to fill the gap.
+    """
+    __tablename__ = 'ref_counters'
+    name  = db.Column(db.String(40), primary_key=True)
+    value = db.Column(db.Integer, nullable=False, default=0)
+
+
 class Project(db.Model):
     __tablename__ = 'projects'
     id = db.Column(db.Integer, primary_key=True)
     property_id = db.Column(db.Integer, db.ForeignKey('properties.id'), nullable=True)
     name = db.Column(db.String(255), nullable=False)
-    project_ref = db.Column(db.String(50))
+    # Assigned by allocate_project_ref() when the project is created and
+    # fixed from that moment: never edited, never reissued. Unique so two
+    # simultaneous creates cannot land on the same number.
+    project_ref = db.Column(db.String(50), unique=True, index=True)
     status = db.Column(db.String(20), default='Active')   # Active, Complete, On Hold
     fee_earner = db.Column(db.String(100))   # kept: what was typed before
     fee_earner_id = db.Column(db.Integer, db.ForeignKey('users.id'), index=True)
@@ -4683,6 +4698,49 @@ def transaction_chart(rows=None, period='month', view='expected', everyone=None)
     return expected_commission_chart(rows, period)
 
 
+PROJECT_REF_PREFIX = 'CR-'
+PROJECT_REF_SERIES = 'project'
+
+
+def allocate_project_ref():
+    """Take the next project reference, e.g. CR-0007.
+
+    Reads the series' counter with the row locked, so two requests creating a
+    project at the same moment queue rather than both reading the same number.
+    The counter is a high-water mark, not a count of projects: it only moves
+    forward, so a deleted project's number is retired rather than reused.
+
+    Call inside the request that creates the project; the caller's commit is
+    what makes both the new number and the project itself permanent.
+    """
+    locking = db.engine.dialect.name == 'postgresql'
+
+    def _claim():
+        q = db.session.query(RefCounter).filter_by(name=PROJECT_REF_SERIES)
+        if locking:
+            q = q.with_for_update()
+        return q.one_or_none()
+
+    row = _claim()
+    if row is None:
+        # First ever call on this database. Start the series above anything a
+        # person typed in by hand before the numbering was automatic, so the
+        # clean-up's numbers are never handed out a second time.
+        highest = 0
+        for (ref,) in db.session.query(Project.project_ref).filter(
+                Project.project_ref.isnot(None)).all():
+            digits = ''.join(ch for ch in str(ref) if ch.isdigit())
+            if digits:
+                highest = max(highest, int(digits))
+        db.session.add(RefCounter(name=PROJECT_REF_SERIES, value=highest))
+        db.session.flush()
+        row = _claim()
+
+    row.value = (row.value or 0) + 1
+    db.session.flush()
+    return f'{PROJECT_REF_PREFIX}{row.value:04d}'
+
+
 def next_transaction_reference():
     """The next TR-0001. Falls forward past anything already used."""
     highest = 0
@@ -5601,7 +5659,7 @@ def project_new():
         p = Project(
             property_id=prop.id if prop else None,
             name=name,
-            project_ref=_ftext(form.get('project_ref')),
+            project_ref=allocate_project_ref(),   # never from the form
             status=form.get('status') or 'Active',
             fee_earner_id=_fid(form.get('fee_earner_id')),
             client=_ftext(form.get('client')),
@@ -7915,7 +7973,8 @@ PROJECT_FIELDS = [
     ('fee_earner_id',      'fee_earner_id',      _fid),
     ('client_contact_id',  'client_contact_id',  _fcontact),
     ('name',                 'name',                 None),
-    ('project_ref',          'project_ref',          _ftext),
+    # project_ref is deliberately absent: assigned once at creation and
+    # read-only everywhere thereafter, so a posted value cannot change it.
     ('status',               'status',               _ftext),
     ('fee_earner',           'fee_earner',           _ftext),
     ('client',               'client',               _ftext),
@@ -11972,7 +12031,8 @@ def _seed_project_listings():
         if project is None:
             project = Project(property_id=p.id,
                               name=p.address or f"Property {p.id}",
-                              status='Active')
+                              status='Active',
+                              project_ref=allocate_project_ref())
             db.session.add(project)
             db.session.flush()  # assign project.id before referencing it
         db.session.add(Listing(
@@ -12459,6 +12519,82 @@ def _migrate_rates_tables():
             app.logger.exception('Could not seed the councils and multipliers')
 
 
+def _migrate_project_references():
+    """Put the project references in order once, then hand over to the counter.
+
+    Before this, the reference was typed by hand: some projects had none, some
+    used one format and some another, and nothing stopped two sharing a number.
+    The first run renumbers every project CR-0001 upwards in the order they
+    were created, records the high-water mark, and adds the unique index that
+    keeps it that way. It is a one-off: the marker row means a later deploy
+    never renumbers anything again.
+    """
+    from sqlalchemy import text, inspect
+    with app.app_context():
+        try:
+            insp = inspect(db.engine)
+            if 'ref_counters' not in insp.get_table_names():
+                db.create_all()
+
+            done = db.session.query(RefCounter).filter_by(
+                name='project_renumbered').one_or_none()
+
+            if done is None:
+                # created_at is what every project has; id breaks any tie so
+                # the order is total and the same on a re-run.
+                projects = Project.query.order_by(
+                    Project.created_at.is_(None),
+                    Project.created_at.asc(),
+                    Project.id.asc(),
+                ).all()
+
+                # Clear first: the column is unique by the end of this, and
+                # moving CR-0003 onto a row that still holds it would collide
+                # mid-loop.
+                for proj in projects:
+                    proj.project_ref = None
+                db.session.flush()
+
+                for n, proj in enumerate(projects, start=1):
+                    proj.project_ref = f'{PROJECT_REF_PREFIX}{n:04d}'
+
+                total = len(projects)
+                counter = db.session.query(RefCounter).filter_by(
+                    name=PROJECT_REF_SERIES).one_or_none()
+                if counter is None:
+                    db.session.add(RefCounter(name=PROJECT_REF_SERIES, value=total))
+                else:
+                    counter.value = max(counter.value or 0, total)
+                db.session.add(RefCounter(name='project_renumbered', value=1))
+                db.session.commit()
+                app.logger.info('Project references renumbered: %s', total)
+
+            # Safety net, every boot: anything that reached the table without a
+            # reference (a seeder, an import, a path added later) is given the
+            # next number. This is a fill, never a renumber -- references
+            # already issued are not touched.
+            blanks = Project.query.filter(
+                db.or_(Project.project_ref.is_(None), Project.project_ref == '')
+            ).order_by(Project.created_at.asc(), Project.id.asc()).all()
+            if blanks:
+                for proj in blanks:
+                    proj.project_ref = allocate_project_ref()
+                db.session.commit()
+                app.logger.info('Projects given a missing reference: %s', len(blanks))
+
+            # The real guarantee against two simultaneous creates colliding.
+            # Added after the renumber, when the column is known to be clean.
+            existing = {ix['name'] for ix in insp.get_indexes('projects')}
+            if 'ix_projects_project_ref' not in existing:
+                with db.engine.begin() as conn:
+                    conn.execute(text(
+                        'CREATE UNIQUE INDEX IF NOT EXISTS ix_projects_project_ref '
+                        'ON projects (project_ref)'))
+        except Exception:
+            db.session.rollback()
+            app.logger.exception('Could not put the project references in order')
+
+
 def _migrate_crm_columns():
     """Add CRM lifecycle-status + follow-up columns to contacts & organisations.
     Idempotent (only adds missing columns). contact_activities table is created
@@ -12488,6 +12624,7 @@ if __name__ == '__main__':
         # migration queries one.
         _sync_model_columns()
         _migrate_project_columns()
+        _migrate_project_references()
         _migrate_listing_columns()
         _migrate_listings_table_columns()
         _migrate_document_columns()

@@ -19,7 +19,7 @@ Safety:
 Run it in the Railway console:
     /opt/venv/bin/python3 finalize_website_listings.py
 """
-from app import app, db, Property, Project, Listing
+from app import app, db, Property, Project, Listing, allocate_project_ref
 
 TEST_PROPERTY_ID = "cr-db-1"  # "1 Test Street" - should not be on the public site
 
@@ -58,6 +58,7 @@ def run():
                     property_id=p.id,
                     name=p.address or f"Property {p.id}",
                     status='Active',
+                    project_ref=allocate_project_ref(),
                 )
                 db.session.add(project)
                 db.session.flush()

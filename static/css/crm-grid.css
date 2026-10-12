@@ -145,6 +145,10 @@
   font-size: 11.5px;
 }
 .fcell--top { align-items: flex-start; }
+/* A value the system owns and the user cannot type into. Shown in place
+   of an input, so it takes back the padding .fcell--edit drops for one. */
+.fcell--readonly { padding: 7px 9px; }
+.fcell--readonly .ro-note { color: var(--grey-400); }
 .fcell--num { justify-content: flex-end; font-variant-numeric: tabular-nums; }
 .fcell.is-empty { color: var(--grey-400); }
 .fcell.grow-2 { flex-grow: 2; }
