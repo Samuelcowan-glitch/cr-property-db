@@ -58,7 +58,7 @@ def run():
                     property_id=p.id,
                     name=p.address or f"Property {p.id}",
                     status='Active',
-                    project_ref=allocate_project_ref(),
+                    project_ref=allocate_project_ref(None),
                 )
                 db.session.add(project)
                 db.session.flush()

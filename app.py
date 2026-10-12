@@ -4698,47 +4698,55 @@ def transaction_chart(rows=None, period='month', view='expected', everyone=None)
     return expected_commission_chart(rows, period)
 
 
-PROJECT_REF_PREFIX = 'CR-'
-PROJECT_REF_SERIES = 'project'
+def allocate_project_ref(instruction_type):
+    """Take the next reference for this kind of instruction, e.g. L004 or S012.
 
-
-def allocate_project_ref():
-    """Take the next project reference, e.g. CR-0007.
-
-    Reads the series' counter with the row locked, so two requests creating a
+    Each series counts on its own, so a letting and a sale never collide. The
+    counter is read with its row locked on Postgres, so two requests creating a
     project at the same moment queue rather than both reading the same number.
-    The counter is a high-water mark, not a count of projects: it only moves
-    forward, so a deleted project's number is retired rather than reused.
 
-    Call inside the request that creates the project; the caller's commit is
-    what makes both the new number and the project itself permanent.
+    The counter is a high-water mark, not a count of projects: it only moves
+    forward, so a deleted project's number is retired rather than reused, and
+    no other project is renumbered to close the gap.
+
+    Call inside the request that creates the project; the caller's commit makes
+    both the number and the project permanent.
     """
+    series = project_ref_series(instruction_type)
+    letter = PROJECT_REF_SERIES[series]
     locking = db.engine.dialect.name == 'postgresql'
 
     def _claim():
-        q = db.session.query(RefCounter).filter_by(name=PROJECT_REF_SERIES)
+        q = db.session.query(RefCounter).filter_by(name=f'project_{series}')
         if locking:
             q = q.with_for_update()
         return q.one_or_none()
 
     row = _claim()
     if row is None:
-        # First ever call on this database. Start the series above anything a
-        # person typed in by hand before the numbering was automatic, so the
-        # clean-up's numbers are never handed out a second time.
+        # First call for this series on this database. Start above anything
+        # already carrying that letter, so a number is never issued twice.
         highest = 0
+        prefix = letter
         for (ref,) in db.session.query(Project.project_ref).filter(
                 Project.project_ref.isnot(None)).all():
-            digits = ''.join(ch for ch in str(ref) if ch.isdigit())
+            text_ref = str(ref).strip().upper()
+            if not text_ref.startswith(prefix):
+                continue
+            tail = text_ref[len(prefix):]
+            # Guard against L matching MA001 and the like.
+            if tail[:1].isalpha():
+                continue
+            digits = ''.join(ch for ch in tail if ch.isdigit())
             if digits:
                 highest = max(highest, int(digits))
-        db.session.add(RefCounter(name=PROJECT_REF_SERIES, value=highest))
+        db.session.add(RefCounter(name=f'project_{series}', value=highest))
         db.session.flush()
         row = _claim()
 
     row.value = (row.value or 0) + 1
     db.session.flush()
-    return f'{PROJECT_REF_PREFIX}{row.value:04d}'
+    return f'{letter}{row.value:03d}'
 
 
 def next_transaction_reference():
@@ -5659,7 +5667,9 @@ def project_new():
         p = Project(
             property_id=prop.id if prop else None,
             name=name,
-            project_ref=allocate_project_ref(),   # never from the form
+            # Series comes from the instruction type; the number itself is
+            # never taken from the form.
+            project_ref=allocate_project_ref(form.get('instruction_type')),
             status=form.get('status') or 'Active',
             fee_earner_id=_fid(form.get('fee_earner_id')),
             client=_ftext(form.get('client')),
@@ -5707,6 +5717,59 @@ app.jinja_env.globals['INSTRUCTION_FOR_SALE'] = INSTRUCTION_FOR_SALE
 app.jinja_env.globals['INSTRUCTION_TO_LET'] = INSTRUCTION_TO_LET
 app.jinja_env.globals['INSTRUCTION_APPRAISAL'] = INSTRUCTION_APPRAISAL
 app.jinja_env.globals['INSTRUCTION_TYPES'] = INSTRUCTION_TYPES
+
+
+# Reference series. One sequence per kind of instruction, so a letting and a
+# sale never share a number and each counts up on its own.
+PROJECT_REF_SERIES = {
+    'letting':   'L',
+    'sale':      'S',
+    'appraisal': 'MA',
+    'prospect':  'P',
+    'archived':  'A',
+}
+
+# The labels that predate the current INSTRUCTION_TYPES list and still sit on
+# older records. Kept so the clean-up files those projects correctly rather
+# than sweeping them into the fallback series.
+_LEGACY_INSTRUCTION_SERIES = {
+    'letting': 'letting', 'to let': 'letting', 'let': 'letting',
+    'sale': 'sale', 'for sale': 'sale', 'sold': 'sale',
+    'appraisal': 'appraisal', 'valuation': 'appraisal',
+    'prospect': 'prospect', 'archived': 'archived', 'archive': 'archived',
+}
+
+
+def project_ref_series(instruction_type):
+    """Which reference series an instruction belongs in.
+
+    Returns the series key, e.g. 'letting'. A blank or unrecognised type counts
+    as a prospect: that is the series for a record which is not yet a real
+    instruction, and it keeps every project numbered rather than leaving some
+    with nothing.
+    """
+    value = (instruction_type or '').strip()
+    if value == INSTRUCTION_TO_LET:
+        return 'letting'
+    if value == INSTRUCTION_FOR_SALE:
+        return 'sale'
+    if value == INSTRUCTION_APPRAISAL:
+        return 'appraisal'
+    if value == 'Prospect':
+        return 'prospect'
+    if value == 'Archived':
+        return 'archived'
+
+    low = value.lower()
+    if low in _LEGACY_INSTRUCTION_SERIES:
+        return _LEGACY_INSTRUCTION_SERIES[low]
+    for word, series in (('for sale', 'sale'), ('sale', 'sale'),
+                         ('let', 'letting'), ('apprais', 'appraisal'),
+                         ('valuation', 'appraisal'), ('prospect', 'prospect'),
+                         ('archiv', 'archived')):
+        if word in low:
+            return series
+    return 'prospect'
 
 
 def instruction_type_ok(value, existing=None):
@@ -12032,7 +12095,7 @@ def _seed_project_listings():
             project = Project(property_id=p.id,
                               name=p.address or f"Property {p.id}",
                               status='Active',
-                              project_ref=allocate_project_ref())
+                              project_ref=allocate_project_ref(None))
             db.session.add(project)
             db.session.flush()  # assign project.id before referencing it
         db.session.add(Listing(
@@ -12520,14 +12583,18 @@ def _migrate_rates_tables():
 
 
 def _migrate_project_references():
-    """Put the project references in order once, then hand over to the counter.
+    """Put the project references in order once, then hand over to the counters.
 
-    Before this, the reference was typed by hand: some projects had none, some
-    used one format and some another, and nothing stopped two sharing a number.
-    The first run renumbers every project CR-0001 upwards in the order they
-    were created, records the high-water mark, and adds the unique index that
-    keeps it that way. It is a one-off: the marker row means a later deploy
-    never renumbers anything again.
+    References used to be typed by hand: some projects had none, some used one
+    format and some another, and nothing stopped two sharing a number. The
+    first run files every project into the series its instruction type belongs
+    to -- L for a letting, S for a sale, MA for a market appraisal, P for a
+    prospect, A for archived -- numbers each series from 001 upward in the
+    order the projects were created, records each high-water mark, and adds the
+    unique index that keeps it that way.
+
+    It is a one-off: the marker row means a later deploy never renumbers
+    anything again. From then on this only fills a reference that is missing.
     """
     from sqlalchemy import text, inspect
     with app.app_context():
@@ -12536,51 +12603,60 @@ def _migrate_project_references():
             if 'ref_counters' not in insp.get_table_names():
                 db.create_all()
 
+            marker = 'project_renumbered_by_type'
             done = db.session.query(RefCounter).filter_by(
-                name='project_renumbered').one_or_none()
+                name=marker).one_or_none()
 
             if done is None:
                 # created_at is what every project has; id breaks any tie so
-                # the order is total and the same on a re-run.
+                # the order is total and identical on a re-run.
                 projects = Project.query.order_by(
                     Project.created_at.is_(None),
                     Project.created_at.asc(),
                     Project.id.asc(),
                 ).all()
 
-                # Clear first: the column is unique by the end of this, and
-                # moving CR-0003 onto a row that still holds it would collide
-                # mid-loop.
+                # Clear first: the column is unique, and moving L003 onto a row
+                # while another still holds it would collide mid-loop.
                 for proj in projects:
                     proj.project_ref = None
                 db.session.flush()
 
-                for n, proj in enumerate(projects, start=1):
-                    proj.project_ref = f'{PROJECT_REF_PREFIX}{n:04d}'
+                counts = {}
+                for proj in projects:
+                    series = project_ref_series(proj.instruction_type)
+                    counts[series] = counts.get(series, 0) + 1
+                    proj.project_ref = \
+                        f'{PROJECT_REF_SERIES[series]}{counts[series]:03d}'
 
-                total = len(projects)
-                counter = db.session.query(RefCounter).filter_by(
-                    name=PROJECT_REF_SERIES).one_or_none()
-                if counter is None:
-                    db.session.add(RefCounter(name=PROJECT_REF_SERIES, value=total))
-                else:
-                    counter.value = max(counter.value or 0, total)
-                db.session.add(RefCounter(name='project_renumbered', value=1))
+                for series, total in counts.items():
+                    row = db.session.query(RefCounter).filter_by(
+                        name=f'project_{series}').one_or_none()
+                    if row is None:
+                        db.session.add(
+                            RefCounter(name=f'project_{series}', value=total))
+                    else:
+                        row.value = max(row.value or 0, total)
+                db.session.add(RefCounter(name=marker, value=1))
                 db.session.commit()
-                app.logger.info('Project references renumbered: %s', total)
+                app.logger.info(
+                    'Project references renumbered by series: %s',
+                    ', '.join(f'{PROJECT_REF_SERIES[k]}={v}'
+                              for k, v in sorted(counts.items())) or 'none')
 
             # Safety net, every boot: anything that reached the table without a
             # reference (a seeder, an import, a path added later) is given the
-            # next number. This is a fill, never a renumber -- references
+            # next number in its series. A fill, never a renumber -- references
             # already issued are not touched.
             blanks = Project.query.filter(
                 db.or_(Project.project_ref.is_(None), Project.project_ref == '')
             ).order_by(Project.created_at.asc(), Project.id.asc()).all()
             if blanks:
                 for proj in blanks:
-                    proj.project_ref = allocate_project_ref()
+                    proj.project_ref = allocate_project_ref(proj.instruction_type)
                 db.session.commit()
-                app.logger.info('Projects given a missing reference: %s', len(blanks))
+                app.logger.info('Projects given a missing reference: %s',
+                                len(blanks))
 
             # The real guarantee against two simultaneous creates colliding.
             # Added after the renumber, when the column is known to be clean.
