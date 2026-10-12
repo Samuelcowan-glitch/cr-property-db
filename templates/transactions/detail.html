@@ -345,8 +345,13 @@
           <div class="fcell fcell--edit">
             <input type="date" name="terms_agreed_date" form="trx-form" value="{{ d(t.terms_agreed_date) }}">
           </div>
-          <div class="fcell fcell--label">Solicitors instructed</div>
-          <div class="fcell fcell--edit">
+          {# This one lives in Important dates rather than in the solicitor
+             box, so it is marked to be put away with it: a licence has no
+             solicitors and so has no date for instructing them. #}
+          <div class="fcell fcell--label js-solicitor-only"
+               {{ 'hidden' if t.agreement_type == 'Licence' }}>Solicitors instructed</div>
+          <div class="fcell fcell--edit js-solicitor-only"
+               {{ 'hidden' if t.agreement_type == 'Licence' }}>
             <input type="date" name="solicitors_instructed_date" form="trx-form"
                    value="{{ d(t.solicitors_instructed_date) }}">
           </div>
@@ -727,7 +732,13 @@
     var pick = document.getElementById('agreement-type');
     var box = document.getElementById('solicitors-box');
     if (!pick || !box) { return; }
-    function apply() { box.hidden = pick.value === 'Licence'; }
+    var strays = document.querySelectorAll('.js-solicitor-only');
+    function apply() {
+      var licence = pick.value === 'Licence';
+      box.hidden = licence;
+      // The solicitor fields that sit in other boxes go with it.
+      Array.prototype.forEach.call(strays, function (el) { el.hidden = licence; });
+    }
     pick.addEventListener('change', apply);
     apply();
   }());
