@@ -941,6 +941,15 @@ class Transaction(db.Model):
         """The fee earner's full name, or whatever was recorded before."""
         return fee_earner_name(self.fee_earner_id, self.fee_earner)
 
+    @property
+    def taker_display(self):
+        """The tenant's or buyer's name: the linked record first, then the text.
+
+        The owner's side is read this way, so the other side is too -- neither
+        can be shown one way on the list and another on the record.
+        """
+        return resolve_taker(self)[1]
+
     # ── Which deal this is, and what the two sides are called ──────────────
     # A letting has a landlord and a tenant. A sale has a seller and a buyer.
     # They are never mixed, and nothing is called a "client" — that said who we
@@ -962,16 +971,6 @@ class Transaction(db.Model):
     @property
     def deal_kind(self):
         return 'sale' if self.is_sale else 'letting'
-
-    @property
-    def fee_earner_display(self):
-        """The fee earner's name, from their account rather than what was typed.
-
-        The account is the record: a name corrected there is corrected
-        everywhere. The text typed before accounts existed is the fallback, so
-        nothing older goes blank.
-        """
-        return fee_earner_name(self.fee_earner_id, self.fee_earner)
 
     @property
     def owner_display(self):
@@ -5347,6 +5346,25 @@ def link_owner_from_project(transaction, project):
 def owner_role_for(transaction):
     """What the owner's side of this deal is called: Seller, or Landlord."""
     return 'Seller' if transaction.is_sale else 'Landlord'
+
+
+def taker_role_for(transaction):
+    """What the other side of this deal is called: Buyer, or Tenant."""
+    return 'Buyer' if transaction.is_sale else 'Tenant'
+
+
+def resolve_taker(transaction):
+    """Who is taking the property: the tenant, or the buyer.
+
+    The organisation linked in that role, then the name recorded as text.
+    """
+    if transaction is None:
+        return None, ''
+    link = current_org_link(taker_role_for(transaction),
+                            transaction_id=transaction.id)
+    if link is not None:
+        return link.organisation, link.organisation.display_name
+    return None, clean_invoice_text(transaction.counterparty)
 
 
 def resolve_owner(transaction):

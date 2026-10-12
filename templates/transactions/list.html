@@ -540,7 +540,7 @@
           {# The same owner the record shows, read from wherever the CRM
              holds it, so the list and the record cannot disagree. #}
           <td class="party">{{ t.owner_display or '—' }}</td>
-          <td class="party">{{ t.counterparty or '—' }}</td>
+          <td class="party">{{ t.taker_display or '—' }}</td>
           {# The same word the record shows, so the two cannot disagree. #}
           <td>{{ t.kind_label }}</td>
           {# From their account, so a name corrected there is corrected
