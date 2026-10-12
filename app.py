@@ -4974,7 +4974,6 @@ def transactions_list():
     dash = transaction_dashboard(rows)
     dash['excluded_count'] = len(everyone) - len(rows)
     extras = transaction_extras(rows, everyone)
-    stock = stock_fee_value()
 
     # The chart answers the filters; the cards above stay firm-wide, so the
     # summary always reports the whole book however the chart is narrowed.
@@ -5002,7 +5001,7 @@ def transactions_list():
 
     return render_template(
         'transactions/list.html',
-        transactions=listed, dash=dash, chart=chart, extras=extras, stock=stock,
+        transactions=listed, dash=dash, chart=chart, extras=extras,
         view=chart['view'], views=TRANSACTION_VIEWS, filtered=filtered,
         segment=(request.args.get('stage'), request.args.get('bucket')),
         sort=sort, dir=direction, args=request.args, today=date.today(),

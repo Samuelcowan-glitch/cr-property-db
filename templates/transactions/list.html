@@ -93,12 +93,6 @@
     </div>
 
     <div class="kpi">
-      <span class="kpi-label">Total transaction value</span>
-      <span class="kpi-figure is-small">{{ money_gbp(dash.value_total) }}</span>
-      <span class="kpi-sub">{{ money_gbp(dash.value_completed) }} of it completed</span>
-    </div>
-
-    <div class="kpi">
       <span class="kpi-label">Sales value</span>
       <span class="kpi-figure is-small">{{ money_gbp(extras.sales.value) }}</span>
       <span class="kpi-sub">
@@ -130,32 +124,6 @@
       </span>
     </div>
 
-    <div class="kpi">
-      <span class="kpi-label">Fee value of stock</span>
-      <span class="kpi-figure is-small">{{ money_gbp(stock.fee_total) }}</span>
-      <span class="kpi-sub">
-        {%- if stock.no_fee -%}
-          {{ stock.valued }} of {{ stock.stock_count }} priced &middot;
-          <a href="{{ url_for('projects_list') }}">{{ stock.no_fee }} without a fee</a>
-        {%- elif stock.stock_count -%}
-          Across {{ stock.stock_count }} available unit{{ '' if stock.stock_count == 1 else 's' }}
-        {%- else -%}
-          Nothing available at present
-        {%- endif -%}
-      </span>
-    </div>
-
-    <div class="kpi">
-      <span class="kpi-label">Weighted pipeline</span>
-      <span class="kpi-figure is-small">{{ money_gbp(extras.weighted) }}</span>
-      <span class="kpi-sub">
-        {%- if extras.in_play -%}
-          {{ money_gbp(extras.pipeline) }} in play across {{ extras.in_play }} deal{{ '' if extras.in_play == 1 else 's' }}
-        {%- else -%}
-          Nothing in progress
-        {%- endif -%}
-      </span>
-    </div>
   </div>
 
   <!-- ════ The chart ════ -->

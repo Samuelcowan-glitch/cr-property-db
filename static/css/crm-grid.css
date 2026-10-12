@@ -821,16 +821,19 @@ table.rec-table td.actions { white-space: nowrap; text-align: right; }
 }
 
 /* ── KPI cards ───────────────────────────────────────────────────────────── */
+/* The cards lay themselves out rather than sitting on a fixed four columns:
+   whatever is on the page spreads across the width, and a short last row
+   stretches to fill it instead of leaving holes where cards used to be. */
 .kpi-grid {
-  display: grid; gap: 8px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  display: flex; flex-wrap: wrap; gap: 8px;
 }
 .kpi {
+  flex: 1 1 200px;
   background: var(--white); border: 1px solid var(--grey-200); border-radius: 3px;
   padding: 9px 11px 10px; display: flex; flex-direction: column; gap: 2px;
   min-width: 0; box-shadow: 0 1px 1px rgba(14, 31, 68, .03);
 }
-.kpi--wide { grid-column: span 2; }
+.kpi--wide { flex-basis: 420px; }   /* two cards' worth, now the row is flex */
 .kpi-label {
   font-size: 10px; font-weight: 700; letter-spacing: .07em;
   text-transform: uppercase; color: var(--grey-600);
@@ -1045,15 +1048,15 @@ table.rec-table td.actions { white-space: nowrap; text-align: right; }
 
 /* ── Narrower screens ────────────────────────────────────────────────────── */
 @media (max-width: 1240px) {
-  .kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .kpi { flex-basis: 30%; }
 }
 @media (max-width: 1100px) {
   .trx-cols { grid-template-columns: minmax(0, 1fr); }
   .fin-band .fin-note { text-align: left; }
 }
 @media (max-width: 820px) {
-  .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .kpi--wide { grid-column: span 2; }
+  .kpi { flex-basis: 45%; }
+  .kpi--wide { flex-basis: 420px; }   /* two cards' worth, now the row is flex */
   .fin-plot-wrap { grid-template-columns: 44px minmax(0, 1fr); }
 }
 
