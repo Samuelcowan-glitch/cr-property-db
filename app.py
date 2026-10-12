@@ -12364,6 +12364,18 @@ def _email_sourced_enquiries():
             .order_by(Enquiry.created_at.desc()))
 
 
+def _unmatched_enquiries():
+    """The enquiries that are not against a property.
+
+    An enquiry with no property is one nobody tied to a building: either it
+    never was about one, or the match was never made. The difference does not
+    show in the record, which is why this is listed before it is acted on.
+    """
+    return (Enquiry.query
+            .filter(Enquiry.property_id.is_(None))
+            .order_by(Enquiry.created_at.desc()))
+
+
 @app.route('/admin/enquiry-cleanup', methods=['GET'])
 @requires('publish')
 def admin_enquiry_cleanup():
@@ -12378,8 +12390,10 @@ def admin_enquiry_cleanup():
     for e in Enquiry.query.all():
         key = (e.source or '(none)')
         by_source[key] = by_source.get(key, 0) + 1
+    unmatched = _unmatched_enquiries().all()
     return render_template('admin/enquiry_cleanup.html',
                            doomed=doomed, by_source=sorted(by_source.items()),
+                           unmatched=unmatched,
                            total=Enquiry.query.count(),
                            genuine=GENUINE_ENQUIRY_SOURCES)
 
@@ -12404,6 +12418,34 @@ def admin_enquiry_cleanup_run():
           detail=f'{removed} email-sourced enquiries removed')
     flash(f'{removed} enquiries that were ordinary emails have been removed. '
           'Website and portal enquiries were not touched.', 'success')
+    return redirect(url_for('admin_enquiry_cleanup'))
+
+
+@app.route('/admin/enquiry-cleanup/unmatched', methods=['POST'])
+@requires('publish')
+def admin_enquiry_cleanup_unmatched():
+    """Remove every enquiry that is not against a property, and its notes.
+
+    A wider sweep than the email one: an enquiry from the website or a portal
+    goes too if nobody ever tied it to a building. That is why the page lists
+    them first and this needs typing to confirm.
+    """
+    if (request.form.get('confirm') or '').strip().lower() != 'remove':
+        flash('Nothing was removed. Type "remove" to confirm.', 'error')
+        return redirect(url_for('admin_enquiry_cleanup'))
+
+    doomed = _unmatched_enquiries().all()
+    removed = 0
+    for enq in doomed:
+        EnquiryNote.query.filter_by(enquiry_id=enq.id).delete(
+            synchronize_session=False)
+        db.session.delete(enq)
+        removed += 1
+    db.session.commit()
+    audit('delete', entity='Enquiry', entity_id=None,
+          detail=f'{removed} enquiries with no property removed')
+    flash(f'{removed} enquiries that were not against a property have been '
+          'removed.', 'success')
     return redirect(url_for('admin_enquiry_cleanup'))
 
 

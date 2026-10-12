@@ -84,6 +84,54 @@
   </form>
   {% endif %}
 
+  <div class="fin-band"><h3>Not against a property ({{ unmatched|length }})</h3></div>
+
+  {% if not unmatched %}
+  <p class="muted" style="margin:10px 0;">
+    Every enquiry on record is tied to a property.
+  </p>
+  {% else %}
+  <p class="muted" style="margin:0 0 12px;font-size:.85rem;">
+    A wider sweep than the one above. An enquiry with no property may be one
+    that never was about a building &mdash; or a real website or portal lead
+    that nobody got round to matching. The record does not say which, so read
+    the <strong>Source</strong> column before confirming: anything marked
+    Website or Zoopla here is a genuine lead you would be deleting.
+  </p>
+
+  <div class="box">
+    <table class="tbl">
+      <thead>
+        <tr><th>Received</th><th>Subject</th><th>Source</th><th>Contact</th><th>Status</th></tr>
+      </thead>
+      <tbody>
+        {% for e in unmatched %}
+        <tr>
+          <td>{{ e.received_date.strftime('%d %b %Y') if e.received_date else '—' }}</td>
+          <td>{{ e.subject }}</td>
+          <td>
+            {% if e.source in genuine %}<strong>{{ e.source }}</strong>
+            {% else %}{{ e.source or '—' }}{% endif %}
+          </td>
+          <td>{{ e.contact.full_name if e.contact else '—' }}</td>
+          <td>{{ e.status or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <form method="post" action="{{ url_for('admin_enquiry_cleanup_unmatched') }}"
+        style="margin:18px 0;display:flex;gap:10px;align-items:center;">
+    <label style="font-size:.9rem;">Type <strong>remove</strong> to confirm:</label>
+    <input type="text" name="confirm" autocomplete="off" required
+           style="width:140px;padding:9px 12px;border:1px solid rgba(14,31,68,.18);">
+    <button type="submit" class="btn btn-primary">
+      Remove {{ unmatched|length }} enquir{{ 'y' if unmatched|length == 1 else 'ies' }}
+    </button>
+  </form>
+  {% endif %}
+
   <p class="muted" style="font-size:.85rem;margin-top:20px;">
     Going forward the mailbox sync creates an enquiry only for a website or
     portal lead. An ordinary email is still filed as a note against an enquiry
