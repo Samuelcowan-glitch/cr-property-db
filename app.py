@@ -7412,15 +7412,24 @@ def contact_new():
 CONTACT_TYPES = ['Landlord', 'Tenant', 'Buyer', 'Seller', 'Solicitor']
 
 
-def contact_type_options(current=None):
-    """The four types, plus whatever this record already holds.
+# Classifications the CRM has stopped using. One still on a record is not
+# offered again: it says nothing about what somebody is to a deal, which is
+# what the type is for. A prospective applicant is an enquiry, not a kind of
+# contact.
+RETIRED_CONTACT_TYPES = {'Prospect'}
 
-    Contacts filed before this as "Client", "Prospect" or "Enquiry" keep that,
-    and it is offered on their own record, so opening and saving cannot
-    silently reclassify somebody.
+
+def contact_type_options(current=None):
+    """The types on offer, plus whatever this record already holds.
+
+    A contact filed under an old label keeps it and is offered it, so opening
+    and saving cannot silently reclassify somebody -- except where the label
+    has been retired, which is not offered at all. The record then shows
+    "Not set" and somebody chooses what they actually are.
     """
     options = list(CONTACT_TYPES)
-    if current and current not in options:
+    if current and current not in options \
+            and current not in RETIRED_CONTACT_TYPES:
         options.append(current)
     return options
 
@@ -13920,6 +13929,42 @@ def _migrate_transaction_kinds():
             app.logger.info('Retyped %s transaction(s) as Letting or Sale', changed)
 
 
+def _migrate_retire_prospect():
+    """Retire "Prospect" as a contact type, without losing anybody.
+
+    A prospect is not what somebody is to a deal -- it is where a conversation
+    has got to, which the Enquiries section records. Keeping it as a type left
+    people filed as neither landlord nor tenant nor anything else useful.
+
+    The label is cleared and the contact tagged "Review contact type" so they
+    can be found and given the type they actually are. The contact, their
+    enquiries, their organisation and every link are untouched: only the word
+    goes. The record then shows the type as not set, which is honest -- the
+    CRM does not know, and will not guess.
+    """
+    with app.app_context():
+        try:
+            marker = 'prospect_contact_type_retired'
+            if db.session.query(RefCounter).filter_by(
+                    name=marker).one_or_none() is not None:
+                return
+            cleared = 0
+            for c in Contact.query.filter(Contact.contact_type == 'Prospect').all():
+                c.contact_type = None
+                if 'Review contact type' not in (contact_tags(c) or []):
+                    set_contact_tags(c, contact_tags(c) + ['Review contact type'])
+                cleared += 1
+            db.session.add(RefCounter(name=marker, value=1))
+            db.session.commit()
+            if cleared:
+                app.logger.info(
+                    'Prospect retired as a contact type on %s contact(s); each '
+                    'tagged "Review contact type"', cleared)
+        except Exception:
+            db.session.rollback()
+            app.logger.exception('Could not retire the Prospect contact type')
+
+
 def _migrate_retire_client():
     """Retire "Client" as a classification, without losing anybody.
 
@@ -14165,6 +14210,7 @@ if __name__ == '__main__':
         _migrate_progression_columns()
         _migrate_contact_roles()
         _migrate_retire_client()
+        _migrate_retire_prospect()
         _migrate_transaction_kinds()
         _migrate_transaction_kind_mismatches()
         _migrate_transaction_kind_from_evidence()
