@@ -10104,6 +10104,290 @@ def particulars_gaps(data, photo_count):
     return missing
 
 
+# ── Heads of Terms ───────────────────────────────────────────────────────────
+
+# Wording that is the same on every set of terms. Prefilled so it is there to
+# read and change, not because the CRM knows anything about this deal.
+HOT_STANDARD = {
+    'vat': ('All rents, insurance contributions and other sums stated in these '
+            'Heads of Terms are exclusive of VAT, where applicable.'),
+    'legal_costs': ('Each party will be responsible for their own legal and '
+                    'professional costs.'),
+}
+
+
+def _hot_block(*parts):
+    """A party block: the lines that are there, in order, blanks dropped."""
+    return '\n'.join(clean_invoice_text(p) for p in parts
+                      if clean_invoice_text(p))
+
+
+def _contact_block(contact, fallback_name=''):
+    """A contact as the terms set them out: name first, then the address."""
+    if contact is None:
+        return clean_invoice_text(fallback_name)
+    name = (getattr(contact, 'company', None)
+            or ' '.join(x for x in [getattr(contact, 'first_name', ''),
+                                    getattr(contact, 'last_name', '')] if x))
+    return _hot_block(name or fallback_name,
+                      getattr(contact, 'address_line1', None),
+                      getattr(contact, 'address_line2', None),
+                      getattr(contact, 'town', None),
+                      getattr(contact, 'county', None),
+                      getattr(contact, 'postcode', None))
+
+
+def _hot_date(value):
+    """A date the way the terms write it: 21st October 2026."""
+    if not value:
+        return ''
+    day = value.day
+    if 11 <= day % 100 <= 13:
+        suffix = 'th'
+    else:
+        suffix = {1: 'st', 2: 'nd', 3: 'rd'}.get(day % 10, 'th')
+    return f'{day}{suffix} {value:%B %Y}'
+
+
+def _hot_years(start, end):
+    """The length of a lease in whole years, where both dates are known."""
+    if not start or not end:
+        return None
+    years = round((end - start).days / 365.25)
+    return years if years > 0 else None
+
+
+def hot_defaults(t):
+    """Fill the Heads of Terms from the transaction and what it links to.
+
+    The transaction is the main source; anything it does not hold is looked up
+    on the instruction, the property and the contacts behind them. Nothing is
+    invented -- a term the CRM has no answer for comes back blank for the user
+    to write, and a blank term is not printed.
+    """
+    project = t.project
+    prop = t.property
+    letting = not t.is_sale
+
+    address = _hot_block(getattr(prop, 'address', None),
+                         getattr(prop, 'town', None),
+                         getattr(prop, 'postcode', None)) if prop else ''
+    address_one_line = ', '.join(address.split('\n'))
+
+    # The two sides. The instruction's client contact carries an address; the
+    # names typed on the transaction are the fallback.
+    client_contact = getattr(project, 'client_contact', None) if project else None
+    owner_name = (t.landlord if letting else t.vendor) or \
+        (getattr(project, 'client', None) if project else '') or \
+        (getattr(project, 'landlord_name', None) if project else '')
+    taker_name = (t.tenant if letting else t.purchaser) or ''
+
+    lessor = _contact_block(client_contact, owner_name)
+    lessee = clean_invoice_text(taker_name)
+
+    lessor_sol = _hot_block(t.client_solicitor, t.client_solicitor_firm,
+                            f'Tel: {t.client_solicitor_phone}' if t.client_solicitor_phone else '',
+                            f'Email: {t.client_solicitor_email}' if t.client_solicitor_email else '')
+    lessee_sol = _hot_block(t.other_solicitor, t.other_solicitor_firm,
+                            f'Tel: {t.other_solicitor_phone}' if t.other_solicitor_phone else '',
+                            f'Email: {t.other_solicitor_email}' if t.other_solicitor_email else '')
+
+    # Demise: what was recorded, else the part of the building and the address.
+    demise = clean_invoice_text(t.demise_description)
+    if not demise and address_one_line:
+        part = clean_invoice_text(t.part_or_floor)
+        demise = f'{part} at {address_one_line}.' if part else f'{address_one_line}.'
+
+    # Term and lease.
+    years = _hot_years(t.lease_start, t.lease_end)
+    term = f'{years} years from the lease commencement date.' if years else ''
+    lease_bits = []
+    if years:
+        lease_bits.append(f'A new lease for a term of {years} years from the '
+                          'lease commencement date')
+    if t.next_break_date and not t.no_break:
+        lease_bits.append('with a tenant break option at '
+                          + _hot_date(t.next_break_date))
+    elif clean_invoice_text(t.break_clause):
+        lease_bits.append('with a break option: '
+                          + clean_invoice_text(t.break_clause))
+    lease = ', '.join(lease_bits) + '.' if lease_bits else ''
+    if lease and clean_invoice_text(t.lt_act):
+        lease += f' The lease will be {clean_invoice_text(t.lt_act).lower()} the ' \
+                 'Landlord and Tenant Act 1954.'
+
+    completion = _hot_date(t.target_completion or t.expected_completion_date
+                           or t.lease_start)
+
+    rent_value = t.agreed_value if letting else None
+    rent_value = rent_value or t.rent_pa
+    rent = (f'£{float(rent_value):,.2f} per annum, exclusive of VAT.'
+            if rent_value else '')
+
+    review = ''
+    if t.no_review:
+        review = 'None.'
+    elif t.next_review_date:
+        review = _hot_date(t.next_review_date)
+        if clean_invoice_text(t.review_type):
+            review += f' ({clean_invoice_text(t.review_type)})'
+        review += '.'
+    elif clean_invoice_text(t.review_type):
+        review = clean_invoice_text(t.review_type) + '.'
+
+    rent_free = ''
+    if t.incentive_years:
+        months = round(float(t.incentive_years) * 12)
+        rent_free = (f'{months} months from the lease commencement date.'
+                     if months else 'None.')
+
+    repair = ''
+    if clean_invoice_text(t.repair):
+        repair = f'{clean_invoice_text(t.repair)}.'
+
+    alienation = ''
+    if clean_invoice_text(t.alienation):
+        alienation = f'{clean_invoice_text(t.alienation)}.'
+
+    use = ''
+    if clean_invoice_text(t.primary_use_class):
+        use = f'Use Class {clean_invoice_text(t.primary_use_class)}.'
+
+    # Rates, where the property carries them.
+    service = ''
+    rateable = getattr(prop, 'rateable_value', None)   # held in pence
+    if rateable:
+        service = (f'The current Rateable Value is £{float(rateable) / 100:,.0f}. '
+                   'The tenant will be responsible for business rates and '
+                   'utilities. All sums are exclusive of VAT.')
+
+    lt_act = ''
+    if clean_invoice_text(t.lt_act):
+        lt_act = (f'The lease will be {clean_invoice_text(t.lt_act).lower()} the '
+                  'security of tenure provisions of the Landlord and Tenant '
+                  'Act 1954.')
+
+    # Who is dealing with it.
+    earner = None
+    try:
+        if t.fee_earner_id:
+            earner = User.query.get(t.fee_earner_id)
+    except Exception:
+        earner = None
+    # The user record carries a name but no phone or email, so only the office
+    # number is filled in; the rest is left for the review page.
+    dealt = _hot_block(
+        ((earner.full_name or earner.username) if earner is not None else None)
+        or clean_invoice_text(t.fee_earner),
+        '020 7349 6666',
+        _hot_date(date.today()))
+
+    return {
+        'property_address': address,
+        'lessor': lessor,
+        'lessee': lessee,
+        'lessor_solicitor': lessor_sol,
+        'lessee_solicitor': lessee_sol,
+        'demise': demise,
+        'lease': lease,
+        'completion': completion,
+        'rent': rent,
+        'term': term,
+        'rent_review': review,
+        'rent_deposit': '',
+        'rent_free': rent_free,
+        'insurance': '',
+        'repair': repair,
+        'alterations': '',
+        'alienation': alienation,
+        'service_charge': service,
+        'vat': HOT_STANDARD['vat'],
+        'access': '',
+        'permitted_use': use,
+        'legal_costs': HOT_STANDARD['legal_costs'],
+        'lt_act': lt_act,
+        'dealt_with': dealt,
+    }
+
+
+def _hot_from_form(form):
+    """Read the review page back. Every term is whatever the user left in it."""
+    import hot_document as H
+    keys = (['property_address', 'dealt_with']
+            + [k for k, _ in H.PARTY_ORDER] + [k for k, _ in H.TERM_ORDER])
+    return {k: (form.get(k) or '') for k in keys}
+
+
+@app.route('/transactions/<int:id>/heads-of-terms', methods=['GET'])
+@requires('edit')
+def transaction_hot_start(id):
+    """The Heads of Terms, filled in from the deal, ready to be read over."""
+    t = Transaction.query.get_or_404(id)
+    import hot_document as H
+    return render_template(
+        'transactions/heads_of_terms.html', t=t, values=hot_defaults(t),
+        parties=H.PARTY_ORDER, terms=H.TERM_ORDER)
+
+
+@app.route('/transactions/<int:id>/heads-of-terms/preview', methods=['POST'])
+@requires('edit')
+def transaction_hot_preview(id):
+    """The terms as they stand, shown in the page rather than downloaded."""
+    Transaction.query.get_or_404(id)
+    import hot_document as H
+    data = _hot_from_form(request.form)
+    from flask import send_file
+    return send_file(io.BytesIO(H.build_heads_of_terms(data)),
+                     mimetype='application/pdf',
+                     download_name=H.heads_of_terms_filename(data),
+                     as_attachment=False)
+
+
+@app.route('/transactions/<int:id>/heads-of-terms/download', methods=['POST'])
+@requires('edit')
+def transaction_hot_download(id):
+    """Generate the Heads of Terms and hand them over as a PDF."""
+    t = Transaction.query.get_or_404(id)
+    import hot_document as H
+    data = _hot_from_form(request.form)
+    if not H.lines_of(data.get('property_address')):
+        flash('Nothing was generated. The terms still need the property '
+              'address. What you typed has been kept.', 'error')
+        return redirect(url_for('transaction_hot_start', id=id))
+    pdf = H.build_heads_of_terms(data)
+    audit('export', entity='Transaction', entity_id=id,
+          detail=f'Heads of Terms generated ({len(pdf)} bytes)')
+    from flask import send_file
+    return send_file(io.BytesIO(pdf), mimetype='application/pdf',
+                     download_name=H.heads_of_terms_filename(data),
+                     as_attachment=True)
+
+
+@app.route('/transactions/<int:id>/heads-of-terms/save', methods=['POST'])
+@requires('edit')
+def transaction_hot_save(id):
+    """Generate the terms and file them against the transaction."""
+    t = Transaction.query.get_or_404(id)
+    import hot_document as H
+    data = _hot_from_form(request.form)
+    if not H.lines_of(data.get('property_address')):
+        flash('Nothing was saved. The terms still need the property address. '
+              'What you typed has been kept.', 'error')
+        return redirect(url_for('transaction_hot_start', id=id))
+    pdf = H.build_heads_of_terms(data)
+    name = H.heads_of_terms_filename(data)
+    # Filed against the deal. Nothing on the review page is written back to
+    # the transaction, the instruction or the contacts.
+    db.session.add(TransactionDocument(
+        transaction_id=id, kind='Terms', filename=name,
+        data=pdf, size=len(pdf), uploaded_by=getattr(current_user, 'username', None)))
+    db.session.commit()
+    audit('create', entity='Transaction', entity_id=id,
+          detail=f'Heads of Terms filed ({name})')
+    flash(f'{name} filed against this transaction.', 'success')
+    return redirect(url_for('transaction_detail', id=id))
+
+
 # ── Invoices ─────────────────────────────────────────────────────────────────
 
 # The invoice number. Only the five figures in the middle ever change.

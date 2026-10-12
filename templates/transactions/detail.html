@@ -10,6 +10,9 @@
 {% block topbar_actions %}
   {# The one Save on the page. Every field below belongs to this form. #}
   <button type="submit" form="trx-form" class="btn btn-primary btn-sm">Save</button>
+  {# Most of what the terms need is already on this record, so they are
+     generated from here rather than keyed in again. #}
+  <a href="{{ url_for('transaction_hot_start', id=t.id) }}" class="btn btn-outline btn-sm">Generate Heads of Terms</a>
   {% if tprop %}
   <a href="{{ url_for('property_detail', id=tprop.id) }}" class="btn btn-outline btn-sm">View Property</a>
   {% endif %}
