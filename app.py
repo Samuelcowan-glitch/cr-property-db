@@ -708,6 +708,12 @@ class Transaction(db.Model):
     fee_percent       = db.Column(db.Float)         # % of the agreed value
     fixed_fee         = db.Column(db.Float)         # £, used instead of a %
     vat_rate          = db.Column(db.Float)         # % — blank means the default
+    # What was actually invoiced, net of VAT. The fee is normally worked
+    # out from the rate and the deal value, but an invoice can be raised
+    # for a figure that is neither -- a part bill, a negotiated sum, a
+    # fee agreed outside the rate. Recorded here it is still billed
+    # commission, and the figures say so.
+    commission_invoiced = db.Column(db.Float)
     invoice_number    = db.Column(db.String(40))
     invoice_date      = db.Column(db.Date, index=True)
     payment_due_date  = db.Column(db.Date)
@@ -861,6 +867,11 @@ class Transaction(db.Model):
         again on every deal is how the two come to disagree. Anything set on
         the transaction always wins, so a one-off rate is still a one-off rate.
         """
+        # What was actually invoiced wins over what the rate would have made
+        # it: once a bill has gone out, that is the fee. It is only ever set
+        # when an invoice is raised, so a deal still in play is unaffected.
+        if self.commission_invoiced is not None:
+            return round(float(self.commission_invoiced), 2)
         if self.charges_fixed_fee:
             return round(float(self.fixed_fee_effective or 0.0), 2)
         percent = self.fee_percent_effective
@@ -8104,6 +8115,7 @@ TRANSACTION_FIELDS = [
     ('payment_due_date',   'payment_due_date',   _parse_date),
     ('completion_date',    'completion_date',    _parse_date),
     ('agreement_type',     'agreement_type',     _ftext),
+    ('commission_invoiced', 'commission_invoiced', _fnum),
     ('client_solicitor_contact_id', 'client_solicitor_contact_id', _fid),
     ('other_solicitor_contact_id',  'other_solicitor_contact_id',  _fid),
     ('expected_completion_date', 'expected_completion_date', _parse_date),
@@ -10839,8 +10851,9 @@ def _record_invoice_against_transaction(project, data, number):
     # this one bill. Written on the deal, never back onto the instruction.
     net = data.get('net')
     if net not in (None, ''):
-        deal.fixed_fee = round(float(net), 2)
-        deal.fee_type = 'Fixed'
+        # On commission_invoiced, not fixed_fee: this is what this bill was
+        # for, not a change to the fee the deal was agreed at.
+        deal.commission_invoiced = round(float(net), 2)
     if deal.status in (None, '', 'Draft', 'In Progress', 'Terms Agreed',
                        'Solicitors Instructed', 'Completed'):
         deal.status = 'Commission Billed'
@@ -12608,8 +12621,16 @@ def _financial_check_why(t, counts):
     elif t.status == 'Draft':
         notes.append('still a draft, so it is not counted as billed')
     if not t.net_commission:
-        notes.append('no fee percentage or fixed fee, on the deal or the '
-                     'instruction, so the commission works out at nothing')
+        if t.invoice_date:
+            notes.append('counted as billed but adds nothing: no fee rate and '
+                         'no value to apply one to. Put what was invoiced in '
+                         'Commission invoiced on the transaction')
+        else:
+            notes.append('no fee percentage or fixed fee, on the deal or the '
+                         'instruction, so the commission works out at nothing')
+    elif t.commission_invoiced is not None:
+        notes.append(f'billed at the invoiced figure of '
+                     f'{money_gbp(t.commission_invoiced)}, not the fee rate')
     return notes
 
 
@@ -12852,6 +12873,7 @@ def _migrate_project_columns():
             ('invoice_date',      'DATE'), ('payment_due_date', 'DATE'),
             ('completion_date',   'DATE'), ('terms_agreed_date','DATE'),
             ('agreement_type',    'TEXT'),
+            ('commission_invoiced', 'REAL'),
             ('client_solicitor_contact_id', 'INTEGER'),
             ('other_solicitor_contact_id',  'INTEGER'),
             ('expected_completion_date', 'DATE'),

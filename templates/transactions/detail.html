@@ -599,6 +599,31 @@
       <!-- ── 6. Invoice and payment ── -->
       <div class="box box--grid">
         <div class="box-head">6. Invoice and payment</div>
+        {# What the invoice was actually for. Left empty the fee is worked out
+           from the rate and the deal value, as it always was. Filled in, that
+           is the commission billed -- which is how a bill for a figure the
+           rate does not produce still reaches the firm's figures. #}
+        <div class="frow">
+          <div class="fcell fcell--label">Commission invoiced</div>
+          <div class="fcell fcell--edit">
+            <input type="number" step="0.01" min="0" name="commission_invoiced"
+                   form="trx-form" value="{{ t.commission_invoiced if t.commission_invoiced is not none else '' }}"
+                   placeholder="net of VAT — blank to use the fee rate">
+          </div>
+          <div class="fcell fcell--label">Counts as billed</div>
+          <div class="fcell fcell--edit fcell--readonly">
+            {% if t.is_billed %}
+              <strong>{{ money_gbp(t.net_commission) }}</strong>
+              <span class="ro-note"> &mdash; invoiced {{ t.invoice_date.strftime('%d %b %Y') }}</span>
+            {% else %}
+              <span class="ro-note">
+                {%- if not t.invoice_date %}needs an invoice date
+                {%- elif t.status == 'Draft' %}still a draft
+                {%- else %}not counted{% endif -%}
+              </span>
+            {% endif %}
+          </div>
+        </div>
         <div class="frow">
           <div class="fcell fcell--label">Invoice number</div>
           <div class="fcell fcell--edit">
