@@ -47,7 +47,7 @@
       <h2>{{ tprop.address if tprop else 'Transaction' }}</h2>
       <div class="rec-facts">
         <span>Ref: <strong>{{ t.reference or '—' }}</strong></span>
-        {% if t.transaction_type %}<span>{{ t.transaction_type }}</span>{% endif %}
+        <span>{{ t.kind_label }}</span>
         {% if t.fee_earner %}<span>Fee earner: <strong>{{ t.fee_earner }}</strong></span>{% endif %}
         {% if t.owner_side %}<span>{{ 'Landlord' if t.is_letting else 'Seller' }}:
           <strong>{{ t.owner_side }}</strong></span>{% endif %}
@@ -102,13 +102,25 @@
         </div>
         <div class="frow">
           <div class="fcell fcell--label">Type</div>
+          {# Where the instruction is To Let or For Sale it settles the kind,
+             so the type is shown rather than chosen: picking the other one
+             here would only disagree with the instruction. The select offered
+             'Capital' and 'Leasehold', which no longer match anything stored,
+             so every save silently retyped the record. #}
+          {% if t.project and t.project.decides_deal_kind %}
+          <div class="fcell fcell--edit fcell--readonly">
+            <strong>{{ t.kind_label }}</strong>
+            <span class="ro-note"> &mdash; from the instruction</span>
+          </div>
+          {% else %}
           <div class="fcell fcell--edit">
             <select name="transaction_type" form="trx-form">
-              {% for opt in ['Capital', 'Leasehold'] %}
-              <option value="{{ opt }}" {{ 'selected' if t.transaction_type == opt }}>{{ opt }}</option>
+              {% for opt in TRANSACTION_KINDS %}
+              <option value="{{ opt }}" {{ 'selected' if transaction_kind(t.transaction_type) == opt }}>{{ opt }}</option>
               {% endfor %}
             </select>
           </div>
+          {% endif %}
           <div class="fcell fcell--label">Tenure</div>
           <div class="fcell fcell--edit">
             <input name="tenure_type" form="trx-form" value="{{ t.tenure_type or '' }}"

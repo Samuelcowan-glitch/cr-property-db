@@ -697,7 +697,7 @@ class Transaction(db.Model):
     next_call_note    = db.Column(db.String(255))
     target_completion = db.Column(db.Date)
 
-    reference         = db.Column(db.String(30), index=True)  # TR-0001
+    reference         = db.Column(db.String(30), unique=True, index=True)  # TR-0001
     status            = db.Column(db.String(30), default='Draft', index=True)
     fee_earner        = db.Column(db.String(120), index=True)   # kept: what was typed before
     fee_earner_id     = db.Column(db.Integer, db.ForeignKey('users.id'), index=True)
@@ -929,8 +929,7 @@ class Transaction(db.Model):
 
     @property
     def is_sale(self):
-        if self.project and self.project.instruction_type in (INSTRUCTION_FOR_SALE,
-                                                              INSTRUCTION_TO_LET):
+        if self.project is not None and self.project.decides_deal_kind:
             return self.project.is_sale
         return transaction_kind(self.transaction_type) == 'Sale'
 
@@ -941,6 +940,15 @@ class Transaction(db.Model):
     @property
     def deal_kind(self):
         return 'sale' if self.is_sale else 'letting'
+
+    @property
+    def kind_label(self):
+        """The word to show for this deal, anywhere it is shown.
+
+        Worked out the same way the record lays its fields out, so the list and
+        the record can never disagree about what kind of deal it is.
+        """
+        return 'Sale' if self.is_sale else 'Letting'
 
     @property
     def party_roles(self):
@@ -1870,12 +1878,28 @@ class Project(db.Model):
 
     @property
     def is_sale(self):
-        """Whether this instruction is a sale rather than a letting."""
-        return self.instruction_type == INSTRUCTION_FOR_SALE
+        """Whether this instruction is a sale rather than a letting.
+
+        Read through the same classifier the reference numbering uses, so the
+        labels that predate the current list -- a project still typed
+        "Letting" or "Sale" -- are understood rather than falling through as
+        neither. That fall-through is what let a transaction on a letting
+        keep a stored type of Sale.
+        """
+        return project_ref_series(self.instruction_type) == 'sale'
 
     @property
     def is_letting(self):
-        return self.instruction_type == INSTRUCTION_TO_LET
+        return project_ref_series(self.instruction_type) == 'letting'
+
+    @property
+    def decides_deal_kind(self):
+        """Whether this instruction settles what kind of deal it can produce.
+
+        An appraisal, a prospect or an archived record does not: a transaction
+        hanging off one has to say for itself.
+        """
+        return project_ref_series(self.instruction_type) in ('sale', 'letting')
 
 
 class Listing(db.Model):
@@ -4752,15 +4776,43 @@ def allocate_project_ref(instruction_type):
     return format_project_ref(series, row.value)
 
 
+TRANSACTION_REF_SERIES = 'transaction'
+
+
 def next_transaction_reference():
-    """The next TR-0001. Falls forward past anything already used."""
-    highest = 0
-    for (ref,) in db.session.query(Transaction.reference).filter(
-            Transaction.reference.isnot(None)).all():
-        digits = ''.join(ch for ch in str(ref) if ch.isdigit())
-        if digits:
-            highest = max(highest, int(digits))
-    return f'TR-{highest + 1:04d}'
+    """The next TR-0001, taken from a counter that only moves forward.
+
+    It used to be the highest reference in the table plus one, which handed
+    the same number out twice: delete TR-0005 and the next transaction created
+    was TR-0005 again, and two created at the same moment both read the same
+    highest. The counter is a high-water mark instead, read with its row
+    locked on Postgres, so a number is issued once and a deleted transaction's
+    number is retired rather than reissued.
+    """
+    locking = db.engine.dialect.name == 'postgresql'
+
+    def _claim():
+        q = db.session.query(RefCounter).filter_by(name=TRANSACTION_REF_SERIES)
+        if locking:
+            q = q.with_for_update()
+        return q.one_or_none()
+
+    row = _claim()
+    if row is None:
+        # First call on this database: start above everything already issued.
+        highest = 0
+        for (ref,) in db.session.query(Transaction.reference).filter(
+                Transaction.reference.isnot(None)).all():
+            digits = ''.join(ch for ch in str(ref) if ch.isdigit())
+            if digits:
+                highest = max(highest, int(digits))
+        db.session.add(RefCounter(name=TRANSACTION_REF_SERIES, value=highest))
+        db.session.flush()
+        row = _claim()
+
+    row.value = (row.value or 0) + 1
+    db.session.flush()
+    return f'TR-{row.value:04d}'
 
 
 
@@ -4809,6 +4861,7 @@ app.jinja_env.globals['ORG_STATUS_NAMES'] = ORG_STATUS_NAMES
 app.jinja_env.globals['ORG_ROLES'] = ORG_ROLES
 app.jinja_env.globals['ORG_ROLE_NAMES'] = ORG_ROLE_NAMES
 app.jinja_env.globals['TRANSACTION_KINDS'] = TRANSACTION_KINDS
+app.jinja_env.globals['transaction_kind'] = transaction_kind
 app.jinja_env.globals['money_gbp'] = money_gbp
 app.jinja_env.globals['money_short'] = money_short
 app.jinja_env.globals['TRANSACTION_STATUSES'] = TRANSACTION_STATUSES
@@ -5087,6 +5140,9 @@ def transaction_save(id):
     # the field and the save reads it only then.
     if '_break_switch' in form:
         t.no_break = _fbool(form.get('no_break'))
+    # The instruction settles the kind, so a save can never leave the stored
+    # word disagreeing with it.
+    _apply_transaction_kind(t)
     if not t.reference:
         t.reference = next_transaction_reference()
     db.session.commit()
@@ -5352,6 +5408,10 @@ def transaction_new():
                                 or request.form.get('transaction_type'))
         if kind not in TRANSACTION_KINDS:
             kind = 'Letting'
+        # The instruction has the final word. A To Let instruction cannot
+        # produce a sale, whatever was posted.
+        if project is not None and project.decides_deal_kind:
+            kind = 'Sale' if project.is_sale else 'Letting'
 
         t = Transaction(
             project_id=project.id if project else None,
@@ -6119,7 +6179,9 @@ def offer_to_transaction(id):
     t = Transaction(
         property_id=project.property_id,
         project_id=project.id,
-        transaction_type='Leasehold' if letting else 'Capital',
+        # 'Leasehold'/'Capital' are the words this field used to take; every
+        # other path writes 'Letting'/'Sale', and the list shows what is stored.
+        transaction_type='Letting' if letting else 'Sale',
         tenure_type='Leasehold' if letting else None,
         transaction_date=date.today(),
         status='Terms Agreed',
@@ -8009,6 +8071,8 @@ TRANSACTION_FIELDS = [
     ('status',             'status',             _ftext),
     ('fee_earner',         'fee_earner',         _ftext),
     ('client',             'client',             _ftext),
+    # Only read where the instruction does not settle it; _apply_transaction_kind
+    # puts it back afterwards where it does.
     ('transaction_type',   'transaction_type',   transaction_kind),
     ('tenure_type',        'tenure_type',        _ftext),
     ('transaction_date',   'transaction_date',   _parse_date),
@@ -12832,6 +12896,110 @@ def _migrate_fold_unit_names():
                 '%s left for review', folded, already, ambiguous)
 
 
+def _migrate_transaction_references():
+    """Make the transaction references unique, and stop them being reissued.
+
+    The next reference used to be the highest in the table plus one, so a
+    deleted transaction's number came round again and two created at the same
+    moment could both take it. Any duplicate that left behind is given a fresh
+    number here -- the oldest record keeps the one it had -- and a unique index
+    then makes another impossible.
+    """
+    from sqlalchemy import text, inspect
+    with app.app_context():
+        try:
+            insp = inspect(db.engine)
+            if 'ref_counters' not in insp.get_table_names():
+                db.create_all()
+
+            # Anything sharing a reference: the earliest keeps it.
+            seen, clashes = set(), []
+            for t in Transaction.query.order_by(Transaction.id).all():
+                ref = (t.reference or '').strip()
+                if not ref:
+                    continue
+                if ref in seen:
+                    clashes.append(t)
+                else:
+                    seen.add(ref)
+
+            blanks = Transaction.query.filter(
+                db.or_(Transaction.reference.is_(None),
+                       Transaction.reference == '')).order_by(
+                Transaction.id).all()
+
+            if clashes or blanks:
+                for t in clashes + blanks:
+                    t.reference = None
+                db.session.flush()
+                for t in clashes + blanks:
+                    t.reference = next_transaction_reference()
+                db.session.commit()
+                app.logger.info(
+                    'Transaction references repaired: %s duplicate(s), %s blank',
+                    len(clashes), len(blanks))
+
+            existing = {ix['name'] for ix in insp.get_indexes('transactions')}
+            if 'ix_transactions_reference_unique' not in existing:
+                with db.engine.begin() as conn:
+                    conn.execute(text(
+                        'CREATE UNIQUE INDEX IF NOT EXISTS '
+                        'ix_transactions_reference_unique '
+                        'ON transactions (reference)'))
+        except Exception:
+            db.session.rollback()
+            app.logger.exception('Could not repair the transaction references')
+
+
+def _migrate_transaction_kind_mismatches():
+    """Put right every transaction whose type disagrees with its instruction.
+
+    Records drifted for two reasons. The type dropdown on the record offered
+    'Capital' and 'Leasehold', which stopped matching anything stored once the
+    words became 'Letting' and 'Sale', so the browser fell back to the first
+    option and every save silently retyped the deal as a sale. And where an
+    instruction still carried a pre-list label such as "Letting", the record
+    did not read it as deciding anything and fell back to the stored word.
+
+    Both are fixed in the code. This corrects what they left behind. Only a
+    transaction whose instruction actually settles the kind is touched -- one
+    hanging off an appraisal or a prospect, or off no instruction at all, says
+    what kind it is for itself and is left alone.
+    """
+    with app.app_context():
+        try:
+            fixed = 0
+            for t in Transaction.query.filter(
+                    Transaction.project_id.isnot(None)).all():
+                if _apply_transaction_kind(t):
+                    fixed += 1
+            if fixed:
+                db.session.commit()
+                app.logger.info(
+                    'Transactions retyped to match their instruction: %s', fixed)
+        except Exception:
+            db.session.rollback()
+            app.logger.exception(
+                'Could not reconcile transaction types with their instructions')
+
+
+def _apply_transaction_kind(t):
+    """Keep a transaction's stored type honest about its instruction.
+
+    Where the instruction is To Let or For Sale it settles what kind of deal
+    this is, so the stored word is set to match. Returns True if it changed
+    anything, so a caller can say so.
+    """
+    project = getattr(t, 'project', None)
+    if project is None or not project.decides_deal_kind:
+        return False
+    wanted = 'Sale' if project.is_sale else 'Letting'
+    if transaction_kind(t.transaction_type) != wanted:
+        t.transaction_type = wanted
+        return True
+    return False
+
+
 def _migrate_transaction_kinds():
     """Rewrite Capital and Leasehold as Sale and Letting.
 
@@ -13100,6 +13268,8 @@ if __name__ == '__main__':
         _migrate_contact_roles()
         _migrate_retire_client()
         _migrate_transaction_kinds()
+        _migrate_transaction_kind_mismatches()
+        _migrate_transaction_references()
         _migrate_fold_unit_names()
         _ensure_default_user()
         if Property.query.count() == 0:
