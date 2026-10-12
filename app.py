@@ -964,6 +964,16 @@ class Transaction(db.Model):
         return 'sale' if self.is_sale else 'letting'
 
     @property
+    def fee_earner_display(self):
+        """The fee earner's name, from their account rather than what was typed.
+
+        The account is the record: a name corrected there is corrected
+        everywhere. The text typed before accounts existed is the fallback, so
+        nothing older goes blank.
+        """
+        return fee_earner_name(self.fee_earner_id, self.fee_earner)
+
+    @property
     def owner_display(self):
         """The owner's name, wherever the CRM records it.
 
@@ -13813,50 +13823,90 @@ def _migrate_invoice_number_floor():
 SOLE_FEE_EARNER = 'Benjamin Cowan'
 
 
+def _name_key(value):
+    """A name reduced to its letters, so B.cowan and Benjamin Cowan compare."""
+    return ''.join(ch for ch in str(value or '').lower() if ch.isalpha())
+
+
+# How the fee earner's name has been written on records over the years.
+SOLE_EARNER_KEYS = {'benjamincowan', 'bencowan', 'bcowan', 'bc'}
+
+
 def _looks_like_sole_earner(user):
-    """Whether this account is the firm's fee earner."""
-    name = (user.full_name or '').strip().lower()
-    username = (user.username or '').strip().lower()
-    if name == SOLE_FEE_EARNER.lower():
+    """Whether this account is the firm's fee earner, however it was written."""
+    if _name_key(user.full_name) in SOLE_EARNER_KEYS:
         return True
-    # bc@cowanandrutter.co.uk, bc, bcowan -- the account that mailbox belongs to.
-    return username in ('bc', 'bcowan') or username.startswith('bc@')
+    username = (user.username or '').strip().lower()
+    if username.startswith('bc@'):
+        return True
+    return _name_key(username.split('@')[0]) in SOLE_EARNER_KEYS
 
 
 def _migrate_sole_fee_earner():
-    """Leave one fee earner to be assigned work, so there is nothing to pick.
+    """Leave one fee earner, named properly, on every deal.
 
-    Every account could earn fees by default, which is why the record offered a
-    dropdown. The firm has one fee earner, so the others are marked as not
-    earning and the field becomes a name rather than a choice. Nobody is
-    deactivated and no permission is touched: this only says who work is
-    assigned to.
+    Three things, all of which showed on the transaction list as a fee earner
+    box that was wrong.
 
-    If no account can be matched to the fee earner, nothing is changed -- the
-    dropdown stays rather than the wrong person being left holding the work.
+    Every account could earn fees by default, so the record offered a dropdown
+    where there is nothing to choose between. The others are marked as not
+    earning, and the field becomes a name. Nobody is deactivated and no
+    permission is touched.
+
+    The account itself was named in short -- B.cowan -- and so was the text
+    typed on the deals that had one. Both are written out in full, once, so
+    the same person is not three different names across the CRM.
+
+    And a deal with no fee earner at all showed a dash. There is one fee
+    earner, so the work is his; they are filled in.
+
+    If no account can be matched, nothing is changed -- better a dropdown than
+    the wrong person holding the work.
     """
     with app.app_context():
         try:
-            earners = fee_earners()
-            if len(earners) <= 1:
-                return
-
-            keep = [u for u in earners if _looks_like_sole_earner(u)]
+            everyone = User.query.filter(User.active.is_(True)).all()
+            keep = [u for u in everyone if _looks_like_sole_earner(u)]
             if len(keep) != 1:
                 app.logger.info(
-                    'Fee earner left as a choice: %s accounts can earn fees and '
-                    '%s match "%s"', len(earners), len(keep), SOLE_FEE_EARNER)
+                    'Fee earner left as a choice: %s active account(s) and %s '
+                    'match "%s"', len(everyone), len(keep), SOLE_FEE_EARNER)
                 return
-
             sole = keep[0]
-            changed = 0
-            for user in earners:
-                if user.id != sole.id:
+
+            # Named in full, wherever the name is kept.
+            if (sole.full_name or '').strip() != SOLE_FEE_EARNER:
+                sole.full_name = SOLE_FEE_EARNER
+
+            stood_down = 0
+            for user in everyone:
+                if user.id != sole.id and user.can_earn_fees:
                     user.can_earn_fees = False
-                    changed += 1
+                    stood_down += 1
+
+            named = assigned = 0
+            for t in Transaction.query.all():
+                if not t.fee_earner_id:
+                    t.fee_earner_id = sole.id
+                    assigned += 1
+                # The short form is the same person written badly, so it goes.
+                if t.fee_earner and _name_key(t.fee_earner) in SOLE_EARNER_KEYS \
+                        and t.fee_earner != SOLE_FEE_EARNER:
+                    t.fee_earner = SOLE_FEE_EARNER
+                    named += 1
+
+            for p in Project.query.all():
+                if not p.fee_earner_id:
+                    p.fee_earner_id = sole.id
+                if p.fee_earner and _name_key(p.fee_earner) in SOLE_EARNER_KEYS \
+                        and p.fee_earner != SOLE_FEE_EARNER:
+                    p.fee_earner = SOLE_FEE_EARNER
+
             db.session.commit()
-            app.logger.info('Fee earning left with %s; %s account(s) stood down',
-                            sole.display_name, changed)
+            app.logger.info(
+                'Fee earning left with %s; %s account(s) stood down, %s deal(s) '
+                'given a fee earner, %s renamed from the short form',
+                sole.display_name, stood_down, assigned, named)
         except Exception:
             db.session.rollback()
             app.logger.exception('Could not settle the sole fee earner')

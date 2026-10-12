@@ -543,7 +543,9 @@
           <td class="party">{{ t.counterparty or '—' }}</td>
           {# The same word the record shows, so the two cannot disagree. #}
           <td>{{ t.kind_label }}</td>
-          <td>{{ t.fee_earner or '—' }}</td>
+          {# From their account, so a name corrected there is corrected
+             here; the text typed before accounts existed is the fallback. #}
+          <td>{{ t.fee_earner_display or '—' }}</td>
           <td class="num">{{ money_gbp(t.commission_basis) if t.commission_basis else '—' }}</td>
           <td class="num">{{ t.fee_basis_label }}</td>
           <td class="num">{{ money_gbp(t.net_commission) if t.net_commission else '—' }}</td>
