@@ -13377,6 +13377,124 @@ def _migrate_invoice_number_floor():
             app.logger.exception('Could not set the invoice number floor')
 
 
+# The firm has one fee earner, so there is nothing to choose between.
+SOLE_FEE_EARNER = 'Benjamin Cowan'
+
+
+def _looks_like_sole_earner(user):
+    """Whether this account is the firm's fee earner."""
+    name = (user.full_name or '').strip().lower()
+    username = (user.username or '').strip().lower()
+    if name == SOLE_FEE_EARNER.lower():
+        return True
+    # bc@cowanandrutter.co.uk, bc, bcowan -- the account that mailbox belongs to.
+    return username in ('bc', 'bcowan') or username.startswith('bc@')
+
+
+def _migrate_sole_fee_earner():
+    """Leave one fee earner to be assigned work, so there is nothing to pick.
+
+    Every account could earn fees by default, which is why the record offered a
+    dropdown. The firm has one fee earner, so the others are marked as not
+    earning and the field becomes a name rather than a choice. Nobody is
+    deactivated and no permission is touched: this only says who work is
+    assigned to.
+
+    If no account can be matched to the fee earner, nothing is changed -- the
+    dropdown stays rather than the wrong person being left holding the work.
+    """
+    with app.app_context():
+        try:
+            earners = fee_earners()
+            if len(earners) <= 1:
+                return
+
+            keep = [u for u in earners if _looks_like_sole_earner(u)]
+            if len(keep) != 1:
+                app.logger.info(
+                    'Fee earner left as a choice: %s accounts can earn fees and '
+                    '%s match "%s"', len(earners), len(keep), SOLE_FEE_EARNER)
+                return
+
+            sole = keep[0]
+            changed = 0
+            for user in earners:
+                if user.id != sole.id:
+                    user.can_earn_fees = False
+                    changed += 1
+            db.session.commit()
+            app.logger.info('Fee earning left with %s; %s account(s) stood down',
+                            sole.display_name, changed)
+        except Exception:
+            db.session.rollback()
+            app.logger.exception('Could not settle the sole fee earner')
+
+
+def _infer_transaction_kind(t):
+    """What a transaction's own contents say it is, where they say it plainly.
+
+    Only used to put right records the dropdown retyped before it was fixed,
+    and only where the answer is not in doubt: a deal naming a landlord or a
+    tenant, or carrying a rent or lease dates, and naming neither a vendor nor
+    a purchaser, is a letting. The other way round is a sale. Anything mixed
+    or silent returns None and is left exactly as it is.
+    """
+    def has(*values):
+        return any(str(v).strip() for v in values if v not in (None, ''))
+
+    letting = has(t.landlord, t.tenant) or bool(t.rent_pa) \
+        or bool(t.lease_start) or bool(t.lease_end) \
+        or (t.tenure_type or '').strip().lower() == 'leasehold'
+    sale = has(t.vendor, t.purchaser)
+
+    if letting and not sale:
+        return 'Letting'
+    if sale and not letting:
+        return 'Sale'
+    return None
+
+
+def _migrate_transaction_kind_from_evidence():
+    """Put right the records the old dropdown retyped, where the deal says so.
+
+    _migrate_transaction_kind_mismatches() can only help a transaction whose
+    instruction settles the kind. One hanging off an appraisal, a prospect or
+    no instruction at all kept whatever the dropdown last posted, and what was
+    chosen when it was created is not recorded anywhere to read back.
+
+    So the deal itself is asked instead, and only where it answers plainly. A
+    one-off: the marker row means a later deploy never second-guesses a type
+    somebody has since set on purpose.
+    """
+    with app.app_context():
+        try:
+            marker = 'transaction_kind_from_evidence'
+            if db.session.query(RefCounter).filter_by(
+                    name=marker).one_or_none() is not None:
+                return
+
+            fixed = []
+            for t in Transaction.query.all():
+                project = getattr(t, 'project', None)
+                if project is not None and project.decides_deal_kind:
+                    continue          # its instruction already settles it
+                told = _infer_transaction_kind(t)
+                if told and transaction_kind(t.transaction_type) != told:
+                    fixed.append((t.reference or t.id,
+                                  t.transaction_type, told))
+                    t.transaction_type = told
+            db.session.add(RefCounter(name=marker, value=1))
+            db.session.commit()
+            if fixed:
+                app.logger.info(
+                    'Transactions retyped from what the deal says: %s',
+                    '; '.join(f'{ref}: {was} -> {now}' for ref, was, now in fixed))
+        except Exception:
+            db.session.rollback()
+            app.logger.exception(
+                'Could not retype transactions from what the deal says')
+
+
 def _migrate_transaction_kind_mismatches():
     """Put right every transaction whose type disagrees with its instruction.
 
@@ -13695,6 +13813,8 @@ if __name__ == '__main__':
         _migrate_retire_client()
         _migrate_transaction_kinds()
         _migrate_transaction_kind_mismatches()
+        _migrate_transaction_kind_from_evidence()
+        _migrate_sole_fee_earner()
         _migrate_invoice_number_floor()
         _migrate_transaction_references()
         _migrate_fold_unit_names()

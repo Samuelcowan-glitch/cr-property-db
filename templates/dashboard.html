@@ -191,7 +191,7 @@
             </span>
             <span class="prog-meta">
               {{ t.stage }}
-              {%- if t.transaction_type %} &middot; {{ 'Sale' if t.transaction_type == 'Capital' else 'Letting' }}{% endif %}
+              {%- if t.transaction_type %} &middot; {{ t.kind_label }}{% endif %}
               {%- if t.client_solicitor_firm %} &middot; {{ t.client_solicitor_firm }}{% endif %}
             </span>
           </span>
@@ -350,7 +350,7 @@
             </span>
 
             <span class="org-line">
-              {{ t.transaction_type or 'Transaction' }}
+              {{ t.kind_label }}
               {%- if t.client_display %} &middot; {{ t.client_display }}{% endif -%}
               {%- if t.counterparty %} &middot; {{ t.counterparty }}{% endif -%}
             </span>

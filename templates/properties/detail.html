@@ -223,7 +223,7 @@
         {% for t in prop.transactions | sort(attribute='transaction_date', reverse=True) %}
         <tr>
           <td>
-            {% if t.transaction_type == 'Capital' %}
+            {% if t.is_sale %}
               <span class="badge badge-capital">Capital</span>
             {% else %}
               <span class="badge badge-leasehold">Leasehold</span>
@@ -231,7 +231,7 @@
           </td>
           <td>{{ t.tenure_type or '—' }}</td>
           <td>{{ t.transaction_date.strftime('%d %b %Y') if t.transaction_date else '—' }}</td>
-          <td>{% if t.transaction_type == 'Capital' %}{{ t.display_value }}{% else %}{{ t.display_rent }}{% endif %}</td>
+          <td>{% if t.is_sale %}{{ t.display_value }}{% else %}{{ t.display_rent }}{% endif %}</td>
           <td>{% if t.capital_rate_psf %}£{{ '%.2f'|format(t.capital_rate_psf) }}{% else %}—{% endif %}</td>
           <td>
             {% if t.niy %}NIY {{ '%.2f'|format(t.niy) }}%
