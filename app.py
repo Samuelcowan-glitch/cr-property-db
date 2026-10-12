@@ -5302,6 +5302,37 @@ def link_owner_from_project(transaction, project):
     return None
 
 
+def inherit_party_from_project(transaction, project):
+    """Put the instruction's client on the deal as its owner, at creation.
+
+    The instruction already records who the landlord or seller is, and links
+    their organisation. A transaction made from it is the same deal, so the
+    link is inherited rather than left for somebody to make again -- which is
+    what left the record saying a name had been matched when it was actually
+    known.
+
+    Only at creation, only the owner's side, and only where nothing is linked
+    already: an existing record is still offered the link rather than having
+    one written while somebody is reading the page.
+    """
+    if transaction is None or project is None:
+        return None
+    who = getattr(project, 'client_contact', None)
+    if who is None or not who.organisation_id:
+        return None
+    role = 'Seller' if project.is_sale else 'Landlord'
+    if current_org_link(role, transaction_id=transaction.id):
+        return None
+    link = OrganisationRole(
+        organisation_id=who.organisation_id, role=role,
+        transaction_id=transaction.id, contact_id=who.id,
+        start_date=date.today(),
+        notes='Taken from the instruction when the transaction was created.',
+        created_by=getattr(current_user, 'username', None))
+    db.session.add(link)
+    return link
+
+
 def suggested_party(transaction, role):
     """Who the instruction says this side of the deal is, if nobody is linked.
 
@@ -5487,6 +5518,9 @@ def transaction_new():
         )
         db.session.add(t)
         db.session.commit()
+        # The instruction already knows who the landlord or seller is, so the
+        # deal inherits that link rather than being left to match a name.
+        inherit_party_from_project(t, project)
         if not t.reference:
             t.reference = next_transaction_reference()
         if not t.status:
@@ -6229,6 +6263,7 @@ def offer_to_transaction(id):
     db.session.flush()
     if not t.reference:
         t.reference = next_transaction_reference()
+    inherit_party_from_project(t, project)
     offer.transaction_id = t.id
     db.session.commit()
     audit('create', entity='Transaction', entity_id=t.id,
@@ -13745,6 +13780,39 @@ def _migrate_transaction_kind_from_evidence():
                 'Could not retype transactions from what the deal says')
 
 
+def _migrate_inherit_transaction_parties():
+    """Link the owner on every deal whose instruction already names them.
+
+    A transaction made before the link was inherited falls back to matching
+    the typed name, and says so -- "matched to this record" rather than a
+    party anybody chose. Where the instruction holds the answer that is not a
+    guess, so the link is made once, here.
+
+    Only the owner's side, only where nothing is linked already, and only
+    where the instruction's client has an organisation to link. A one-off.
+    """
+    with app.app_context():
+        try:
+            marker = 'transaction_parties_inherited'
+            if db.session.query(RefCounter).filter_by(
+                    name=marker).one_or_none() is not None:
+                return
+            linked = 0
+            for t in Transaction.query.filter(
+                    Transaction.project_id.isnot(None)).all():
+                if inherit_party_from_project(t, t.project) is not None:
+                    linked += 1
+            db.session.add(RefCounter(name=marker, value=1))
+            db.session.commit()
+            if linked:
+                app.logger.info(
+                    'Owners linked on %s transaction(s) from their instruction',
+                    linked)
+        except Exception:
+            db.session.rollback()
+            app.logger.exception('Could not inherit the transaction parties')
+
+
 def _migrate_transaction_kind_mismatches():
     """Put right every transaction whose type disagrees with its instruction.
 
@@ -14064,6 +14132,7 @@ if __name__ == '__main__':
         _migrate_transaction_kinds()
         _migrate_transaction_kind_mismatches()
         _migrate_transaction_kind_from_evidence()
+        _migrate_inherit_transaction_parties()
         _migrate_sole_fee_earner()
         _migrate_invoice_number_floor()
         _migrate_transaction_references()
