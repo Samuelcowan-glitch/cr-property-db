@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Where the figures come from{% endblock %}
+{% block topbar_title %}Where the figures come from{% endblock %}
+
+{#
+   A card reading zero is either a sum of nothing or a sum of records that did
+   not qualify, and the card cannot say which. This says which.
+
+   Nothing here is editable: it reads the same properties the Financial
+   Summary reads, so what it shows is what the cards are working from.
+#}
+
+{% block content %}
+<div class="rec-page">
+
+  <div class="fin-band"><h3>Every transaction, and what it feeds</h3></div>
+
+  <p class="muted" style="margin:0 0 12px;font-size:.85rem;">
+    Sales and Lettings value add up the <strong>agreed value</strong> (or the
+    sale price or rent where no agreed value is recorded).
+    Billed counts a deal with an <strong>invoice date</strong> that is not a
+    draft, and bills its <strong>fee</strong>.
+    Billed this month is those with an invoice date in {{ this_month }}.
+  </p>
+
+  <div class="box">
+    <div class="table-scroll">
+      <table class="pay-table perf-table">
+        <thead>
+          <tr>
+            <th>Ref</th>
+            <th>Kind</th>
+            <th>Status</th>
+            <th class="num">Value it adds</th>
+            <th class="num">Fee rate</th>
+            <th class="num">Commission</th>
+            <th>Invoice date</th>
+            <th>Counts as</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+          <tr>
+            <td class="perf-who">{{ r.t.reference or r.t.id }}</td>
+            <td>{{ r.kind }}</td>
+            <td>{{ r.t.status or '—' }}</td>
+            <td class="num">{{ money_gbp(r.basis) if r.basis else '—' }}</td>
+            <td class="num">
+              {%- if r.fixed %}{{ money_gbp(r.fixed) }} fixed
+              {%- elif r.percent %}{{ '%g'|format(r.percent) }}%
+              {%- else %}—{% endif -%}
+            </td>
+            <td class="num">{{ money_gbp(r.net) if r.net else '—' }}</td>
+            <td>{{ r.t.invoice_date.strftime('%d %b %Y') if r.t.invoice_date else '—' }}</td>
+            <td style="font-size:11px;line-height:1.45;">
+              {%- if not r.counts -%}
+                <span class="ro-note">not in the figures</span>
+              {%- else -%}
+                {{ r.kind }} value
+                {%- if r.is_billed %} &middot; billed{% endif -%}
+                {%- if r.billed_this_month %} &middot; <strong>billed this month</strong>{% endif -%}
+              {%- endif -%}
+              {% if r.why %}
+              <div class="ro-note" style="margin-top:3px;">
+                {% for note in r.why %}{{ note }}{{ '; ' if not loop.last }}{% endfor %}
+              </div>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <p class="muted" style="font-size:.85rem;margin-top:16px;">
+    The figures are worked out from these records every time the page is
+    loaded, so correcting a transaction shows on the summary straight away.
+  </p>
+</div>
+{% endblock %}

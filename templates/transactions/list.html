@@ -110,19 +110,6 @@
       </span>
     </div>
 
-    <div class="kpi">
-      <span class="kpi-label">Average commission</span>
-      <span class="kpi-figure is-small">
-        {{ money_gbp(dash.avg_commission) if dash.avg_commission is not none else '—' }}
-      </span>
-      <span class="kpi-sub">
-        {%- if dash.avg_commission is not none -%}
-          Per completed transaction
-        {%- else -%}
-          No completed transactions yet
-        {%- endif -%}
-      </span>
-    </div>
 
   </div>
 

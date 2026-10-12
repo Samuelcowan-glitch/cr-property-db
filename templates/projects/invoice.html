@@ -180,6 +180,23 @@
       </div>
     </div>
 
+    {# Saving the invoice can also put it on the deal, which is what makes it
+       count towards Billed this month. The agreed fee on the instruction is
+       not touched either way. #}
+    <div class="box box--grid">
+      <div class="frow">
+        <div class="fcell fcell--label">Record against the deal</div>
+        <div class="fcell fcell--edit fcell--readonly">
+          <label>
+            <input type="checkbox" name="record_against_deal" value="1" checked
+                   form="invoice-form">
+            Put the invoice date, number and amount on this project's
+            transaction, so the firm's figures count it as billed
+          </label>
+        </div>
+      </div>
+    </div>
+
     <div class="pt-actions" style="display:flex;gap:10px;margin:18px 0;">
       <button type="submit" class="btn btn-outline">Preview</button>
       <button type="submit" class="btn btn-outline"

@@ -10677,6 +10677,43 @@ def _invoice_missing(data):
     return gaps
 
 
+def _record_invoice_against_transaction(project, data, number):
+    """Put the invoice on the deal, so the firm's figures know it was raised.
+
+    Billed this month counts a transaction with an invoice date on it. Raising
+    an invoice here used to leave that date empty, so an invoice the CRM had
+    produced itself never reached the figures.
+
+    The deal is the one the fee was read from, chosen the same way: the
+    transaction furthest along, then the most recent. Only the invoice date,
+    number and the fee actually invoiced are written -- the agreed fee on the
+    instruction is not touched.
+    """
+    if project is None:
+        return None
+    try:
+        deals = Transaction.query.filter_by(project_id=project.id).all()
+        if not deals:
+            return None
+        rank = {name: n for n, name in enumerate(TRANSACTION_STATUSES)}
+        deal = sorted(deals, key=lambda t: (rank.get(t.status or '', -1), t.id))[-1]
+    except Exception:
+        return None
+
+    deal.invoice_date = data.get('issued_on') or date.today()
+    deal.invoice_number = number
+    # What was actually invoiced, which may differ from the agreed rate for
+    # this one bill. Written on the deal, never back onto the instruction.
+    net = data.get('net')
+    if net not in (None, ''):
+        deal.fixed_fee = round(float(net), 2)
+        deal.fee_type = 'Fixed'
+    if deal.status in (None, '', 'Draft', 'In Progress', 'Terms Agreed',
+                       'Solicitors Instructed', 'Completed'):
+        deal.status = 'Commission Billed'
+    return deal
+
+
 @app.route('/projects/<int:id>/invoice', methods=['GET'])
 @requires('edit')
 def invoice_start(id):
@@ -10752,11 +10789,17 @@ def invoice_save(id):
                f'{date.today():%d %b %Y}. '
                f'Amount payable {inv.money(data.get("total") or 0)}.').strip(),
         file_data=pdf, file_mime='application/pdf', file_size=len(pdf)))
+    deal = None
+    if (request.form.get('record_against_deal') or '').strip():
+        deal = _record_invoice_against_transaction(
+            Project.query.get(id), data, data['reference'])
     db.session.commit()
     audit('create', entity='Project', entity_id=id,
-          detail=f'Invoice {data["reference"]} filed with documents')
-    flash(f'Invoice {data["reference"]} filed under Financial & Calculations.',
-          'success')
+          detail=f'Invoice {data["reference"]} filed with documents'
+                 + (f'; recorded against {deal.reference}' if deal else ''))
+    flash(f'Invoice {data["reference"]} filed under Financial & Calculations.'
+          + (f' Recorded against {deal.reference}, so it counts towards what '
+             'has been billed.' if deal else ''), 'success')
     return redirect(url_for('project_detail', id=id) + '#tab-documents')
 
 
@@ -12385,6 +12428,56 @@ def _unmatched_enquiries():
     return (Enquiry.query
             .filter(Enquiry.property_id.is_(None))
             .order_by(Enquiry.created_at.desc()))
+
+
+@app.route('/admin/financial-check', methods=['GET'])
+@requires('publish')
+def admin_financial_check():
+    """Every transaction against the figures it feeds, and why.
+
+    A card reading zero is either a sum of nothing or a sum of records that
+    did not qualify, and the card cannot say which. This lists each deal with
+    the fields the figures are worked out from, so an empty figure can be
+    traced to the record that is missing something rather than guessed at.
+    """
+    rows = []
+    this_month = _month_start(date.today())
+    for t in Transaction.query.order_by(Transaction.id).all():
+        counts = t.counts_towards_totals
+        rows.append({
+            't': t,
+            'counts': counts,
+            'kind': t.kind_label,
+            'basis': t.commission_basis,
+            'percent': t.fee_percent_effective,
+            'fixed': t.fixed_fee_effective,
+            'net': t.net_commission,
+            'is_billed': t.is_billed,
+            'billed_this_month': bool(t.is_billed
+                                      and _in_month(t.invoice_date, this_month)),
+            'why': _financial_check_why(t, counts),
+        })
+    return render_template('admin/financial_check.html', rows=rows,
+                           this_month=this_month.strftime('%B %Y'))
+
+
+def _financial_check_why(t, counts):
+    """What is stopping this deal reaching the figures, in plain words."""
+    notes = []
+    if not counts:
+        notes.append(f'excluded: status is {t.status or "not set"}')
+        return notes
+    if not t.commission_basis:
+        notes.append('no agreed value, sale price or rent, so it adds nothing '
+                     'to Sales or Lettings value')
+    if not t.invoice_date:
+        notes.append('no invoice date, so it is not counted as billed')
+    elif t.status == 'Draft':
+        notes.append('still a draft, so it is not counted as billed')
+    if not t.net_commission:
+        notes.append('no fee percentage or fixed fee, on the deal or the '
+                     'instruction, so the commission works out at nothing')
+    return notes
 
 
 @app.route('/admin/enquiry-cleanup', methods=['GET'])
