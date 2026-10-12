@@ -718,6 +718,13 @@ class Transaction(db.Model):
     solicitors_instructed_date = db.Column(db.Date)
 
     # ── Solicitors ──
+    # The solicitors as contacts on record. The free-text names below are
+    # kept for anything typed before there was anybody to point at, and
+    # for a solicitor nobody wants filed.
+    client_solicitor_contact_id = db.Column(
+        db.Integer, db.ForeignKey('contacts.id'), index=True)
+    other_solicitor_contact_id = db.Column(
+        db.Integer, db.ForeignKey('contacts.id'), index=True)
     client_solicitor       = db.Column(db.String(255))
     client_solicitor_firm  = db.Column(db.String(255))
     client_solicitor_email = db.Column(db.String(255))
@@ -736,6 +743,10 @@ class Transaction(db.Model):
     documents = db.relationship('TransactionDocument', backref='transaction',
                                 lazy=True, cascade='all, delete-orphan')
     project   = db.relationship('Project', foreign_keys=[project_id])
+    client_solicitor_contact = db.relationship(
+        'Contact', foreign_keys=[client_solicitor_contact_id])
+    other_solicitor_contact = db.relationship(
+        'Contact', foreign_keys=[other_solicitor_contact_id])
 
     @property
     def the_property(self):
@@ -7345,7 +7356,9 @@ def contact_new():
 # Landlord is never a contact with no Landlord role. Nothing is ever removed:
 # changing the type from Buyer to Seller adds Seller and leaves the Buyer role
 # alone, because that history is real.
-CONTACT_TYPES = ['Landlord', 'Tenant', 'Buyer', 'Seller']
+# A solicitor is filed like any other contact, but is never a party to the
+# deal, so it is its own type rather than one of the four sides.
+CONTACT_TYPES = ['Landlord', 'Tenant', 'Buyer', 'Seller', 'Solicitor']
 
 
 def contact_type_options(current=None):
@@ -8091,6 +8104,8 @@ TRANSACTION_FIELDS = [
     ('payment_due_date',   'payment_due_date',   _parse_date),
     ('completion_date',    'completion_date',    _parse_date),
     ('agreement_type',     'agreement_type',     _ftext),
+    ('client_solicitor_contact_id', 'client_solicitor_contact_id', _fid),
+    ('other_solicitor_contact_id',  'other_solicitor_contact_id',  _fid),
     ('expected_completion_date', 'expected_completion_date', _parse_date),
     ('terms_agreed_date',  'terms_agreed_date',  _parse_date),
     ('solicitors_instructed_date', 'solicitors_instructed_date', _parse_date),
@@ -10103,6 +10118,123 @@ def particulars_gaps(data, photo_count):
     return missing
 
 
+# ── Solicitors ───────────────────────────────────────────────────────────────
+
+def solicitors():
+    """Every solicitor on record, in the order they should be offered."""
+    return (Contact.query.filter(Contact.contact_type == 'Solicitor')
+            .order_by(Contact.last_name, Contact.first_name).all())
+
+
+app.jinja_env.globals['solicitors'] = solicitors
+
+
+def contact_address_lines(contact):
+    """The address to write against a contact.
+
+    A contact records the person, not where they sit: the address belongs to
+    the firm they are at, which is an organisation with a registered office.
+    This reads it from there rather than asking for it twice.
+    """
+    if contact is None:
+        return []
+    org = getattr(contact, 'organisation', None)
+    if org is None:
+        return []
+    raw = (getattr(org, 'registered_address', None)
+           or getattr(org, 'trading_address', None)
+           or getattr(org, 'address', None) or '')
+    lines = [clean_invoice_text(part) for part in
+             str(raw).replace('\r\n', '\n').replace('\r', '\n')
+             .replace(',', '\n').split('\n')]
+    lines = [l for l in lines if l]
+    postcode = clean_invoice_text(getattr(org, 'postcode', None))
+    if postcode and postcode not in lines:
+        lines.append(postcode)
+    return lines
+
+
+def solicitor_block(contact, typed_name='', typed_firm='',
+                    typed_phone='', typed_email=''):
+    """A solicitor as the Heads of Terms set them out.
+
+    The contact on record if one is chosen -- their name, what they do, the
+    firm and its registered office -- and otherwise whatever was typed on the
+    transaction before there was anybody to point at.
+    """
+    if contact is None:
+        return '\n'.join(x for x in [
+            clean_invoice_text(typed_name), clean_invoice_text(typed_firm),
+            f'Tel: {clean_invoice_text(typed_phone)}' if typed_phone else '',
+            f'Email: {clean_invoice_text(typed_email)}' if typed_email else '',
+        ] if x)
+
+    org = getattr(contact, 'organisation', None)
+    parts = [clean_invoice_text(f'{contact.first_name} {contact.last_name}'),
+             clean_invoice_text(getattr(contact, 'job_title', None))]
+    if org is not None:
+        parts.append(clean_invoice_text(getattr(org, 'legal_name', None)
+                                        or org.name))
+    parts += contact_address_lines(contact)
+    if contact.phone:
+        parts.append(f'Tel: {clean_invoice_text(contact.phone)}')
+    if contact.email:
+        parts.append(f'Email: {clean_invoice_text(contact.email)}')
+    return '\n'.join(p for p in parts if p)
+
+
+@app.route('/transactions/<int:id>/solicitor', methods=['POST'])
+@requires('edit')
+def transaction_add_solicitor(id):
+    """Add a solicitor from the transaction, without leaving the page.
+
+    Only what a solicitor needs: who they are, what they do, the firm and its
+    registered office. The firm is an organisation, so the address is recorded
+    once and every solicitor there reads the same one.
+    """
+    t = Transaction.query.get_or_404(id)
+    first = (request.form.get('sol_first') or '').strip()
+    last = (request.form.get('sol_last') or '').strip()
+    side = (request.form.get('sol_side') or '').strip()
+    if not first or not last:
+        flash('A solicitor needs a first and last name.', 'error')
+        return redirect(url_for('transaction_detail', id=id))
+
+    firm_name = (request.form.get('sol_firm') or '').strip()
+    org = None
+    if firm_name:
+        org = Organisation.query.filter(
+            db.func.lower(Organisation.name) == firm_name.lower()).first()
+        if org is None:
+            org = Organisation(name=firm_name)
+            db.session.add(org)
+        address = (request.form.get('sol_address') or '').strip()
+        if address and not org.registered_address:
+            org.registered_address = address
+        db.session.flush()
+
+    contact = Contact(
+        first_name=first, last_name=last,
+        job_title=(request.form.get('sol_title') or '').strip() or None,
+        email=(request.form.get('sol_email') or '').strip() or None,
+        phone=(request.form.get('sol_phone') or '').strip() or None,
+        contact_type='Solicitor',
+        organisation_id=org.id if org is not None else None)
+    db.session.add(contact)
+    db.session.flush()
+
+    if side == 'other':
+        t.other_solicitor_contact_id = contact.id
+    else:
+        t.client_solicitor_contact_id = contact.id
+    db.session.commit()
+    audit('create', entity='Contact', entity_id=contact.id,
+          detail=f'Solicitor added from transaction {t.reference or t.id}')
+    flash(f'{first} {last} added as a solicitor and put on this deal.',
+          'success')
+    return redirect(url_for('transaction_detail', id=id))
+
+
 # ── Heads of Terms ───────────────────────────────────────────────────────────
 
 # Wording that is the same on every set of terms. Prefilled so it is there to
@@ -10125,15 +10257,15 @@ def _contact_block(contact, fallback_name=''):
     """A contact as the terms set them out: name first, then the address."""
     if contact is None:
         return clean_invoice_text(fallback_name)
-    name = (getattr(contact, 'company', None)
-            or ' '.join(x for x in [getattr(contact, 'first_name', ''),
-                                    getattr(contact, 'last_name', '')] if x))
-    return _hot_block(name or fallback_name,
-                      getattr(contact, 'address_line1', None),
-                      getattr(contact, 'address_line2', None),
-                      getattr(contact, 'town', None),
-                      getattr(contact, 'county', None),
-                      getattr(contact, 'postcode', None))
+    # The firm's name where the contact has one, since a party to a lease is
+    # usually the company rather than the person signing for it.
+    org = getattr(contact, 'organisation', None)
+    name = ((getattr(org, 'legal_name', None) or org.name) if org is not None
+            else ' '.join(x for x in [getattr(contact, 'first_name', ''),
+                                      getattr(contact, 'last_name', '')] if x))
+    return '\n'.join(x for x in
+                     [clean_invoice_text(name or fallback_name)]
+                     + contact_address_lines(contact) if x)
 
 
 def _hot_date(value):
@@ -10184,12 +10316,14 @@ def hot_defaults(t):
     lessor = _contact_block(client_contact, owner_name)
     lessee = clean_invoice_text(taker_name)
 
-    lessor_sol = _hot_block(t.client_solicitor, t.client_solicitor_firm,
-                            f'Tel: {t.client_solicitor_phone}' if t.client_solicitor_phone else '',
-                            f'Email: {t.client_solicitor_email}' if t.client_solicitor_email else '')
-    lessee_sol = _hot_block(t.other_solicitor, t.other_solicitor_firm,
-                            f'Tel: {t.other_solicitor_phone}' if t.other_solicitor_phone else '',
-                            f'Email: {t.other_solicitor_email}' if t.other_solicitor_email else '')
+    # The solicitor chosen on the deal, with their firm and its registered
+    # office; otherwise whatever was typed before there was one to choose.
+    lessor_sol = solicitor_block(
+        t.client_solicitor_contact, t.client_solicitor, t.client_solicitor_firm,
+        t.client_solicitor_phone, t.client_solicitor_email)
+    lessee_sol = solicitor_block(
+        t.other_solicitor_contact, t.other_solicitor, t.other_solicitor_firm,
+        t.other_solicitor_phone, t.other_solicitor_email)
 
     # Demise: what was recorded, else the part of the building and the address.
     demise = clean_invoice_text(t.demise_description)
@@ -10550,11 +10684,10 @@ def invoice_defaults(project):
             getattr(contact, 'company', None)
             or ' '.join(x for x in [getattr(contact, 'first_name', ''),
                                     getattr(contact, 'last_name', '')] if x))
-        for attr in ('address_line1', 'address_line2', 'town', 'county',
-                     'postcode'):
-            value = clean_invoice_text(getattr(contact, attr, None))
-            if value:
-                address_lines.append(value)
+        # A contact records the person; the address belongs to the firm they
+        # are at. Reading the fields straight off the contact found nothing,
+        # so the address block on an invoice was always empty.
+        address_lines = contact_address_lines(contact)
     if not name:
         name = clean_invoice_text(project.client or project.landlord_name)
 
@@ -12719,6 +12852,8 @@ def _migrate_project_columns():
             ('invoice_date',      'DATE'), ('payment_due_date', 'DATE'),
             ('completion_date',   'DATE'), ('terms_agreed_date','DATE'),
             ('agreement_type',    'TEXT'),
+            ('client_solicitor_contact_id', 'INTEGER'),
+            ('other_solicitor_contact_id',  'INTEGER'),
             ('expected_completion_date', 'DATE'),
             ('solicitors_instructed_date', 'DATE'),
             ('client_solicitor',       'TEXT'),

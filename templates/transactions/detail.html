@@ -30,6 +30,8 @@
 {% macro num(value) %}{{ '%g'|format(value) if value is not none else '' }}{% endmacro %}
 
 {% block content %}
+<form id="sol-form" method="post"
+      action="{{ url_for('transaction_add_solicitor', id=t.id) }}"></form>
 {# Uploads and payments post on their own, so nothing is nested in another form. #}
 <form id="trx-form" method="post" action="{{ url_for('transaction_save', id=t.id) }}"></form>
 <form id="pay-form" method="post" action="{{ url_for('transaction_payment_add', id=t.id) }}"></form>
@@ -405,6 +407,69 @@
                    placeholder="e.g. chase replies to enquiries">
           </div>
         </div>
+        {# Pick the solicitor off the CRM rather than typing them again. The
+           labels follow the deal: a sale has a seller and a buyer. The typed
+           fields below stay for anyone not worth filing. #}
+        <div class="frow">
+          <div class="fcell fcell--label">
+            {{ 'Seller' if t.is_sale else 'Landlord' }}&rsquo;s solicitor
+          </div>
+          <div class="fcell fcell--edit">
+            <select name="client_solicitor_contact_id" form="trx-form">
+              <option value="">Not selected</option>
+              {% for sol in solicitors() %}
+              <option value="{{ sol.id }}"
+                      {{ 'selected' if t.client_solicitor_contact_id == sol.id }}>
+                {{ sol.first_name }} {{ sol.last_name }}{% if sol.organisation %} &mdash; {{ sol.organisation.name }}{% endif %}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="fcell fcell--label">
+            {{ 'Buyer' if t.is_sale else 'Tenant' }}&rsquo;s solicitor
+          </div>
+          <div class="fcell fcell--edit">
+            <select name="other_solicitor_contact_id" form="trx-form">
+              <option value="">Not selected</option>
+              {% for sol in solicitors() %}
+              <option value="{{ sol.id }}"
+                      {{ 'selected' if t.other_solicitor_contact_id == sol.id }}>
+                {{ sol.first_name }} {{ sol.last_name }}{% if sol.organisation %} &mdash; {{ sol.organisation.name }}{% endif %}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+
+        <div class="frow frow--full">
+          <div class="fcell fcell--label fcell--top">Add a solicitor</div>
+          <div class="fcell fcell--edit" style="display:block;padding:8px 9px;">
+            {# Its own form: a form cannot be nested inside the record's. #}
+            <details class="sol-add">
+              <summary class="ro-note" style="cursor:pointer;">
+                Not on the list? Add one without leaving this page
+              </summary>
+              <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:9px;">
+                <input form="sol-form" name="sol_first" placeholder="First name" required>
+                <input form="sol-form" name="sol_last" placeholder="Last name" required>
+                <input form="sol-form" name="sol_title" placeholder="Position / job title">
+                <input form="sol-form" name="sol_firm" placeholder="Firm">
+                <input form="sol-form" name="sol_email" type="email" placeholder="Email">
+                <input form="sol-form" name="sol_phone" placeholder="Phone">
+                <textarea form="sol-form" name="sol_address" rows="2"
+                          placeholder="Registered office address"
+                          style="grid-column:1/-1;"></textarea>
+                <select form="sol-form" name="sol_side" style="grid-column:1/-1;">
+                  <option value="client">Put them on as the {{ 'seller' if t.is_sale else 'landlord' }}&rsquo;s solicitor</option>
+                  <option value="other">Put them on as the {{ 'buyer' if t.is_sale else 'tenant' }}&rsquo;s solicitor</option>
+                </select>
+                <button form="sol-form" type="submit" class="btn btn-outline btn-sm"
+                        style="grid-column:1/-1;justify-self:start;">Add solicitor</button>
+              </div>
+            </details>
+          </div>
+        </div>
+
         <div class="frow">
           <div class="fcell fcell--label">Our client's</div>
           <div class="fcell fcell--edit">
