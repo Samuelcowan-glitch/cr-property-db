@@ -14,3 +14,10 @@ backups/
 
 # OS
 .DS_Store
+
+# Licensed font files are never committed. static/fonts/README.md says
+# which ones to drop in; the documents fall back to a stock face without them.
+static/fonts/*.ttf
+static/fonts/*.otf
+static/fonts/*.TTF
+static/fonts/*.ttc

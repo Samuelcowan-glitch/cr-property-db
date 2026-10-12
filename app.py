@@ -10040,6 +10040,167 @@ def particulars_gaps(data, photo_count):
     return missing
 
 
+# ── Invoices ─────────────────────────────────────────────────────────────────
+
+def invoice_defaults(project):
+    """Fill an invoice from what the CRM already knows about the project.
+
+    Everything here is a starting point the user can overwrite on the form.
+    Nothing is invented: a field the CRM has no answer for is left blank rather
+    than guessed at, so an invoice never goes out carrying a made-up figure.
+    """
+    prop = project.property if project else None
+    contact = getattr(project, 'client_contact', None)
+
+    # Who it is addressed to: the linked contact if there is one, else the
+    # name typed on the project.
+    name = ''
+    address_lines = []
+    if contact is not None:
+        name = clean_invoice_text(
+            getattr(contact, 'company', None)
+            or ' '.join(x for x in [getattr(contact, 'first_name', ''),
+                                    getattr(contact, 'last_name', '')] if x))
+        for attr in ('address_line1', 'address_line2', 'town', 'county',
+                     'postcode'):
+            value = clean_invoice_text(getattr(contact, attr, None))
+            if value:
+                address_lines.append(value)
+    if not name:
+        name = clean_invoice_text(project.client or project.landlord_name)
+
+    # What it relates to: the property on the project.
+    property_line = ''
+    if prop is not None:
+        bits = [clean_invoice_text(prop.address)]
+        for attr in ('town', 'postcode'):
+            value = clean_invoice_text(getattr(prop, attr, None))
+            if value and value not in bits:
+                bits.append(value)
+        property_line = ',  '.join(b for b in bits if b)
+
+    return {
+        'reference': project.project_ref or '',
+        'issued_on': date.today().isoformat(),
+        'client_name': name,
+        'client_address': '\n'.join(address_lines),
+        'property_line': property_line,
+        'description': '',
+        'fee_label': 'Our fee',
+        'net': '',
+        'vat_rate': '20',
+    }
+
+
+def clean_invoice_text(value):
+    """Trim a value for the invoice form, treating None as blank."""
+    return ' '.join(str(value).split()) if value else ''
+
+
+def _invoice_from_form(form):
+    """Read the invoice form into the shape the generator wants."""
+    issued = _parse_date(form.get('issued_on')) or date.today()
+    return {
+        'reference': (form.get('reference') or '').strip(),
+        'issued_on': issued,
+        'client_name': (form.get('client_name') or '').strip(),
+        'client_address': form.get('client_address') or '',
+        'property_line': (form.get('property_line') or '').strip(),
+        'description': form.get('description') or '',
+        'fee_label': (form.get('fee_label') or '').strip() or 'Our fee',
+        'net': _fnum(form.get('net')),
+        'vat_rate': _fnum(form.get('vat_rate')),
+        'vat': _fnum(form.get('vat')),
+        'total': _fnum(form.get('total')),
+    }
+
+
+def _invoice_missing(data):
+    """What the invoice cannot sensibly go out without."""
+    gaps = []
+    if not data.get('client_name'):
+        gaps.append('who the invoice is addressed to')
+    if not data.get('property_line'):
+        gaps.append('the property it relates to')
+    if data.get('net') in (None, ''):
+        gaps.append('the net amount')
+    return gaps
+
+
+@app.route('/projects/<int:id>/invoice', methods=['GET'])
+@requires('edit')
+def invoice_start(id):
+    """The invoice creator: check the details, then generate."""
+    project = Project.query.get_or_404(id)
+    import invoice as inv
+    return render_template(
+        'projects/invoice.html', project=project,
+        values=invoice_defaults(project),
+        have_fonts=inv.HAVE_GOTHIC and inv.HAVE_CANDARA)
+
+
+@app.route('/projects/<int:id>/invoice/preview', methods=['POST'])
+@requires('edit')
+def invoice_preview(id):
+    """The finished invoice, shown in the browser rather than downloaded."""
+    Project.query.get_or_404(id)
+    import invoice as inv
+    data = _invoice_from_form(request.form)
+    pdf = inv.build_invoice(data)
+    from flask import send_file
+    return send_file(io.BytesIO(pdf), mimetype='application/pdf',
+                     download_name=inv.invoice_filename(data),
+                     as_attachment=False)
+
+
+@app.route('/projects/<int:id>/invoice/download', methods=['POST'])
+@requires('edit')
+def invoice_download(id):
+    """Generate the invoice and hand it over as a PDF."""
+    Project.query.get_or_404(id)
+    import invoice as inv
+    data = _invoice_from_form(request.form)
+    gaps = _invoice_missing(data)
+    if gaps:
+        flash('Nothing was generated. The invoice still needs '
+              + ', '.join(gaps) + '. What you typed has been kept.', 'error')
+        return redirect(url_for('invoice_start', id=id))
+    pdf = inv.build_invoice(data)
+    name = inv.invoice_filename(data)
+    audit('export', entity='Project', entity_id=id,
+          detail=f'Invoice {data.get("reference") or name} downloaded')
+    from flask import send_file
+    return send_file(io.BytesIO(pdf), mimetype='application/pdf',
+                     download_name=name, as_attachment=True)
+
+
+@app.route('/projects/<int:id>/invoice/save', methods=['POST'])
+@requires('edit')
+def invoice_save(id):
+    """Generate the invoice and file it with the project's documents."""
+    Project.query.get_or_404(id)
+    import invoice as inv
+    data = _invoice_from_form(request.form)
+    gaps = _invoice_missing(data)
+    if gaps:
+        flash('Nothing was saved. The invoice still needs '
+              + ', '.join(gaps) + '. What you typed has been kept.', 'error')
+        return redirect(url_for('invoice_start', id=id))
+    pdf = inv.build_invoice(data)
+    name = inv.invoice_filename(data)
+    db.session.add(ProjectDocument(
+        project_id=id, folder='financial_calculations', document_name=name,
+        notes=(f'Invoice {data.get("reference") or ""} generated '
+               f'{date.today():%d %b %Y}. '
+               f'Amount payable {inv.money(data.get("total") or 0)}.').strip(),
+        file_data=pdf, file_mime='application/pdf', file_size=len(pdf)))
+    db.session.commit()
+    audit('create', entity='Project', entity_id=id,
+          detail=f'Invoice {data.get("reference") or name} filed with documents')
+    flash(f'{name} filed under Financial & Calculations.', 'success')
+    return redirect(url_for('project_detail', id=id) + '#tab-documents')
+
+
 @app.route('/projects/<int:id>/particulars', methods=['GET'])
 @requires('edit')
 def particulars_start(id):

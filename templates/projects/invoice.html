@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+{% block title %}Create Invoice{% endblock %}
+{% block topbar_title %}Create Invoice{% endblock %}
+{% block topbar_actions %}
+  <a href="{{ url_for('project_detail', id=project.id) }}" class="btn btn-outline btn-sm">Cancel</a>
+{% endblock %}
+
+{#
+   The invoice creator. Everything on this page is the part of the invoice that
+   changes; the letterhead, the company details, the VAT number and the bank
+   details come from the firm's own template and are not reachable from here.
+
+   Filled in from the project where the CRM already knows the answer, so most
+   invoices need the description and the fee and nothing else. Nothing is kept
+   against the instruction until Save to Documents is pressed.
+#}
+
+{% block content %}
+<div class="rec-page">
+  <div class="breadcrumb">
+    <a href="{{ url_for('projects_list') }}">Projects</a><span class="sep">/</span>
+    <a href="{{ url_for('project_detail', id=project.id) }}">{{ project.name }}</a><span class="sep">/</span>
+    <span class="current">Invoice</span>
+  </div>
+
+  {% if not have_fonts %}
+  <p class="muted" style="margin:0 0 14px;font-size:.85rem;">
+    The invoice is set in a stock face at the moment. Drop Century Gothic and
+    Candara into <code>static/fonts</code> (see the README there) and it is set
+    in the template's own type instead. The layout is the same either way.
+  </p>
+  {% endif %}
+
+  <form id="invoice-form" method="post"
+        action="{{ url_for('invoice_preview', id=project.id) }}"
+        target="invoice-preview">
+
+    <div class="fin-band"><h3>Invoice heading</h3></div>
+    <div class="box box--grid">
+      <div class="frow">
+        <div class="fcell fcell--label">Reference</div>
+        <div class="fcell fcell--edit">
+          <input type="text" name="reference" value="{{ values.reference }}"
+                 placeholder="e.g. CL / 40052C/ KC" form="invoice-form">
+        </div>
+        <div class="fcell fcell--label">Invoice date</div>
+        <div class="fcell fcell--edit">
+          <input type="date" name="issued_on" value="{{ values.issued_on }}"
+                 form="invoice-form">
+        </div>
+      </div>
+    </div>
+
+    <div class="fin-band"><h3>Who it is addressed to</h3></div>
+    <div class="box box--grid">
+      <div class="frow">
+        <div class="fcell fcell--label">Client / landlord</div>
+        <div class="fcell fcell--edit">
+          <input type="text" name="client_name" value="{{ values.client_name }}"
+                 placeholder="e.g. Foster Germany Limited" form="invoice-form">
+        </div>
+      </div>
+      <div class="frow">
+        <div class="fcell fcell--label">Address</div>
+        <div class="fcell fcell--edit">
+          {# One line per line, exactly as it should read on the invoice. #}
+          <textarea name="client_address" rows="4" form="invoice-form"
+                    placeholder="591-593 Kings Road&#10;London&#10;SW6 2ER">{{ values.client_address }}</textarea>
+        </div>
+      </div>
+    </div>
+
+    <div class="fin-band"><h3>What it is for</h3></div>
+    <div class="box box--grid">
+      <div class="frow">
+        <div class="fcell fcell--label">Property</div>
+        <div class="fcell fcell--edit">
+          <input type="text" name="property_line" value="{{ values.property_line }}"
+                 placeholder="1st Floor office, 591-593 Kings Road,  London,  SW6 2EH"
+                 form="invoice-form">
+        </div>
+      </div>
+      <div class="frow">
+        <div class="fcell fcell--label">Description</div>
+        <div class="fcell fcell--edit">
+          <textarea name="description" rows="3" form="invoice-form"
+                    placeholder="Agreed letting fee of the 1st floor office at … at a rental of £69,000.00 pa.">{{ values.description }}</textarea>
+        </div>
+      </div>
+    </div>
+
+    <div class="fin-band"><h3>The money</h3></div>
+    <div class="box box--grid">
+      <div class="frow">
+        <div class="fcell fcell--label">Fee line</div>
+        <div class="fcell fcell--edit">
+          <input type="text" name="fee_label" value="{{ values.fee_label }}"
+                 placeholder="Our fee calculated at 7.5% of the annual rental"
+                 form="invoice-form">
+        </div>
+      </div>
+      <div class="frow">
+        <div class="fcell fcell--label">Net amount</div>
+        <div class="fcell fcell--edit">
+          <input type="number" step="0.01" min="0" name="net" id="inv-net"
+                 value="{{ values.net }}" placeholder="5175.00" form="invoice-form">
+        </div>
+        <div class="fcell fcell--label">VAT rate %</div>
+        <div class="fcell fcell--edit">
+          <input type="number" step="0.1" min="0" name="vat_rate" id="inv-rate"
+                 value="{{ values.vat_rate }}" form="invoice-form">
+        </div>
+      </div>
+      <div class="frow">
+        <div class="fcell fcell--label">VAT</div>
+        <div class="fcell fcell--edit">
+          {# Left blank it is worked out from the net and the rate. #}
+          <input type="number" step="0.01" min="0" name="vat" id="inv-vat"
+                 placeholder="worked out from the net" form="invoice-form">
+        </div>
+        <div class="fcell fcell--label">Amount payable</div>
+        <div class="fcell fcell--edit">
+          <input type="number" step="0.01" min="0" name="total" id="inv-total"
+                 placeholder="net plus VAT" form="invoice-form">
+        </div>
+      </div>
+    </div>
+
+    <div class="pt-actions" style="display:flex;gap:10px;margin:18px 0;">
+      <button type="submit" class="btn btn-outline">Preview</button>
+      <button type="submit" class="btn btn-outline"
+              formaction="{{ url_for('invoice_download', id=project.id) }}"
+              formtarget="_self">Generate Invoice (PDF)</button>
+      <button type="submit" class="btn btn-primary"
+              formaction="{{ url_for('invoice_save', id=project.id) }}"
+              formtarget="_self">Save to Documents</button>
+    </div>
+  </form>
+
+  <iframe name="invoice-preview" title="Invoice preview"
+          style="width:100%;height:900px;border:1px solid rgba(14,31,68,.18);background:#fff;"></iframe>
+</div>
+
+<script>
+// Show what the invoice will say before it is generated: fill the VAT and the
+// total from the net as it is typed, while leaving both free to be overridden.
+(function () {
+  var net = document.getElementById('inv-net');
+  var rate = document.getElementById('inv-rate');
+  var vat = document.getElementById('inv-vat');
+  var total = document.getElementById('inv-total');
+  if (!net || !rate || !vat || !total) return;
+
+  var vatTouched = false, totalTouched = false;
+  vat.addEventListener('input', function () { vatTouched = true; });
+  total.addEventListener('input', function () { totalTouched = true; });
+
+  function recalc() {
+    var n = parseFloat(net.value);
+    var r = parseFloat(rate.value);
+    if (isNaN(n)) return;
+    if (isNaN(r)) r = 0;
+    var v = Math.round(n * r) / 100;
+    if (!vatTouched) vat.value = v.toFixed(2);
+    if (!totalTouched) {
+      var shown = vatTouched ? parseFloat(vat.value) || 0 : v;
+      total.value = (n + shown).toFixed(2);
+    }
+  }
+  net.addEventListener('input', recalc);
+  rate.addEventListener('input', recalc);
+  recalc();
+})();
+</script>
+{% endblock %}

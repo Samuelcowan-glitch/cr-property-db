@@ -28,3 +28,31 @@ shows up as a plain fallback instead of a smeared bold.
 
 Nothing else needs changing: `static/css/style.css` declares the faces and the
 whole CRM reads one `--font` token.
+
+---
+
+# Century Gothic and Candara — the invoice
+
+The invoice is set in the faces the firm's own template uses: Century Gothic
+for the body and Candara Bold for the footer. Both ship with Microsoft Office,
+so the files are licensed to the machines that have Office rather than to this
+repository, and publishing them here — with the repository public — is not
+something the licence allows. They are gitignored for that reason.
+
+Drop them into this folder using these exact names and every invoice from the
+next one onwards is set in them, with no other change:
+
+| Used for                    | Filename                   |
+| --------------------------- | -------------------------- |
+| invoice body text           | `Century Gothic.ttf`       |
+| headings, "Re:", the total  | `Century Gothic Bold.ttf`  |
+| the footer block            | `Candara-Bold.ttf`         |
+
+On a Mac with Office installed they are in
+`/Applications/Microsoft Word.app/Contents/Resources/DFonts/`
+(`Century Gothic.ttf`, `Century Gothic Bold.ttf`, and `Candarab.ttf`, which
+needs renaming to `Candara-Bold.ttf`). On Windows they are in `C:\Windows\Fonts`.
+
+Without them the invoice falls back to Helvetica. Everything else is
+unaffected: the navy letterhead is artwork, not type, and every measurement on
+the page is fixed, so only the letter shapes differ.
