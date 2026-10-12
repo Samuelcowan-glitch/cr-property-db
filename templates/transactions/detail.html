@@ -13,6 +13,11 @@
   {# Most of what the terms need is already on this record, so they are
      generated from here rather than keyed in again. #}
   <a href="{{ url_for('transaction_hot_start', id=t.id) }}" class="btn btn-outline btn-sm">Generate Heads of Terms</a>
+  {# Raising the invoice from the deal is what puts its date and number on the
+     record, which is what makes the commission count as billed. #}
+  {% if t.project_id %}
+  <a href="{{ url_for('invoice_start', id=t.project_id) }}" class="btn btn-outline btn-sm">Create Invoice</a>
+  {% endif %}
   {% if tprop %}
   <a href="{{ url_for('property_detail', id=tprop.id) }}" class="btn btn-outline btn-sm">View Property</a>
   {% endif %}
@@ -617,7 +622,9 @@
               <span class="ro-note"> &mdash; invoiced {{ t.invoice_date.strftime('%d %b %Y') }}</span>
             {% else %}
               <span class="ro-note">
-                {%- if not t.invoice_date %}needs an invoice date
+                {%- if not t.invoice_date -%}
+                  needs an invoice date &mdash; put one here, or raise the
+                  invoice with Create Invoice above and it is filled in
                 {%- elif t.status == 'Draft' %}still a draft
                 {%- else %}not counted{% endif -%}
               </span>
