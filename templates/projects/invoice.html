@@ -38,10 +38,12 @@
     <div class="fin-band"><h3>Invoice heading</h3></div>
     <div class="box box--grid">
       <div class="frow">
-        <div class="fcell fcell--label">Reference</div>
-        <div class="fcell fcell--edit">
-          <input type="text" name="reference" value="{{ values.reference }}"
-                 placeholder="e.g. CL / 40052C/ KC" form="invoice-form">
+        <div class="fcell fcell--label">Invoice number</div>
+        {# Assigned by the CRM when the invoice is generated, then fixed for
+           good. There is nothing to type here and nothing to post. #}
+        <div class="fcell fcell--edit fcell--readonly">
+          <strong>{{ values.next_number }}</strong>
+          <span class="ro-note"> &mdash; taken when you generate or save</span>
         </div>
         <div class="fcell fcell--label">Invoice date</div>
         <div class="fcell fcell--edit">

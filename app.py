@@ -10042,6 +10042,66 @@ def particulars_gaps(data, photo_count):
 
 # ── Invoices ─────────────────────────────────────────────────────────────────
 
+# The invoice number. Only the five figures in the middle ever change.
+INVOICE_NUMBER_PREFIX = 'CL/'
+INVOICE_NUMBER_SUFFIX = 'C/KC'
+INVOICE_NUMBER_SERIES = 'invoice'
+INVOICE_NUMBER_START = 40066          # the first number the CRM issues
+
+
+def format_invoice_number(number):
+    """Build an invoice number, e.g. 40066 -> CL/40066C/KC.
+
+    The one place the shape is decided, so nothing can drift from it.
+    """
+    return f'{INVOICE_NUMBER_PREFIX}{int(number)}{INVOICE_NUMBER_SUFFIX}'
+
+
+def _invoice_counter(lock=False):
+    """The invoice series' counter row, created at the starting number.
+
+    Seeded one below the first number to issue, so the first allocation comes
+    out as INVOICE_NUMBER_START itself.
+    """
+    q = db.session.query(RefCounter).filter_by(name=INVOICE_NUMBER_SERIES)
+    if lock and db.engine.dialect.name == 'postgresql':
+        q = q.with_for_update()
+    row = q.one_or_none()
+    if row is None:
+        db.session.add(RefCounter(name=INVOICE_NUMBER_SERIES,
+                                  value=INVOICE_NUMBER_START - 1))
+        db.session.flush()
+        row = q.one_or_none()
+    return row
+
+
+def peek_invoice_number():
+    """The number the next invoice will carry, without using it up.
+
+    For showing on the form and in a preview. Nothing is consumed, so looking
+    at an invoice never burns a number.
+    """
+    row = _invoice_counter()
+    return format_invoice_number((row.value or 0) + 1)
+
+
+def allocate_invoice_number():
+    """Take the next invoice number and keep it.
+
+    The counter row is read with its row locked on Postgres, so two invoices
+    generated at the same moment queue rather than both reading the same
+    number. It is a high-water mark, not a count: it only moves forward, so a
+    deleted or cancelled invoice's number is retired rather than reissued, and
+    the series always continues from the highest already given out.
+
+    The caller's commit is what makes the number permanent.
+    """
+    row = _invoice_counter(lock=True)
+    row.value = (row.value or 0) + 1
+    db.session.flush()
+    return format_invoice_number(row.value)
+
+
 def invoice_fee_basis(project):
     """What the fee is charged on, and the fee the firm agreed to charge.
 
@@ -10195,7 +10255,7 @@ def invoice_defaults(project):
             f'Agreed {kind_word} fee of {property_line} {tail}')
 
     return {
-        'reference': project.project_ref or '',
+        'next_number': peek_invoice_number(),
         'issued_on': date.today().isoformat(),
         'client_name': name,
         'client_address': '\n'.join(address_lines),
@@ -10243,7 +10303,8 @@ def _invoice_from_form(form):
                 net = round(float(basis) * float(percent) / 100.0, 2)
 
     return {
-        'reference': (form.get('reference') or '').strip(),
+        # The number is never taken from the form; the caller sets it.
+        'reference': '',
         'issued_on': issued,
         'client_name': (form.get('client_name') or '').strip(),
         'client_address': form.get('client_address') or '',
@@ -10288,6 +10349,9 @@ def invoice_preview(id):
     Project.query.get_or_404(id)
     import invoice as inv
     data = _invoice_from_form(request.form)
+    # A preview shows the number the invoice would carry without using it up,
+    # so looking at an invoice never burns one.
+    data['reference'] = peek_invoice_number()
     pdf = inv.build_invoice(data)
     from flask import send_file
     return send_file(io.BytesIO(pdf), mimetype='application/pdf',
@@ -10307,10 +10371,14 @@ def invoice_download(id):
         flash('Nothing was generated. The invoice still needs '
               + ', '.join(gaps) + '. What you typed has been kept.', 'error')
         return redirect(url_for('invoice_start', id=id))
+    # Generating the invoice is what creates it, so this is where a number is
+    # taken. It is kept whatever happens to the invoice afterwards.
+    data['reference'] = allocate_invoice_number()
+    db.session.commit()
     pdf = inv.build_invoice(data)
     name = inv.invoice_filename(data)
     audit('export', entity='Project', entity_id=id,
-          detail=f'Invoice {data.get("reference") or name} downloaded')
+          detail=f'Invoice {data["reference"]} generated')
     from flask import send_file
     return send_file(io.BytesIO(pdf), mimetype='application/pdf',
                      download_name=name, as_attachment=True)
@@ -10328,6 +10396,7 @@ def invoice_save(id):
         flash('Nothing was saved. The invoice still needs '
               + ', '.join(gaps) + '. What you typed has been kept.', 'error')
         return redirect(url_for('invoice_start', id=id))
+    data['reference'] = allocate_invoice_number()
     pdf = inv.build_invoice(data)
     name = inv.invoice_filename(data)
     db.session.add(ProjectDocument(
@@ -10338,8 +10407,9 @@ def invoice_save(id):
         file_data=pdf, file_mime='application/pdf', file_size=len(pdf)))
     db.session.commit()
     audit('create', entity='Project', entity_id=id,
-          detail=f'Invoice {data.get("reference") or name} filed with documents')
-    flash(f'{name} filed under Financial & Calculations.', 'success')
+          detail=f'Invoice {data["reference"]} filed with documents')
+    flash(f'Invoice {data["reference"]} filed under Financial & Calculations.',
+          'success')
     return redirect(url_for('project_detail', id=id) + '#tab-documents')
 
 
