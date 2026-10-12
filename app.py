@@ -10394,7 +10394,7 @@ def transaction_hot_save(id):
 INVOICE_NUMBER_PREFIX = 'CL/'
 INVOICE_NUMBER_SUFFIX = 'C/KC'
 INVOICE_NUMBER_SERIES = 'invoice'
-INVOICE_NUMBER_START = 40066          # the first number the CRM issues
+INVOICE_NUMBER_START = 40067          # the first number the CRM issues
 
 
 def format_invoice_number(number):
@@ -13349,6 +13349,34 @@ def _migrate_transaction_references():
             app.logger.exception('Could not repair the transaction references')
 
 
+def _migrate_invoice_number_floor():
+    """Make sure the invoice series starts no lower than it is meant to.
+
+    The counter is created the first time an invoice page is opened, so it can
+    already exist at an earlier starting number than the firm wants. This
+    raises it, and only raises it: a number that has already gone out on an
+    invoice is never handed to another one.
+    """
+    with app.app_context():
+        try:
+            floor = INVOICE_NUMBER_START - 1
+            row = db.session.query(RefCounter).filter_by(
+                name=INVOICE_NUMBER_SERIES).one_or_none()
+            if row is None:
+                db.session.add(RefCounter(name=INVOICE_NUMBER_SERIES,
+                                          value=floor))
+                db.session.commit()
+            elif (row.value or 0) < floor:
+                was = row.value
+                row.value = floor
+                db.session.commit()
+                app.logger.info('Invoice numbering raised from %s to %s',
+                                was, floor)
+        except Exception:
+            db.session.rollback()
+            app.logger.exception('Could not set the invoice number floor')
+
+
 def _migrate_transaction_kind_mismatches():
     """Put right every transaction whose type disagrees with its instruction.
 
@@ -13667,6 +13695,7 @@ if __name__ == '__main__':
         _migrate_retire_client()
         _migrate_transaction_kinds()
         _migrate_transaction_kind_mismatches()
+        _migrate_invoice_number_floor()
         _migrate_transaction_references()
         _migrate_fold_unit_names()
         _ensure_default_user()
