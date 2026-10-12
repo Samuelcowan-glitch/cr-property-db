@@ -12747,31 +12747,50 @@ def admin_ms_contacts_push():
 
 # ── Enquiries: clearing out the ones that were ordinary emails ───────────────
 
-# An enquiry is a lead. These are the sources a lead actually arrives from.
-GENUINE_ENQUIRY_SOURCES = ('Website', 'Zoopla', 'Rightmove', 'OnTheMarket')
+# The only two things that are enquiries. Both arrive by email, but an email
+# is not an enquiry: these are leads, and everything else in the mailbox is
+# correspondence that belongs in the mailbox.
+GENUINE_ENQUIRY_SOURCES = ('Website', 'Zoopla')
+
+
+def _is_from_the_mailbox(enq):
+    """Whether this enquiry was built out of an email.
+
+    Said three ways, because the old sync did not always record a source. It
+    filed the message with its Microsoft id against the enquiry, which nothing
+    else does, and wrote the subject as "Email - ...", which nothing else
+    writes either.
+    """
+    if (enq.source or '').strip().lower() == 'email':
+        return True
+    subject = (enq.subject or '').strip().lower()
+    if subject.startswith('email ') or subject.startswith('email\u2014') \
+            or subject.startswith('email -') or subject.startswith('email\u2013'):
+        return True
+    return db.session.query(
+        EnquiryNote.query.filter(EnquiryNote.enquiry_id == enq.id,
+                                 EnquiryNote.ms_message_id.isnot(None))
+        .exists()).scalar()
+
+
+def _enquiries_to_purge():
+    """Every enquiry that is really just an email.
+
+    Anything from the website or Zoopla is a lead and is kept, whatever else is
+    true of it. Of the rest, the ones that came out of the mailbox go.
+    """
+    out = []
+    for enq in Enquiry.query.order_by(Enquiry.created_at.desc()).all():
+        if (enq.source or '').strip() in GENUINE_ENQUIRY_SOURCES:
+            continue
+        if _is_from_the_mailbox(enq):
+            out.append(enq)
+    return out
 
 
 def _email_sourced_enquiries():
-    """The enquiries the old mailbox sync made out of ordinary emails.
-
-    Caught two ways, because the sync did not always record a source. It
-    always wrote the subject as "Email — <the email's subject>", and nothing
-    else in the CRM writes that, so the prefix identifies the rest.
-
-    Only those: anything from the website or a portal is a real lead, and
-    anything entered by hand is somebody's own work. Both are left alone,
-    whatever their subject happens to start with.
-    """
-    source = db.func.lower(db.func.coalesce(Enquiry.source, ''))
-    subject = db.func.coalesce(Enquiry.subject, '')
-    return (Enquiry.query
-            .filter(db.or_(
-                source == 'email',
-                db.and_(~source.in_([s.lower() for s in GENUINE_ENQUIRY_SOURCES]),
-                        db.or_(subject.like('Email \u2014 %'),
-                               subject.like('Email - %'),
-                               subject.like('Email %')))))
-            .order_by(Enquiry.created_at.desc()))
+    """What the clean-up page lists: the same enquiries the purge takes."""
+    return _enquiries_to_purge()
 
 
 def _unmatched_enquiries():
@@ -12853,7 +12872,7 @@ def admin_enquiry_cleanup():
     longer does. This lists what that left behind so it can be read over first
     -- nothing is deleted until the button on this page is pressed.
     """
-    doomed = _email_sourced_enquiries().all()
+    doomed = _email_sourced_enquiries()
     by_source = {}
     for e in Enquiry.query.all():
         key = (e.source or '(none)')
@@ -12874,7 +12893,7 @@ def admin_enquiry_cleanup_run():
         flash('Nothing was removed. Type "remove" to confirm.', 'error')
         return redirect(url_for('admin_enquiry_cleanup'))
 
-    doomed = _email_sourced_enquiries().all()
+    doomed = _email_sourced_enquiries()
     removed = 0
     for enq in doomed:
         EnquiryNote.query.filter_by(enquiry_id=enq.id).delete(
@@ -14100,6 +14119,41 @@ def _migrate_transaction_kinds():
             app.logger.info('Retyped %s transaction(s) as Letting or Sale', changed)
 
 
+def _migrate_purge_email_enquiries():
+    """Take every enquiry that was only ever an email out of the register.
+
+    Two things are enquiries: a lead from the website and a lead from Zoopla.
+    Everything else the mailbox filed there is correspondence -- a reply, a
+    solicitor, a supplier, a landlord -- and it is kept in the mailbox, which
+    is where it belongs.
+
+    The sync no longer creates them. This removes the ones it left, and their
+    notes with them. An enquiry from the website or Zoopla is never touched,
+    whatever else is true of it, and neither is one somebody entered by hand
+    with no email behind it.
+
+    Deliberately not a one-off: anything the old behaviour left in a corner of
+    the register goes on the next deploy rather than waiting to be noticed.
+    The page at /admin/enquiry-cleanup lists exactly the same records.
+    """
+    with app.app_context():
+        try:
+            doomed = _enquiries_to_purge()
+            if not doomed:
+                return
+            for enq in doomed:
+                EnquiryNote.query.filter_by(enquiry_id=enq.id).delete(
+                    synchronize_session=False)
+                db.session.delete(enq)
+            db.session.commit()
+            app.logger.info(
+                '%s enquiries that were only emails removed; website and '
+                'Zoopla leads untouched', len(doomed))
+        except Exception:
+            db.session.rollback()
+            app.logger.exception('Could not clear the email enquiries')
+
+
 def _migrate_retire_prospect():
     """Retire "Prospect" as a contact type, without losing anybody.
 
@@ -14382,6 +14436,7 @@ if __name__ == '__main__':
         _migrate_contact_roles()
         _migrate_retire_client()
         _migrate_retire_prospect()
+        _migrate_purge_email_enquiries()
         _migrate_transaction_kinds()
         _migrate_transaction_kind_mismatches()
         _migrate_transaction_kind_from_evidence()
