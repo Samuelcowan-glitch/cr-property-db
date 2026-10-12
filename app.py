@@ -10042,11 +10042,93 @@ def particulars_gaps(data, photo_count):
 
 # ── Invoices ─────────────────────────────────────────────────────────────────
 
+def invoice_fee_basis(project):
+    """What the fee is charged on, and the fee the firm agreed to charge.
+
+    Read in order of how specific the record is: the transaction on this
+    instruction knows the deal that actually happened, so it is believed over
+    the instruction's own headline fee, which in turn is believed over the
+    asking price on the listing. Nothing is invented -- a figure the CRM does
+    not hold comes back as None and the form shows it blank.
+
+    Returns a dict: kind, amount, amount_source, fee_mode, fee_percent,
+    fee_fixed and fee_source.
+    """
+    out = {'kind': 'sale' if project_ref_series(project.instruction_type) == 'sale'
+           else 'letting',
+           'amount': None, 'amount_source': '',
+           'fee_mode': 'percent', 'fee_percent': None, 'fee_fixed': None,
+           'fee_source': ''}
+
+    # The deal, if one has been recorded. Prefer the one furthest along, then
+    # the most recent, so a superseded draft never outranks the real thing.
+    deal = None
+    try:
+        deals = Transaction.query.filter_by(project_id=project.id).all()
+        if deals:
+            rank = {name: n for n, name in enumerate(TRANSACTION_STATUSES)}
+            deal = sorted(
+                deals,
+                key=lambda t: (t.agreed_value is not None,
+                               rank.get(t.status or '', -1),
+                               t.id))[-1]
+    except Exception:
+        deal = None
+
+    if deal is not None:
+        out['kind'] = deal.deal_kind
+        for value, where in ((deal.agreed_value, 'the agreed figure on the transaction'),
+                             (deal.rent_pa, 'the rent on the transaction'),
+                             (deal.value, 'the value on the transaction')):
+            if value:
+                out['amount'], out['amount_source'] = value, where
+                break
+        if deal.fee_type == 'Fixed' and deal.fixed_fee:
+            out.update(fee_mode='fixed', fee_fixed=deal.fixed_fee,
+                       fee_source='the fixed fee on the transaction')
+        elif deal.fee_percent:
+            out.update(fee_mode='percent', fee_percent=deal.fee_percent,
+                       fee_source='the fee percentage on the transaction')
+
+    # The instruction's own agreed fee, where the deal did not carry one.
+    if not out['fee_source']:
+        if project.fee_fixed:
+            out.update(fee_mode='fixed', fee_fixed=project.fee_fixed,
+                       fee_source='the fixed fee on the instruction')
+        elif project.fee_percent:
+            out.update(fee_mode='percent', fee_percent=project.fee_percent,
+                       fee_source='the fee percentage on the instruction')
+
+    # The asking price, where no deal figure has been recorded. Only the unit
+    # that matches the kind of deal: a monthly rent is not an annual one.
+    if out['amount'] is None:
+        listings = getattr(project, 'project_listings', None) or []
+        for lst in listings:
+            price, unit = lst.listing_price, (lst.listing_price_unit or '').lower()
+            if not price:
+                continue
+            if out['kind'] == 'sale' and unit == 'sale':
+                out['amount'], out['amount_source'] = price, 'the asking price on the listing'
+                break
+            if out['kind'] == 'letting' and unit == 'pa':
+                out['amount'], out['amount_source'] = price, 'the asking rent on the listing'
+                break
+            if out['kind'] == 'letting' and unit == 'pcm':
+                out['amount'] = price * 12
+                out['amount_source'] = 'the asking rent on the listing, as a year'
+                break
+
+    return out
+
+
 def invoice_defaults(project):
     """Fill an invoice from what the CRM already knows about the project.
 
-    Everything here is a starting point the user can overwrite on the form.
-    Nothing is invented: a field the CRM has no answer for is left blank rather
+    Everything here is a starting point the user can overwrite on the form, and
+    nothing typed on the form is written back: changing the fee on an invoice
+    changes that invoice only, never the fee agreed on the instruction.
+
+    Nothing is invented. A field the CRM has no answer for is left blank rather
     than guessed at, so an invoice never goes out carrying a made-up figure.
     """
     prop = project.property if project else None
@@ -10079,15 +10161,57 @@ def invoice_defaults(project):
                 bits.append(value)
         property_line = ',  '.join(b for b in bits if b)
 
+    basis = invoice_fee_basis(project)
+    letting = basis['kind'] == 'letting'
+    amount = basis['amount']
+
+    # The fee itself, worked out the way the invoice sets it out.
+    net = None
+    if basis['fee_mode'] == 'fixed' and basis['fee_fixed']:
+        net = round(float(basis['fee_fixed']), 2)
+    elif basis['fee_percent'] and amount:
+        net = round(float(amount) * float(basis['fee_percent']) / 100.0, 2)
+
+    # The two lines that describe the fee, in the firm's own wording.
+    if basis['fee_mode'] == 'fixed' and basis['fee_fixed']:
+        fee_label = 'Our fee as agreed'
+    elif basis['fee_percent']:
+        what = 'the annual rental' if letting else 'the sale price'
+        fee_label = (f"Our fee calculated at {float(basis['fee_percent']):g}% "
+                     f"of {what}")
+    else:
+        fee_label = 'Our fee'
+
+    description = ''
+    if property_line:
+        if amount:
+            figure = f'£{float(amount):,.2f}'
+            tail = (f'at a rental of {figure} pa.' if letting
+                    else f'at a sale price of {figure}.')
+        else:
+            tail = ''
+        kind_word = 'letting' if letting else 'sale'
+        description = clean_invoice_text(
+            f'Agreed {kind_word} fee of {property_line} {tail}')
+
     return {
         'reference': project.project_ref or '',
         'issued_on': date.today().isoformat(),
         'client_name': name,
         'client_address': '\n'.join(address_lines),
         'property_line': property_line,
-        'description': '',
-        'fee_label': 'Our fee',
-        'net': '',
+        'description': description,
+        'fee_label': fee_label,
+        'deal_kind': basis['kind'],
+        'basis_amount': '' if amount is None else f'{float(amount):.2f}',
+        'amount_source': basis['amount_source'],
+        'fee_mode': basis['fee_mode'],
+        'fee_percent': ('' if basis['fee_percent'] is None
+                        else f"{float(basis['fee_percent']):g}"),
+        'fee_fixed': ('' if basis['fee_fixed'] is None
+                      else f"{float(basis['fee_fixed']):.2f}"),
+        'fee_source': basis['fee_source'],
+        'net': '' if net is None else f'{net:.2f}',
         'vat_rate': '20',
     }
 
@@ -10098,8 +10222,26 @@ def clean_invoice_text(value):
 
 
 def _invoice_from_form(form):
-    """Read the invoice form into the shape the generator wants."""
+    """Read the invoice form into the shape the generator wants.
+
+    The fee is worked out here as well as in the browser, so an invoice is the
+    same whether or not the scripting ran: a net amount typed in by hand wins,
+    and otherwise it is the fixed fee or the percentage of the rent or price.
+    Nothing read here is written back to the project -- an adjustment made on
+    this form applies to this invoice alone.
+    """
     issued = _parse_date(form.get('issued_on')) or date.today()
+
+    net = _fnum(form.get('net'))
+    if net in (None, ''):
+        if (form.get('fee_mode') or 'percent') == 'fixed':
+            net = _fnum(form.get('fee_fixed'))
+        else:
+            basis = _fnum(form.get('basis_amount'))
+            percent = _fnum(form.get('fee_percent'))
+            if basis not in (None, '') and percent not in (None, ''):
+                net = round(float(basis) * float(percent) / 100.0, 2)
+
     return {
         'reference': (form.get('reference') or '').strip(),
         'issued_on': issued,
@@ -10108,7 +10250,7 @@ def _invoice_from_form(form):
         'property_line': (form.get('property_line') or '').strip(),
         'description': form.get('description') or '',
         'fee_label': (form.get('fee_label') or '').strip() or 'Our fee',
-        'net': _fnum(form.get('net')),
+        'net': net,
         'vat_rate': _fnum(form.get('vat_rate')),
         'vat': _fnum(form.get('vat')),
         'total': _fnum(form.get('total')),

@@ -89,16 +89,68 @@
       </div>
     </div>
 
-    <div class="fin-band"><h3>The money</h3></div>
+    <div class="fin-band"><h3>The fee</h3></div>
+    {# Filled in from the instruction and the transaction. Changing anything
+       here changes this invoice only -- the fee agreed on the project is not
+       written to from this page. #}
     <div class="box box--grid">
       <div class="frow">
-        <div class="fcell fcell--label">Fee line</div>
+        <div class="fcell fcell--label">
+          {% if values.deal_kind == 'sale' %}Sale price{% else %}Annual rent{% endif %}
+        </div>
         <div class="fcell fcell--edit">
-          <input type="text" name="fee_label" value="{{ values.fee_label }}"
+          <input type="number" step="0.01" min="0" name="basis_amount" id="inv-basis"
+                 value="{{ values.basis_amount }}" form="invoice-form"
+                 placeholder="{% if values.deal_kind == 'sale' %}the agreed sale price{% else %}the agreed annual rent{% endif %}">
+        </div>
+        <div class="fcell fcell--label">Charge the fee as</div>
+        <div class="fcell fcell--edit fcell--readonly">
+          <label style="margin-right:14px;">
+            <input type="radio" name="fee_mode" value="percent" id="inv-mode-pct"
+                   form="invoice-form" {{ 'checked' if values.fee_mode != 'fixed' }}> Percentage
+          </label>
+          <label>
+            <input type="radio" name="fee_mode" value="fixed" id="inv-mode-fix"
+                   form="invoice-form" {{ 'checked' if values.fee_mode == 'fixed' }}> Fixed fee
+          </label>
+        </div>
+      </div>
+      <div class="frow">
+        <div class="fcell fcell--label">Fee percentage</div>
+        <div class="fcell fcell--edit">
+          <input type="number" step="0.01" min="0" name="fee_percent" id="inv-pct"
+                 value="{{ values.fee_percent }}" form="invoice-form" placeholder="e.g. 10">
+        </div>
+        <div class="fcell fcell--label">Fixed fee</div>
+        <div class="fcell fcell--edit">
+          <input type="number" step="0.01" min="0" name="fee_fixed" id="inv-fix"
+                 value="{{ values.fee_fixed }}" form="invoice-form" placeholder="e.g. 2500.00">
+        </div>
+      </div>
+      {% if values.fee_source or values.amount_source %}
+      <div class="frow">
+        <div class="fcell fcell--label">Taken from</div>
+        <div class="fcell fcell--edit fcell--readonly" style="grid-column:span 3;">
+          <span class="ro-note">
+            {{ values.fee_source or 'no agreed fee recorded' }}{% if values.amount_source %},
+            and {{ values.amount_source }}{% endif %}. Changing it here does not
+            change the instruction.
+          </span>
+        </div>
+      </div>
+      {% endif %}
+      <div class="frow">
+        <div class="fcell fcell--label">Fee line</div>
+        <div class="fcell fcell--edit" style="grid-column:span 3;">
+          <input type="text" name="fee_label" id="inv-feelabel" value="{{ values.fee_label }}"
                  placeholder="Our fee calculated at 7.5% of the annual rental"
                  form="invoice-form">
         </div>
       </div>
+    </div>
+
+    <div class="fin-band"><h3>The money</h3></div>
+    <div class="box box--grid">
       <div class="frow">
         <div class="fcell fcell--label">Net amount</div>
         <div class="fcell fcell--edit">
@@ -142,34 +194,86 @@
 </div>
 
 <script>
-// Show what the invoice will say before it is generated: fill the VAT and the
-// total from the net as it is typed, while leaving both free to be overridden.
+// The fee, the VAT and the total follow from the rent or price and the fee the
+// firm agreed. Everything stays editable: the moment a figure is typed over,
+// that figure is left alone and the ones below it keep following.
 (function () {
-  var net = document.getElementById('inv-net');
-  var rate = document.getElementById('inv-rate');
-  var vat = document.getElementById('inv-vat');
-  var total = document.getElementById('inv-total');
+  function el(id) { return document.getElementById(id); }
+  var basis = el('inv-basis'), pct = el('inv-pct'), fix = el('inv-fix');
+  var modePct = el('inv-mode-pct'), modeFix = el('inv-mode-fix');
+  var net = el('inv-net'), rate = el('inv-rate'), vat = el('inv-vat'),
+      total = el('inv-total'), feeLabel = el('inv-feelabel');
   if (!net || !rate || !vat || !total) return;
 
-  var vatTouched = false, totalTouched = false;
-  vat.addEventListener('input', function () { vatTouched = true; });
-  total.addEventListener('input', function () { totalTouched = true; });
+  // A field stops being calculated once it has been typed into by hand.
+  var touched = {};
+  [['net', net], ['vat', vat], ['total', total], ['label', feeLabel]]
+    .forEach(function (pair) {
+      if (pair[1]) pair[1].addEventListener('input', function () { touched[pair[0]] = true; });
+    });
+
+  function num(input) {
+    if (!input) return NaN;
+    var v = parseFloat(input.value);
+    return isNaN(v) ? NaN : v;
+  }
+
+  function fixedMode() { return modeFix && modeFix.checked; }
 
   function recalc() {
-    var n = parseFloat(net.value);
-    var r = parseFloat(rate.value);
-    if (isNaN(n)) return;
+    // Net: either the fixed fee, or the percentage of the rent or price.
+    if (!touched.net) {
+      if (fixedMode()) {
+        var f = num(fix);
+        if (!isNaN(f)) net.value = f.toFixed(2);
+      } else {
+        var b = num(basis), p = num(pct);
+        if (!isNaN(b) && !isNaN(p)) net.value = (Math.round(b * p) / 100).toFixed(2);
+      }
+    }
+    // VAT and the total follow the net.
+    var n = num(net);
+    var r = num(rate);
     if (isNaN(r)) r = 0;
-    var v = Math.round(n * r) / 100;
-    if (!vatTouched) vat.value = v.toFixed(2);
-    if (!totalTouched) {
-      var shown = vatTouched ? parseFloat(vat.value) || 0 : v;
-      total.value = (n + shown).toFixed(2);
+    if (!isNaN(n)) {
+      var v = Math.round(n * r) / 100;
+      if (!touched.vat) vat.value = v.toFixed(2);
+      if (!touched.total) {
+        var shown = num(vat);
+        total.value = (n + (isNaN(shown) ? v : shown)).toFixed(2);
+      }
+    }
+    // The wording on the invoice follows the fee, until it is written over.
+    if (feeLabel && !touched.label) {
+      var kind = '{{ values.deal_kind }}' === 'sale' ? 'the sale price' : 'the annual rental';
+      if (fixedMode()) {
+        feeLabel.value = 'Our fee as agreed';
+      } else {
+        var p2 = num(pct);
+        feeLabel.value = isNaN(p2) ? 'Our fee'
+          : 'Our fee calculated at ' + String(p2) + '% of ' + kind;
+      }
     }
   }
-  net.addEventListener('input', recalc);
-  rate.addEventListener('input', recalc);
-  recalc();
+
+  // Only one of the two fee boxes is in play at a time.
+  function showMode() {
+    if (!pct || !fix) return;
+    var fixed = fixedMode();
+    pct.disabled = fixed;
+    fix.disabled = !fixed;
+    pct.style.opacity = fixed ? 0.45 : 1;
+    fix.style.opacity = fixed ? 1 : 0.45;
+    recalc();
+  }
+
+  [basis, pct, fix, rate].forEach(function (input) {
+    if (input) input.addEventListener('input', recalc);
+  });
+  [modePct, modeFix].forEach(function (input) {
+    if (input) input.addEventListener('change', showMode);
+  });
+  showMode();
 })();
 </script>
 {% endblock %}
