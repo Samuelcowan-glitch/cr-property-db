@@ -8787,10 +8787,49 @@ def _enquiry_overview(enqs, today):
     contacted = sum(1 for e in enqs if e.last_contact_date)
     overdue   = sum(1 for e in enqs if e.next_follow_up and e.next_follow_up < today
                     and not e.archived)
-    converted = sum(1 for e in enqs if (e.stage == 'Heads of Terms Signed'
-                                        or e.status == 'Won'))
-    viewings  = sum(1 for e in enqs if enquiry_bucket(e) == 'viewing')
-    terms     = sum(1 for e in enqs if e.stage in ('Terms Agreed', 'Heads of Terms Issued'))
+
+    # Viewings and conversions were counted from the stage alone, which is a
+    # field somebody has to advance by hand. A viewing booked in the diary and
+    # an enquiry that became a deal are both recorded elsewhere, and neither
+    # was being read -- so the dashboard said none had happened.
+    #
+    # Counted per enquiry, not per event: an applicant shown three properties
+    # is one enquiry that reached a viewing.
+    viewed_ids = set()
+    if ids:
+        viewed_ids = {row[0] for row in db.session.query(DiaryEvent.enquiry_id)
+                      .filter(DiaryEvent.enquiry_id.in_(ids),
+                              DiaryEvent.event_type == 'viewing').all()
+                      if row[0]}
+
+    # A conversion is a deal, not a conversation: the enquiry's instruction has
+    # to carry a transaction that counts towards the firm's figures.
+    converted_ids = set()
+    project_ids = {e.project_id for e in enqs if e.project_id}
+    if project_ids:
+        live = {t.project_id for t in Transaction.query.filter(
+            Transaction.project_id.in_(project_ids)).all()
+            if t.counts_towards_totals}
+        converted_ids = {e.id for e in enqs if e.project_id in live}
+
+    viewings  = sum(1 for e in enqs
+                    if e.id in viewed_ids
+                    or e.stage in ('Viewing Arranged', 'Viewing Completed'))
+    converted = sum(1 for e in enqs
+                    if e.id in converted_ids
+                    or e.stage == 'Heads of Terms Signed' or e.status == 'Won')
+    terms     = sum(1 for e in enqs
+                    if e.stage in ('Terms Agreed', 'Heads of Terms Issued')
+                    or e.id in converted_ids)
+
+    # What follow-up performance is actually about: who is waiting, what is due
+    # and what has slipped. How many emails were exchanged is activity, not
+    # performance, and it lives on the enquiry record.
+    awaiting = sum(1 for e in enqs
+                   if not e.last_contact_date and not e.archived
+                   and enquiry_bucket(e) not in ('closed', 'archived'))
+    due_today = sum(1 for e in enqs
+                    if e.next_follow_up == today and not e.archived)
 
     # Correspondence, counted in one go rather than per enquiry.
     notes = emails = 0
@@ -8829,26 +8868,27 @@ def _enquiry_overview(enqs, today):
         'days': days, 'peak': peak,
         'buckets': buckets,
         'panels': [
-            panel('Enquiry summary',
+            panel('Enquiry Overview',
                   [('Enquiries received', total),
                    ('Matched to a property', matched),
                    ('Contact made', contacted)],
                   'Matched to a property', rate(matched)),
-            panel('Pipeline summary',
+            panel('Applicant Pipeline',
                   [('Contact made', contacted),
                    ('Viewing arranged', viewings),
                    ('Terms Agreed', terms),
                    ('Converted', converted)],
                   'Conversion rate', rate(converted)),
-            panel('Follow-up summary',
-                  [('Notes and calls logged', notes),
-                   ('Emails exchanged', emails),
-                   ('Follow-ups overdue', overdue)],
+            panel('Follow-up Performance',
+                  [('Awaiting first response', awaiting),
+                   ('Follow-ups due today', due_today),
+                   ('Follow-ups overdue', overdue),
+                   ('Notes and calls logged', notes)],
                   'Followed up on time', rate(contacted - overdue) if total else '—'),
         ],
         'rings': [
-            {'title': 'What applicants are looking for', 'slices': _slice_counts(look_for)},
-            {'title': 'Enquiries received by source', 'slices': _slice_counts(sources)},
+            {'title': 'Applicant Requirements', 'slices': _slice_counts(look_for)},
+            {'title': 'Enquiry Sources', 'slices': _slice_counts(sources)},
         ],
     }
 
