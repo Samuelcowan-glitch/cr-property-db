@@ -10854,9 +10854,10 @@ def _record_invoice_against_transaction(project, data, number):
         # On commission_invoiced, not fixed_fee: this is what this bill was
         # for, not a change to the fee the deal was agreed at.
         deal.commission_invoiced = round(float(net), 2)
-    if deal.status in (None, '', 'Draft', 'In Progress', 'Terms Agreed',
-                       'Solicitors Instructed', 'Completed'):
-        deal.status = 'Commission Billed'
+    # The status is left alone. Billed is the invoice date, not the status, so
+    # moving it would say something about where the deal has got to that
+    # raising an invoice does not: a deal completes, then it is invoiced, then
+    # it is paid, and those are three separate things to record.
     return deal
 
 
