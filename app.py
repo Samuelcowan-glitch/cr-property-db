@@ -12356,11 +12356,23 @@ GENUINE_ENQUIRY_SOURCES = ('Website', 'Zoopla', 'Rightmove', 'OnTheMarket')
 def _email_sourced_enquiries():
     """The enquiries the old mailbox sync made out of ordinary emails.
 
+    Caught two ways, because the sync did not always record a source. It
+    always wrote the subject as "Email — <the email's subject>", and nothing
+    else in the CRM writes that, so the prefix identifies the rest.
+
     Only those: anything from the website or a portal is a real lead, and
-    anything entered by hand is somebody's own work. Both are left alone.
+    anything entered by hand is somebody's own work. Both are left alone,
+    whatever their subject happens to start with.
     """
+    source = db.func.lower(db.func.coalesce(Enquiry.source, ''))
+    subject = db.func.coalesce(Enquiry.subject, '')
     return (Enquiry.query
-            .filter(db.func.lower(db.func.coalesce(Enquiry.source, '')) == 'email')
+            .filter(db.or_(
+                source == 'email',
+                db.and_(~source.in_([s.lower() for s in GENUINE_ENQUIRY_SOURCES]),
+                        db.or_(subject.like('Email \u2014 %'),
+                               subject.like('Email - %'),
+                               subject.like('Email %')))))
             .order_by(Enquiry.created_at.desc()))
 
 
