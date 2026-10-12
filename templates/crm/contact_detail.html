@@ -141,6 +141,21 @@
         <div class="fcell fcell--label">E-mail</div>
         <div class="fcell fcell--edit"><input type="text" name="email" value="{{ contact.email or '' }}" placeholder="Not added"></div>
       </div>
+      {# Where this person lives, as opposed to where they work. An invoice can
+         be addressed to either; the company's address belongs to their
+         organisation and is not copied onto them. #}
+      <div class="frow">
+        <div class="fcell fcell--label fcell--top">Personal address</div>
+        <div class="fcell fcell--edit">
+          <textarea name="address" rows="3"
+                    placeholder="Not added">{{ contact.address or '' }}</textarea>
+        </div>
+        <div class="fcell fcell--label">Postcode</div>
+        <div class="fcell fcell--edit">
+          <input type="text" name="postcode" value="{{ contact.postcode or '' }}"
+                 placeholder="Not added">
+        </div>
+      </div>
     </div>
 
     {# What this contact gets depends on what they are. A tenant or a buyer is

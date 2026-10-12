@@ -58,15 +58,33 @@
       <div class="frow">
         <div class="fcell fcell--label">Client / landlord</div>
         <div class="fcell fcell--edit">
-          <input type="text" name="client_name" value="{{ values.client_name }}"
+          <input type="text" name="client_name" id="inv-client-name"
+                 value="{{ values.client_name }}"
                  placeholder="e.g. Foster Germany Limited" form="invoice-form">
+        </div>
+        <div class="fcell fcell--label">Invoice to their</div>
+        {# A landlord invoiced as a company and one invoiced as a person need
+           different addresses. Both come off their record; switching here
+           changes this invoice and nothing else. #}
+        <div class="fcell fcell--edit fcell--readonly">
+          <label style="margin-right:14px;">
+            <input type="radio" name="address_kind" value="business" id="inv-addr-biz"
+                   form="invoice-form" {{ 'checked' if values.address_kind != 'personal' }}>
+            Business address
+          </label>
+          <label>
+            <input type="radio" name="address_kind" value="personal" id="inv-addr-per"
+                   form="invoice-form" {{ 'checked' if values.address_kind == 'personal' }}>
+            Personal address
+          </label>
         </div>
       </div>
       <div class="frow">
         <div class="fcell fcell--label">Address</div>
         <div class="fcell fcell--edit">
           {# One line per line, exactly as it should read on the invoice. #}
-          <textarea name="client_address" rows="4" form="invoice-form"
+          <textarea name="client_address" id="inv-client-address" rows="4"
+                    form="invoice-form"
                     placeholder="591-593 Kings Road&#10;London&#10;SW6 2ER">{{ values.client_address }}</textarea>
         </div>
       </div>
@@ -212,6 +230,37 @@
           style="width:100%;height:900px;border:1px solid rgba(14,31,68,.18);background:#fff;"></iframe>
 </div>
 
+<script>
+// Switching between the two addresses the CRM holds for this client. Either
+// can still be typed over; once it has been, the switch leaves it alone.
+(function () {
+  var biz = document.getElementById('inv-addr-biz');
+  var per = document.getElementById('inv-addr-per');
+  var box = document.getElementById('inv-client-address');
+  var who = document.getElementById('inv-client-name');
+  if (!biz || !per || !box) return;
+
+  var held = {
+    business: { name: {{ values.business_name|tojson }},
+                address: {{ values.business_address|tojson }} },
+    personal: { name: {{ values.personal_name|tojson }},
+                address: {{ values.personal_address|tojson }} }
+  };
+  var touched = false;
+  box.addEventListener('input', function () { touched = true; });
+
+  function apply() {
+    var pick = held[per.checked ? 'personal' : 'business'];
+    if (!touched) box.value = pick.address;
+    if (who && !who.dataset.touched && pick.name) who.value = pick.name;
+    box.placeholder = pick.address
+      ? '' : 'Nothing recorded — type it, or add it to their record';
+  }
+  if (who) who.addEventListener('input', function () { who.dataset.touched = '1'; });
+  biz.addEventListener('change', apply);
+  per.addEventListener('change', apply);
+}());
+</script>
 <script>
 // The fee, the VAT and the total follow from the rent or price and the fee the
 // firm agreed. Everything stays editable: the moment a figure is typed over,

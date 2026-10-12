@@ -1565,6 +1565,11 @@ class Contact(db.Model):
     phone = db.Column(db.String(50))
     mobile = db.Column(db.String(50))
     email = db.Column(db.String(120))
+    # Where this person lives, as opposed to where they work. A landlord
+    # who is an individual is invoiced here; the company address belongs
+    # to their organisation and is not duplicated onto them.
+    address      = db.Column(db.String(400))
+    postcode     = db.Column(db.String(20))
     contact_type = db.Column(db.String(50))
     # Free labels, comma separated: "Key account, Kings Road, Christmas card".
     # Tags say what somebody is to us; a role says what they are doing.
@@ -8096,6 +8101,8 @@ CONTACT_FIELDS = [
     ('first_name',        'first_name',        None),
     ('last_name',         'last_name',         None),
     ('job_title',         'job_title',         _ftext),
+    ('address',           'address',           _ftext),
+    ('postcode',          'postcode',          _ftext),
     ('phone',             'phone',             _ftext),
     ('mobile',            'mobile',            _ftext),
     ('email',             'email',             _ftext),
@@ -10176,29 +10183,41 @@ def solicitors():
 app.jinja_env.globals['solicitors'] = solicitors
 
 
-def contact_address_lines(contact):
-    """The address to write against a contact.
-
-    A contact records the person, not where they sit: the address belongs to
-    the firm they are at, which is an organisation with a registered office.
-    This reads it from there rather than asking for it twice.
-    """
-    if contact is None:
-        return []
-    org = getattr(contact, 'organisation', None)
-    if org is None:
-        return []
-    raw = (getattr(org, 'registered_address', None)
-           or getattr(org, 'trading_address', None)
-           or getattr(org, 'address', None) or '')
+def _address_lines(raw, postcode=None):
+    """An address written out a line at a time, blanks dropped."""
     lines = [clean_invoice_text(part) for part in
-             str(raw).replace('\r\n', '\n').replace('\r', '\n')
+             str(raw or '').replace('\r\n', '\n').replace('\r', '\n')
              .replace(',', '\n').split('\n')]
     lines = [l for l in lines if l]
-    postcode = clean_invoice_text(getattr(org, 'postcode', None))
+    postcode = clean_invoice_text(postcode)
     if postcode and postcode not in lines:
         lines.append(postcode)
     return lines
+
+
+def contact_address_lines(contact, which='business'):
+    """An address to write against a contact.
+
+    'business' is the firm they are at -- the organisation's, where an invoice
+    address is recorded in preference to the registered one. 'personal' is
+    where the person themselves lives, which is what an individual landlord is
+    invoiced at. Neither is copied onto the other: each is recorded once, where
+    it belongs.
+    """
+    if contact is None:
+        return []
+    if which == 'personal':
+        return _address_lines(getattr(contact, 'address', None),
+                              getattr(contact, 'postcode', None))
+    org = getattr(contact, 'organisation', None)
+    if org is None:
+        return []
+    return _address_lines(
+        getattr(org, 'invoice_address', None)
+        or getattr(org, 'registered_address', None)
+        or getattr(org, 'trading_address', None)
+        or getattr(org, 'address', None),
+        getattr(org, 'postcode', None))
 
 
 def solicitor_block(contact, typed_name='', typed_firm='',
@@ -10725,16 +10744,24 @@ def invoice_defaults(project):
     # Who it is addressed to: the linked contact if there is one, else the
     # name typed on the project.
     name = ''
+    person_name = ''
     address_lines = []
+    personal_lines = []
     if contact is not None:
+        org = getattr(contact, 'organisation', None)
+        person_name = clean_invoice_text(
+            ' '.join(x for x in [getattr(contact, 'first_name', ''),
+                                 getattr(contact, 'last_name', '')] if x))
+        # The company's name where there is one: a landlord invoiced as a
+        # business is the company, not the person who signs for it.
         name = clean_invoice_text(
-            getattr(contact, 'company', None)
-            or ' '.join(x for x in [getattr(contact, 'first_name', ''),
-                                    getattr(contact, 'last_name', '')] if x))
-        # A contact records the person; the address belongs to the firm they
-        # are at. Reading the fields straight off the contact found nothing,
-        # so the address block on an invoice was always empty.
-        address_lines = contact_address_lines(contact)
+            (getattr(org, 'legal_name', None) or getattr(org, 'name', None)
+             if org is not None else None) or person_name)
+        # Both addresses the CRM holds, so the form can offer the choice. The
+        # person's own address lives on their contact; the company's on their
+        # organisation. Neither is copied onto the other.
+        address_lines = contact_address_lines(contact, 'business')
+        personal_lines = contact_address_lines(contact, 'personal')
     if not name:
         name = clean_invoice_text(project.client or project.landlord_name)
 
@@ -10785,7 +10812,15 @@ def invoice_defaults(project):
         'next_number': peek_invoice_number(),
         'issued_on': date.today().isoformat(),
         'client_name': name,
-        'client_address': '\n'.join(address_lines),
+        'client_address': '\n'.join(address_lines or personal_lines),
+        # What the form offers to switch between: a landlord invoiced as a
+        # company and one invoiced as a person need different addresses, and
+        # the CRM holds each in its own place.
+        'business_name': name,
+        'business_address': '\n'.join(address_lines),
+        'personal_name': person_name or name,
+        'personal_address': '\n'.join(personal_lines),
+        'address_kind': 'business' if address_lines else 'personal',
         'property_line': property_line,
         'description': description,
         'fee_label': fee_label,
@@ -13023,6 +13058,7 @@ def _migrate_project_columns():
             ('req_size_min', 'REAL'),      ('req_size_max', 'REAL'),
             ('req_budget_min', 'REAL'),    ('req_budget_max', 'REAL'),
             ('req_budget_unit', 'TEXT'),   ('req_notes', 'TEXT'),
+            ('address', 'TEXT'),           ('postcode', 'TEXT'),
         ]
         _add_columns('contacts', cont_cols)
 
