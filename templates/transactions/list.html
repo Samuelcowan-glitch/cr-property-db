@@ -465,7 +465,7 @@
     {{ ff.fee_earner_filter(args.get('fee_earner_id')) }}
 
     <select name="client">
-      <option value="">All clients</option>
+      <option value="">All owners</option>
       {% for cl in clients %}
       <option value="{{ cl }}" {{ 'selected' if args.get('client') == cl }}>{{ cl }}</option>
       {% endfor %}
@@ -537,7 +537,9 @@
             {% if t.property %}{{ t.property.address }}{% if t.property.postcode %}, {{ t.property.postcode }}{% endif %}
             {% else %}<span class="muted">—</span>{% endif %}
           </td>
-          <td class="party">{{ t.client or '—' }}</td>
+          {# The same owner the record shows, read from wherever the CRM
+             holds it, so the list and the record cannot disagree. #}
+          <td class="party">{{ t.owner_display or '—' }}</td>
           <td class="party">{{ t.counterparty or '—' }}</td>
           {# The same word the record shows, so the two cannot disagree. #}
           <td>{{ t.kind_label }}</td>

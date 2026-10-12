@@ -964,6 +964,20 @@ class Transaction(db.Model):
         return 'sale' if self.is_sale else 'letting'
 
     @property
+    def owner_display(self):
+        """The owner's name, wherever the CRM records it.
+
+        One answer, used by the list and the record alike, so the two cannot
+        show different owners for the same deal.
+        """
+        return resolve_owner(self)[1]
+
+    @property
+    def owner_source(self):
+        """Where the owner was read from, for a page that wants to say."""
+        return resolve_owner(self)[2]
+
+    @property
     def kind_label(self):
         """The word to show for this deal, anywhere it is shown.
 
@@ -4949,7 +4963,7 @@ def _transaction_filters(rows, args):
     for key, get in (('type', lambda t: t.transaction_type),
                      ('status', lambda t: t.status),
                      ('fee_earner_id', lambda t: t.fee_earner_id),
-                     ('client', lambda t: t.client)):
+                     ('client', lambda t: t.owner_display)):
         want = (args.get(key) or '').strip()
         if want:
             # Compared as text, because a fee earner is an id and a status is
@@ -5033,7 +5047,10 @@ def transactions_list():
         segment=(request.args.get('stage'), request.args.get('bucket')),
         sort=sort, dir=direction, args=request.args, today=date.today(),
 
-        clients=sorted({t.client for t in everyone if t.client}),
+        # The owners the list actually shows, so filtering by one finds
+        # the rows it is sitting beside.
+        clients=sorted({t.owner_display for t in everyone
+                        if t.owner_display}),
         properties=Property.query.order_by(Property.address).all(),
         listed_totals={
             'count': len(listed),
@@ -5160,7 +5177,17 @@ def transaction_save(id):
             t.property_id = linked.property_id
 
     before = (t.status, t.completion_date, t.net_commission)
+    was_project = t.project_id
     apply_form_fields(t, form, TRANSACTION_FIELDS)
+    # Moved to another instruction, the owner goes with it -- but only where
+    # the one on the deal was inherited rather than chosen. An owner somebody
+    # picked for this deal is theirs to change.
+    if t.project_id != was_project:
+        link = current_org_link(owner_role_for(t), transaction_id=t.id)
+        if link is not None and (link.notes or '').startswith('Taken from the'):
+            db.session.delete(link)
+            db.session.flush()
+        inherit_party_from_project(t)
     # The break switch, for the same reason the listing switches are handled
     # apart: an unticked box sends nothing, so the page says once that it owns
     # the field and the save reads it only then.
@@ -5307,32 +5334,107 @@ def link_owner_from_project(transaction, project):
     return None
 
 
-def inherit_party_from_project(transaction, project):
-    """Put the instruction's client on the deal as its owner, at creation.
+def owner_role_for(transaction):
+    """What the owner's side of this deal is called: Seller, or Landlord."""
+    return 'Seller' if transaction.is_sale else 'Landlord'
 
-    The instruction already records who the landlord or seller is, and links
-    their organisation. A transaction made from it is the same deal, so the
-    link is inherited rather than left for somebody to make again -- which is
-    what left the record saying a name had been matched when it was actually
-    known.
 
-    Only at creation, only the owner's side, and only where nothing is linked
-    already: an existing record is still offered the link rather than having
-    one written while somebody is reading the page.
+def resolve_owner(transaction):
+    """Who owns the property on this deal, and where that was read from.
+
+    Looked for in the order of how closely it is tied to the deal: the
+    organisation linked on the transaction itself, then the one linked on the
+    instruction, then the one on the property. Failing all three, the names
+    recorded as text -- the instruction's client, then whoever was typed on the
+    transaction.
+
+    Returns (organisation, name, source). Nothing is copied anywhere: the deal
+    reads the owner from wherever it is recorded, so correcting it once
+    corrects it everywhere it shows.
     """
-    if transaction is None or project is None:
+    if transaction is None:
+        return None, '', ''
+    role = owner_role_for(transaction)
+
+    link = current_org_link(role, transaction_id=transaction.id)
+    if link is not None:
+        return link.organisation, link.organisation.display_name, 'this deal'
+
+    project = transaction.project
+    if project is not None:
+        link = current_org_link(role, project_id=project.id)
+        if link is not None:
+            return link.organisation, link.organisation.display_name, \
+                'the instruction'
+
+    if transaction.property_id:
+        link = current_org_link(role, property_id=transaction.property_id)
+        if link is not None:
+            return link.organisation, link.organisation.display_name, \
+                'the property'
+
+    if project is not None:
+        who = getattr(project, 'client_contact', None)
+        if who is not None:
+            org = getattr(who, 'organisation', None)
+            if org is not None:
+                return org, org.display_name, 'the instruction'
+            return None, who.full_name, 'the instruction'
+        typed = clean_invoice_text(project.client or project.landlord_name)
+        if typed:
+            return None, typed, 'the instruction'
+
+    typed = clean_invoice_text(
+        (transaction.vendor if transaction.is_sale else transaction.landlord)
+        or transaction.client)
+    return None, typed, 'this deal' if typed else ''
+
+
+def inherit_party_from_project(transaction, project=None):
+    """Link the owner onto the deal from wherever the CRM already knows them.
+
+    The instruction records who the landlord or seller is, and so does the
+    property. A transaction made against either is the same owner, so the link
+    is inherited rather than left for somebody to make again -- which is what
+    left the record saying a name had been matched when it was actually known.
+
+    Looked for on the instruction first, then the property, then the
+    instruction's client contact. Only the owner's side, and only where
+    nothing is linked on the deal already.
+    """
+    if transaction is None:
         return None
-    who = getattr(project, 'client_contact', None)
-    if who is None or not who.organisation_id:
-        return None
-    role = 'Seller' if project.is_sale else 'Landlord'
+    project = project if project is not None else transaction.project
+    role = owner_role_for(transaction)
     if current_org_link(role, transaction_id=transaction.id):
         return None
+
+    org_id = contact_id = None
+
+    if project is not None:
+        link = current_org_link(role, project_id=project.id)
+        if link is not None:
+            org_id, contact_id = link.organisation_id, link.contact_id
+
+    if org_id is None and transaction.property_id:
+        link = current_org_link(role, property_id=transaction.property_id)
+        if link is not None:
+            org_id, contact_id = link.organisation_id, link.contact_id
+
+    if org_id is None and project is not None:
+        who = getattr(project, 'client_contact', None)
+        if who is not None and who.organisation_id:
+            org_id, contact_id = who.organisation_id, who.id
+
+    if org_id is None:
+        return None
+
     link = OrganisationRole(
-        organisation_id=who.organisation_id, role=role,
-        transaction_id=transaction.id, contact_id=who.id,
+        organisation_id=org_id, role=role,
+        transaction_id=transaction.id, contact_id=contact_id,
         start_date=date.today(),
-        notes='Taken from the instruction when the transaction was created.',
+        notes='Taken from the instruction or the property when the deal was '
+              'created.',
         created_by=getattr(current_user, 'username', None))
     db.session.add(link)
     return link
@@ -13838,14 +13940,15 @@ def _migrate_inherit_transaction_parties():
     """
     with app.app_context():
         try:
-            marker = 'transaction_parties_inherited'
+            marker = 'transaction_parties_inherited_v2'
             if db.session.query(RefCounter).filter_by(
                     name=marker).one_or_none() is not None:
                 return
             linked = 0
-            for t in Transaction.query.filter(
-                    Transaction.project_id.isnot(None)).all():
-                if inherit_party_from_project(t, t.project) is not None:
+            # Every deal, not only those on an instruction: the owner may be
+            # linked to the property instead.
+            for t in Transaction.query.all():
+                if inherit_party_from_project(t) is not None:
                     linked += 1
             db.session.add(RefCounter(name=marker, value=1))
             db.session.commit()
