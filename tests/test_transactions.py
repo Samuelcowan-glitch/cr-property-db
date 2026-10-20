@@ -316,11 +316,17 @@ def page(url):
 
 
 html = page('/transactions')
-for label in ['Transactions', 'Completed this month', 'Commission Billed',
-              'Billed this month', 'Commission received', 'Commission outstanding',
-              'Total transaction value', 'Average commission']:
+for label in ['Transactions', 'Completed this month', 'Commission billed',
+              'Billed this month', 'Commission received', 'Commission outstanding']:
     assert label in html, f'the {label} card is missing'
-print('17. all ten figures are on the dashboard')
+# Total transaction value and Average commission were taken off the dashboard
+# deliberately: a total that mixes a sale price with an annual rent is not a
+# number anyone can act on, and an average commission across both is less use
+# again. Both are still worked out — transaction_dashboard() returns them and
+# sections 9 and 10 above check the arithmetic — they are simply not shown.
+for gone in ['Total transaction value', 'Average commission']:
+    assert gone not in html, f'the {gone} card is back on the dashboard'
+print('17. the figures that earn their place are on the dashboard')
 
 
 # ─── 18. Money is written the way an invoice writes it ───────────────────────
@@ -700,7 +706,10 @@ print('40. no break ticks and unticks, without disturbing the date')
 # debt nobody has been asked for.
 #
 # A record of its own, because the ones above have payments against them.
-BILL = make(reference='TR-0100', status='Terms Agreed', client='Invoice Test Ltd',
+# TR-0900, not TR-0100: section 11 above already made TR-0100..TR-0103, and
+# the reference is unique on the table, so reusing one makes this a database
+# error rather than a test failure.
+BILL = make(reference='TR-0900', status='Terms Agreed', client='Invoice Test Ltd',
             agreed_value=50000, fee_type='Percentage', fee_percent=10.0)
 with app.app_context():
     t = get(BILL)

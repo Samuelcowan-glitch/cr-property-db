@@ -153,6 +153,12 @@ with app.app_context():
 print('4. the record page saves what it shows and leaves the rest alone')
 
 # ══ 5. Project: open → edit → save → refresh → reopen ══════════════════════
+with app.app_context():
+    REF_BEFORE = Project.query.get(pid).project_ref
+# project_ref is posted deliberately. A reference is allocated once and is
+# immutable, so the save must ignore it — including when it is put into the
+# request by hand, which is the only way it can arrive, since no page offers
+# a field for it.
 r = cl.post(f'/projects/{pid}/edit', data={
     'instruction_type': 'For Sale – Available', 'project_ref': 'CR/2026/009',
     'status': 'On Hold', 'fee_earner': 'K. Cowan', 'client': 'Bellweather Retail',
@@ -162,14 +168,19 @@ assert r.status_code == 200
 with app.app_context():
     p = Project.query.get(pid)
     assert p.instruction_type == 'For Sale – Available'
-    assert p.project_ref == 'CR/2026/009' and p.status == 'On Hold'
+    assert p.status == 'On Hold'
+    assert p.project_ref == REF_BEFORE, \
+        f'the reference was changed by a save: {REF_BEFORE} became {p.project_ref}'
     assert p.client == 'Bellweather Retail' and p.fee_earner == 'K. Cowan'
     assert p.name == 'Letting — 2A Britannia Way', 'the project was renamed'
     assert p.notes == 'Background worth keeping.', 'the notes were wiped by a save'
 html = page(f'/projects/{pid}')
-for shown in ['CR/2026/009', 'Bellweather Retail', 'K. Cowan', 'For Sale – Available']:
+for shown in ['Bellweather Retail', 'K. Cowan', 'For Sale – Available']:
     assert shown in html, f'{shown} is not shown after saving'
-print('5. a project saves and shows it again, without losing its name or notes')
+assert 'CR/2026/009' not in html, 'the reference posted by hand was accepted'
+if REF_BEFORE:
+    assert REF_BEFORE in html, 'the project stopped showing its own reference'
+print('5. a project saves and shows it again, and its reference cannot be changed')
 
 # ══ 6. Neither record page shows the other records' list ═══════════════════
 for name, url in [('project', f'/projects/{pid}'), ('property', f'/properties/{prop_id}')]:
@@ -247,7 +258,13 @@ for name, url in [('list', '/properties'), ('record', f'/properties/{prop_id}'),
     low = page(url).lower()
     assert 'reference' not in low, f'a reference appears on the property {name}'
     assert 'project_ref' not in low, f'a reference field appears on the property {name}'
-assert 'project_ref' in page(f'/projects/{pid}'), 'the project lost its reference'
+# A project still shows one, as text: there is no project_ref field anywhere
+# any more, because the reference cannot be typed or changed.
+proj_page = page(f'/projects/{pid}')
+assert 'name="project_ref"' not in proj_page, 'the reference is editable again'
+with app.app_context():
+    ref = Project.query.get(pid).project_ref
+assert ref and ref in proj_page, 'the project lost its reference'
 print('12. properties carry no reference number; projects keep theirs')
 
 

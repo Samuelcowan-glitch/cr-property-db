@@ -137,7 +137,7 @@ with A.app.app_context():
     t = A.Transaction.query.get(offer.transaction_id)
     assert t.property_id == A.Project.query.get(LETTING).property_id
     assert t.project_id == LETTING
-    assert t.transaction_type == 'Leasehold', t.transaction_type
+    assert t.transaction_type == 'Letting', t.transaction_type
     assert t.landlord == 'Jonathan Baker', t.landlord
     assert t.tenant == 'Richard Hockney', t.tenant
     assert t.rent_pa == 57260
@@ -216,7 +216,7 @@ assert r.status_code == 200
 with A.app.app_context():
     sale_offer = A.Offer.query.get(SALE_OFFER)
     t = A.Transaction.query.get(sale_offer.transaction_id)
-    assert t.transaction_type == 'Capital', t.transaction_type
+    assert t.transaction_type == 'Sale', t.transaction_type
     assert t.vendor == 'Jonathan Baker' and t.purchaser == 'Richard Hockney'
     assert t.value == 850000 and t.rent_pa is None
 print('8. a sale offer makes a capital transaction with a seller and a buyer')

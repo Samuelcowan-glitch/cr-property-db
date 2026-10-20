@@ -450,7 +450,11 @@
 
     <select name="type">
       <option value="">All types</option>
-      {% for opt in ['Capital', 'Leasehold'] %}
+      {# TRANSACTION_KINDS, not the 'Capital' and 'Leasehold' this offered
+         before: those are the words the field took years ago, nothing on the
+         table is stored as either any more, and so filtering by type could
+         only ever come back empty. #}
+      {% for opt in TRANSACTION_KINDS %}
       <option value="{{ opt }}" {{ 'selected' if args.get('type') == opt }}>{{ opt }}</option>
       {% endfor %}
     </select>

@@ -70,7 +70,10 @@ for box in ['Instruction Detail', 'Contact Details']:
 # record afterwards.
 assert 'name="name"' in new, 'the create page lost its project name field'
 assert 'name="name"' not in overview, 'the record page still edits the project name'
-shared = ['name="project_ref"', 'name="client_contact_id"',
+# The reference is NOT among them: it is allocated when the project is
+# created and cannot be changed afterwards, so neither page offers a field
+# for it. Asserted absent below.
+shared = ['name="client_contact_id"',
           'name="status"', 'name="instruction_type"', 'name="instruction_date"',
           'name="available_from"', 'name="fee_earner_id"',
           'name="client_phone"', 'name="client_mobile"', 'name="client_email"',
@@ -90,9 +93,11 @@ def instruction_details_only(html):
     return part[:nxt.start()] if nxt else part
 
 
-# Landlord and the project's own location paragraph are no longer offered
-# on either page; the values stay in the database.
-for gone in ['name="landlord_name"', 'name="location_description"']:
+# Landlord, the project's own location paragraph and the reference are no
+# longer offered on either page. The first two keep their values in the
+# database; the reference is allocated automatically and is immutable.
+for gone in ['name="landlord_name"', 'name="location_description"',
+             'name="project_ref"']:
     assert gone not in new and gone not in overview, gone
 # The fee is offered again, in a box of its own rather than Instruction Details.
 for where in (new, overview):
@@ -165,7 +170,13 @@ assert 'Sale or Letting — somewhere' in html
 assert 'Ruth Alder (Ashcombe Clinics)' in html, \
     'the chosen client did not come back with the rejected form'
 assert 'Review due at the March quarter day.' in html
-assert re.search(rf'<option value="{BEN_ID}"[^>]*selected', html), \
+# Either shape is correct, and which one appears depends on how many fee
+# earners the firm has. With one, the control is that person's name and a
+# hidden input — there is nothing to choose, so nothing is offered. With
+# two or more it is a select with the choice marked. What this check is
+# actually about is that the value survives the rejection either way.
+assert (re.search(rf'<option value="{BEN_ID}"[^>]*selected', html)
+        or re.search(rf'name="fee_earner_id"[^>]*value="{BEN_ID}"', html)), \
     'the chosen fee earner did not come back with the rejected form'
 assert 'A new property needs an address.' in html
 assert 'A new property needs a postcode.' in html

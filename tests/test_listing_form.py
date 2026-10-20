@@ -53,7 +53,11 @@ form = listing_form(html)
 
 # ── 1. Built from the shared components, not its own markup ────────────────
 assert 'box box--grid' in form, 'the listing sections are not on the shared grid'
-assert form.count('class="frow') >= 25, 'the fields are not laid out as rows'
+# A floor, not a count: this catches the section being rebuilt out of its
+# own markup, and is not meant to pin the number of fields. It was 25
+# before the thirteen fields in MOVED_OFF below went to the records they
+# belong to, which left 23.
+assert form.count('class="frow') >= 20, 'the fields are not laid out as rows'
 assert 'fcell fcell--label' in form and 'fcell fcell--edit' in form
 print('1. the listing uses the same boxes, rows and cells as the rest of the form')
 
@@ -84,17 +88,35 @@ names = sorted(set(re.findall(r'<(?:input|select|textarea)[^>]*name="([a-z_0-9]+
                - {'_csrf'})
 EXPECTED = {
     'area', 'baths', 'beds', 'blurb', 'epc_band', 'featured', 'initial_yield',
-    'inside_1954_act', 'investment_vacant', 'key_terms', 'lease_length_months',
-    'lease_length_years', 'lease_type', 'lease_years_remaining',
+    'investment_vacant', 'key_terms', 'lease_years_remaining',
     'listing_price', 'listing_price_unit', 'listing_status',
     'location_description', 'max_size', 'measurement_type', 'min_size',
-    'parking_ratio', 'parking_spaces', 'photo_id', 'price_display',
-    'rateable_value', 'rateable_value_na', 'rent_from', 'rent_inclusive',
-    'rent_qualifier', 'rent_to', 'repair_insuring', 'service_charge',
-    'service_charge_na', 'size', 'strapline', 'tenure', 'transaction',
+    'photo_id', 'price_display', 'service_charge', 'service_charge_na',
+    'size', 'strapline', 'tenure', 'transaction',
     '_listing_switches', 'use_class', 'website_category', 'website_listed',
     'zoopla_listed',
 }
+# Thirteen fields came off this section in 8e4a741 (18 September) and have
+# not been on it since. The lease length and type, the rent range, the
+# qualifier, whether it is inclusive, the 1954 Act, repair and insuring and
+# the parking all belong to an offer or a transaction, where they are
+# actually negotiated, rather than to a marketing record; the rateable value
+# belongs to the property's own record, where the rates calculator reads it.
+# Every column is still on the Listing table, so nothing typed before was
+# lost and any of them can come back as a row.
+MOVED_OFF = {
+    'inside_1954_act', 'lease_length_months', 'lease_length_years',
+    'lease_type', 'parking_ratio', 'parking_spaces', 'rateable_value',
+    'rateable_value_na', 'rent_from', 'rent_inclusive', 'rent_qualifier',
+    'rent_to', 'repair_insuring',
+}
+assert not (MOVED_OFF & set(names)), \
+    f'a field that was moved off is back: {sorted(MOVED_OFF & set(names))}'
+# And none of them was dropped from the table along the way.
+for column in MOVED_OFF:
+    if not column.endswith('_na'):
+        assert hasattr(Listing, column), \
+            f'{column} was removed from the listing instead of just the form'
 lost = EXPECTED - set(names)
 gained = set(names) - EXPECTED
 assert not lost, f'fields were lost: {sorted(lost)}'

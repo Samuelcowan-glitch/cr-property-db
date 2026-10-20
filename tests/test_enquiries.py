@@ -73,8 +73,12 @@ for t in ('Tenant — Looking to Rent', 'Buyer — Looking to Buy',
           'Existing Client', 'General Inquiry', 'Other'):
     assert t in page, f'{t!r} is not offered'
 assert 'name="subject"' not in page, 'the Subject field is still on the form'
-assert 'Inquiry Type' in page
-print('1. all seven inquiry types are offered, and Subject is gone')
+# "Enquiry Type", not "Inquiry Type" — the firm is a British one and the rest
+# of the CRM has always said enquiry. The values themselves still read
+# "General Inquiry" and are checked above; they are stored data, and renaming
+# them would rewrite what is on existing records.
+assert 'Enquiry Type' in page, 'the form does not label the enquiry type'
+print('1. all seven enquiry types are offered, and Subject is gone')
 
 
 # ─── 2. One enquiry of each side of the agency ──────────────────────────────
@@ -98,7 +102,13 @@ print('3. the inquiry type is displayed clearly on the enquiry record')
 
 # ─── 4. Linking a project is enough ─────────────────────────────────────────
 page = cl.get('/enquiries/new').get_data(as_text=True)
-assert 'Link Project' in page
+# The control is labelled "Instruction" now and offers either an instruction
+# already on the books or a new one. What matters here is unchanged: a project
+# can be linked, and the property is never asked for separately because it
+# comes from the project.
+assert 'name="project_id"' in page, 'an enquiry cannot be linked to a project'
+assert 'Instruction' in page, 'the form does not label the instruction picker'
+assert 'name="property_id"' not in page, 'Link Property is still on the form'
 assert 'No property linked' not in page, 'Link Property is still on the form'
 e = make(enquiry_type='Tenant — Looking to Rent', project_id=IDS['proj'],
          contact_id=IDS['loner'])

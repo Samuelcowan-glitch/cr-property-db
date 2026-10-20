@@ -163,7 +163,7 @@
           class="btn btn-secondary btn-sm">Export CSV</button>
 </form>
 <datalist id="tag-suggestions">
-  {% for name, n in tag_counts %}<option value="{{ name }}">{% endfor %}
+  {% for name, n in tag_counts %}<option value="{{ name }}"></option>{% endfor %}
 </datalist>
 <script src="{{ url_for('static', filename='js/bulk-select.js') }}" defer></script>
 {% else %}

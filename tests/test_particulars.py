@@ -90,8 +90,11 @@ text = ' '.join(p.get_text() for p in doc)
 assert 'Marlin House' in text, 'the description is not selectable text'
 assert 'Peterborough Road' in text
 assert 'Misrepresentation Act 1967' in text, 'the disclaimer is missing'
-assert 'Benjamin Cowan' in text and 'Bc@cowanandrutter.co.uk' in text
-assert '020 7349 6666' in text and 'cowanandrutter.co.uk' in text
+# From particulars.AGENT / COMPANY, which is where the brochure takes them:
+# one agent on every brochure, not the fee earner's login details.
+import particulars as _pp
+assert _pp.AGENT['name'] in text and _pp.AGENT['email'] in text
+assert _pp.COMPANY['phone'] in text and _pp.COMPANY['website'] in text
 fonts = {f[3] for page in doc for f in page.get_fonts()}
 assert fonts, 'no fonts are embedded'
 print('2. the words are selectable, searchable text with fonts embedded')

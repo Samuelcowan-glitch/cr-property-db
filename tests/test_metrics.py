@@ -299,13 +299,17 @@ print('15. a fee can be entered on the project and it saves')
 
 # ─── 16. The page shows them all ────────────────────────────────────────────
 html = cl.get('/transactions').get_data(as_text=True)
-for label in ['Sales value', 'Lettings value', 'Fee value of stock',
-              'Weighted pipeline', 'Deals won', 'Instruction to completion',
-              'Invoice to payment', 'By fee earner']:
+for label in ['Sales value', 'Lettings value', 'Deals won',
+              'Instruction to completion', 'Invoice to payment', 'By fee earner']:
     assert label in html, f'"{label}" is missing from the page'
+# Fee value of stock and Weighted pipeline came off the page deliberately.
+# Both are a forecast dressed as a figure — a fee on business not yet won —
+# and sitting beside money actually billed they were read as the same kind of
+# number. They are still calculated, and the arithmetic is checked above.
+for gone in ['Fee value of stock', 'Weighted pipeline']:
+    assert gone not in html, f'"{gone}" is back on the page'
 assert money_gbp(e['sales']['value']) in html, 'the sales value is not shown'
 assert money_gbp(e['lettings']['value']) in html, 'the lettings value is not shown'
-assert money_gbp(final['fee_total']) in html, 'the stock fee value is not shown'
 assert 'B Cowan' in html and 'S Rutter' in html, 'the fee earner table is empty'
 print('16. every new figure appears on the page')
 

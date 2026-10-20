@@ -157,7 +157,7 @@
              value="{{ v.get('business_category') or '' }}"
              placeholder="Retail, Hospitality, Office / Professional services…">
       <datalist id="business-categories">
-        {% for c in BUSINESS_CATEGORIES %}<option value="{{ c }}">{% endfor %}
+        {% for c in BUSINESS_CATEGORIES %}<option value="{{ c }}"></option>{% endfor %}
       </datalist>
     </div>
     <div class="fcell fcell--label">Nature of business</div>

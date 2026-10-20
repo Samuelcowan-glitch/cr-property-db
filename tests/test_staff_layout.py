@@ -111,17 +111,39 @@ for name, body in BODIES.items():
 picked = [n for n, b in BODIES.items() if 'name="fee_earner_id"' in b]
 assert len(picked) >= 6, picked
 for name in picked:
-    assert re.search(r'<select[^>]*name="fee_earner_id"', BODIES[name]), \
-        f'{name} does not use a dropdown'
+    body = BODIES[name]
+    # Two correct shapes, and which one appears depends on how many fee
+    # earners the firm has. More than one: a select to choose from. Exactly
+    # one: that person's name and a hidden input, because a list of one is
+    # not a choice and asking for it only invites a wrong answer.
+    #
+    # What must never appear is a box somebody can type a name into — that is
+    # what this section is about, and it is checked for both shapes.
+    chooser = re.search(r'<select[^>]*name="fee_earner_id"', body)
+    sole = re.search(r'<input[^>]*type="hidden"[^>]*name="fee_earner_id"', body)
+    assert chooser or sole, f'{name} has no fee earner control at all'
+    assert not re.search(r'<input[^>]*type="text"[^>]*name="fee_earner_id"', body), \
+        f'{name} lets a fee earner be typed in'
+    if sole and not chooser:
+        assert 'data-fee-earner' in body, \
+            f'{name} hides the fee earner without showing who it is'
 print(f'5. {len(picked)} pages assign staff from a list, and none from a text box')
 
 
 # ─── 6. Only a real fee earner can be saved ─────────────────────────────────
 with app.app_context():
     assert _fid(str(BEN)) == BEN
-    assert _fid('999999') is None, 'an id that is nobody was accepted'
-    assert _fid('Benjamin Cowan') is None, 'a typed name was accepted as an id'
-    assert _fid('') is None and _fid(None) is None
+    # The rule that matters: a value that is not an account allowed to carry a
+    # fee is NEVER honoured as given. What it falls back to depends on the
+    # office. With one fee earner it becomes that person, so every record
+    # carries one however it was made; with two or more it becomes nothing,
+    # because then there is a real choice and the CRM must not make it.
+    sole = default_fee_earner()
+    fallback = sole.id if sole is not None else None
+    for bogus in ['999999', 'Benjamin Cowan', '', None, '-1', '0', '1e3']:
+        got = _fid(bogus)
+        assert got == fallback, f'{bogus!r} was read as {got}, not the fallback'
+        assert got != 999999, 'an id that is nobody was accepted as itself'
     # A viewer cannot be assigned work.
     db.session.add(User(username='reader', password_hash=generate_password_hash('pw'),
                         role='viewer', full_name='Rita Reader'))
@@ -171,16 +193,34 @@ print('9. only unambiguous forms of the name count as a match')
 
 # ─── 10. An existing assignment opens on the right person ───────────────────
 proj = page(f'/projects/{PR}')
-chosen = re.search(r'name="fee_earner_id".*?<option value="(\d+)"[^>]*selected', proj, re.S)
+# Either control shape, whichever this office has: the selected option, or the
+# hidden input that stands in for it when there is only one fee earner. The
+# point is that the record opens on the person it is actually assigned to.
+chosen = (re.search(r'name="fee_earner_id".*?<option value="(\d+)"[^>]*selected',
+                    proj, re.S)
+          or re.search(r'name="fee_earner_id"[^>]*value="(\d+)"', proj))
 assert chosen and int(chosen.group(1)) == BEN, 'the existing fee earner is not shown'
-print('10. an existing record opens with its fee earner already selected')
+with app.app_context():
+    assert fee_earner_name(BEN) in proj, \
+        'the record does not say who the fee earner is in words'
+print('10. an existing record opens with its fee earner already set')
 
 
 # ─── 11. A new record preselects the only fee earner ────────────────────────
 fresh = page('/projects/new')
-sel = re.search(r'name="fee_earner_id".*?</select>', fresh, re.S).group(0)
-assert 'selected' in sel, 'the only fee earner was not preselected on a new record'
-assert '>Not assigned<' not in sel, 'a new record still offers "not assigned"'
+sel = re.search(r'name="fee_earner_id".*?</select>', fresh, re.S)
+if sel:
+    sel = sel.group(0)
+    assert 'selected' in sel, 'the only fee earner was not preselected on a new record'
+    assert '>Not assigned<' not in sel, 'a new record still offers "not assigned"'
+else:
+    # One fee earner: there is no list, so there is nothing to preselect. The
+    # person's name is shown and their id is already on the form, which is the
+    # same outcome by simpler means.
+    hidden = re.search(r'name="fee_earner_id"[^>]*value="(\d+)"', fresh)
+    assert hidden and int(hidden.group(1)) == BEN, \
+        'a new record does not come with the only fee earner already set'
+    assert 'Not assigned' not in fresh, 'a new record still offers "not assigned"'
 print('11. a new record is assigned to the only fee earner there is')
 
 

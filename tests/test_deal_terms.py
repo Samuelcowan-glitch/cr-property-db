@@ -263,7 +263,11 @@ print('12. the form asks for the instruction and reads the property from it')
 assert 'Client' not in A.ORG_ROLE_NAMES, A.ORG_ROLE_NAMES
 assert 'Client' not in A.ORG_TYPES
 assert 'Vendor' not in A.ORG_ROLE_NAMES and 'Purchaser' not in A.ORG_ROLE_NAMES
-assert set(A.CONTACT_TYPES) == {'Landlord', 'Tenant', 'Buyer', 'Seller'}
+# Solicitor joined the list when transactions began recording both sides'
+# firms. The point of this check is that Client did not: it said who we act
+# for, which is a relationship and not what somebody is to a deal.
+assert set(A.CONTACT_TYPES) == {'Landlord', 'Tenant', 'Buyer', 'Seller',
+                                'Solicitor'}
 print('13. Client, Vendor and Purchaser are gone from the vocabulary')
 
 

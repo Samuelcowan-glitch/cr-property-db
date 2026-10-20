@@ -90,8 +90,10 @@ for t in ('Landlord', 'Tenant', 'Buyer', 'Seller'):
 # Nothing beyond those four, except a label this record already holds.
 import re as _re
 offered = {t.strip() for t in _re.findall(r'<option[^>]*>([^<]*)<', block)}
-assert offered <= {'Landlord', 'Tenant', 'Buyer', 'Seller',
-                   '— Not set —', 'Client'}, offered
+# Solicitor is one of the types now; Client never was one — it was a status
+# wearing a type's clothes, and it has gone.
+assert offered <= {'Landlord', 'Tenant', 'Buyer', 'Seller', 'Solicitor',
+                   '— Not set —'}, offered
 print('1. Type offers Landlord, Tenant, Buyer and Seller')
 
 
@@ -116,17 +118,29 @@ with A.app.app_context():
 print('2. the type saves from the contact page, and only the offered ones do')
 
 
-# ─── 3. An older type is kept and offered, not silently rewritten ───────────
+# ─── 3. Prospect is retired, and nobody is quietly reclassified ─────────────
+# "Prospect" said how far a conversation had got, not what somebody is to a
+# deal, so it is no longer a type — the Enquiries section records that. The
+# migration clears the word and tags the contact "Review contact type", which
+# leaves the type honestly unset rather than guessing at a replacement.
 body = page(IDS['john'])
 block = body[body.index('name="contact_type"'):]
 block = block[:block.index('</select>')]
-assert '>Prospect<' in block, "a contact filed as Prospect loses their type"
+assert '>Prospect<' not in block, 'Prospect is still offered as a type'
+with A.app.app_context():
+    A._migrate_retire_prospect()
+    john = A.Contact.query.get(IDS['john'])
+    assert john.contact_type is None, \
+        'retiring Prospect guessed at a replacement type instead of clearing it'
+    assert 'Review contact type' in (A.contact_tags(john) or []), \
+        'a contact whose type was cleared is not flagged for review'
+# And saving the page does not invent one.
 cl.post(f"/contacts/{IDS['john']}/edit", data={'mobile': '07700 900123'},
         follow_redirects=True)
 with A.app.app_context():
-    assert A.Contact.query.get(IDS['john']).contact_type == 'Prospect', \
-        'saving the page reclassified an existing contact'
-print('3. an existing contact keeps its own type, and saving does not change it')
+    assert A.Contact.query.get(IDS['john']).contact_type is None, \
+        'saving the page reclassified a contact whose type is not set'
+print('3. Prospect is retired, the contact is flagged, and nothing is guessed')
 
 
 # ─── 4. Matched Properties is for whoever is looking ────────────────────────

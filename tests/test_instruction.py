@@ -1,6 +1,6 @@
 """Instruction Details and Key Contacts: aligned boxes, three instruction types."""
 import os
-import re, re, sys, tempfile
+import re, sys, tempfile
 from html.parser import HTMLParser
 
 tmp = tempfile.mkdtemp()
@@ -188,9 +188,15 @@ assert 'overflow-wrap: anywhere' in css
 print('11. matching field heights, consistent row borders, long text wraps')
 
 # ── 12. Stacking on smaller screens ─────────────────────────────────────────
-assert '@container (max-width: 620px) { .box--grid' in css
-assert '@container (max-width: 420px) { .box--grid' in css
-assert '@media (max-width: 700px) { .box--grid' in css
+# Matched with the whitespace collapsed: whether the rule is written on one
+# line or opens a block on the next is formatting, and a check that breaks
+# when the stylesheet is tidied is testing the layout of the file instead of
+# the layout of the page.
+flat = re.sub(r'\s+', ' ', css)
+for query in ['@container (max-width: 620px) { .box--grid',
+              '@container (max-width: 420px) { .box--grid',
+              '@media (max-width: 700px) { .box--grid']:
+    assert query in flat, f'{query} is missing'
 print('12. two columns then one as the space runs out')
 
 # ── 13. The New Project page still names a project ──────────────────────────

@@ -111,9 +111,21 @@ def images_on(page):
     return [page.get_image_bbox(i) for i in page.get_images(full=True)]
 
 
+def _is_logo(box):
+    """Whether this image is the footer logo rather than page content.
+
+    Measured against particulars.LOGO_HEIGHT and LOGO_WIDTH rather than
+    guessed at. This used to read `height > 60`, from when the logo was
+    smaller; LOGO_HEIGHT is 100 now, so the footer logo counted as content and
+    every page looked as though something overlapped its own footer.
+    """
+    return (abs(box.height - pp.LOGO_HEIGHT) < 2
+            and abs(box.width - pp.LOGO_WIDTH) < 2)
+
+
 def content_images(page):
-    """Photographs and floorplans, not the little logo in the footer."""
-    return [b for b in images_on(page) if b.height > 60]
+    """Photographs and floorplans, not the logo in the footer."""
+    return [b for b in images_on(page) if not _is_logo(b)]
 
 
 # ─── 1. Key Terms are parsed however they were typed ────────────────────────

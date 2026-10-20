@@ -213,9 +213,15 @@ for pages in (2, 4):
                    CLIENT_EMAIL, CLIENT_ADDRESS, 'Typed client name'):
         assert secret not in text, f'{secret!r} appears on the {pages}-page particulars'
     # What should be there, is.
-    assert 'Benjamin Cowan' in text, 'the fee earner is missing'
-    assert 'Bc@cowanandrutter.co.uk' in text and '020 7349 6666' in text
-    assert 'cowanandrutter.co.uk' in text
+    # The brochure names one agent whoever the instruction is booked to, from
+    # particulars.AGENT, so this reads the constant rather than repeating the
+    # address — and in particular rather than expecting the capitalisation of
+    # whatever is in that user's login.
+    import particulars as pp
+    assert pp.AGENT['name'] in text, 'the agent is missing'
+    assert pp.AGENT['email'] in text, 'the agent email is missing'
+    assert pp.COMPANY['phone'] in text, 'the office number is missing'
+    assert pp.COMPANY['website'] in text, 'the website is missing'
     assert 'Marlin House' in text or 'OFFICE' in text, 'the property is missing'
 print('12. neither brochure carries a client detail; both carry the fee earner')
 

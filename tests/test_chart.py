@@ -259,8 +259,19 @@ with app.app_context():
 print('14. a quarter adds up its months, unless it has a figure of its own')
 
 with app.app_context():
+    # A year adds up EVERY month in it, not just the three in this quarter.
+    # The figure is worked out rather than written in, because which months
+    # carry a target depends on the date the suite is run: when this month is
+    # the first of a quarter, last month's target sits in the previous quarter
+    # and is still part of the same year. Hard-coding 3,000 passed in November
+    # and failed in October, which is a fault in the test and not in the sum.
+    expected = sum(float(t.amount) for t in CommissionTarget.query.filter_by(
+        period_type='month').all()
+        if t.period_key.startswith(f'{THIS.year}-'))
     got, _ = target_for('year', (THIS.year, 0))
-    near(got, 3000, 'a year with no figure of its own adds up its months')
+    near(got, expected, 'a year with no figure of its own adds up its months')
+    assert expected > 3000 or THIS.month % 3 != 1, \
+        'the months this check relies on are not there'
     db.session.add(CommissionTarget(period_type='year', period_key=str(THIS.year), amount=50000))
     db.session.commit()
     got, own = target_for('year', (THIS.year, 0))
@@ -387,8 +398,19 @@ print('24. clicking a segment shows exactly the transactions it counted')
 
 # ── Shared controls ──
 controls = page('/transactions')
-for name in ['q', 'type', 'status', 'fee_earner_id', 'client', 'property', 'from', 'to']:
+for name in ['q', 'type', 'status', 'client', 'property', 'from', 'to']:
     assert f'name="{name}"' in controls, f'the {name} control is missing'
+# The fee earner filter appears only when there is somebody to choose between.
+# Offering "all fee earners or Benjamin Cowan" in a one-person office is a
+# control that cannot change the answer.
+with app.app_context():
+    from app import fee_earners
+    several = len(fee_earners()) > 1
+if several:
+    assert 'name="fee_earner_id"' in controls, 'the fee earner filter is missing'
+else:
+    assert 'name="fee_earner_id"' not in controls, \
+        'a fee earner filter is offered in a one-person office'
 assert 'Reset filters' in controls, 'there is no reset'
 for label in ['>Month<', '>Quarter<', '>Year<']:
     assert label in controls, f'the {label} period control is missing'

@@ -152,7 +152,7 @@
           <input type="text" name="tax_year" required placeholder="2026/27"
                  pattern="\d{4}/\d{2}" list="known-years">
           <datalist id="known-years">
-            {% for y in tax_years %}<option value="{{ y }}">{% endfor %}
+            {% for y in tax_years %}<option value="{{ y }}"></option>{% endfor %}
           </datalist>
         </div>
         <div class="fcell fcell--label">Name <span class="req">*</span></div>

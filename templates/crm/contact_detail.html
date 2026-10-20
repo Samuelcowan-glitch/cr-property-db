@@ -107,7 +107,7 @@
                  list="tag-suggestions"
                  placeholder="Key account, Kings Road &mdash; separate with commas">
           <datalist id="tag-suggestions">
-            {% for name, n in all_tags() %}<option value="{{ name }}">{% endfor %}
+            {% for name, n in all_tags() %}<option value="{{ name }}"></option>{% endfor %}
           </datalist>
         </div>
       </div>

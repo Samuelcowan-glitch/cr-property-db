@@ -4948,7 +4948,24 @@ def next_transaction_reference():
         db.session.flush()
         row = _claim()
 
-    row.value = (row.value or 0) + 1
+    # Step over anything already taken. The counter is seeded once from the
+    # table, so a reference that arrived afterwards without coming through
+    # here — a data import, a reference put right by hand in the database —
+    # is invisible to it, and handing that number out again is a unique
+    # constraint violation and a 500 on save. Skipping is cheap and the
+    # counter still only ever moves forward, so no number is reused.
+    #
+    # Bounded, because a bug that made every candidate look taken would
+    # otherwise spin here for ever. A hundred in a row means something is
+    # wrong that skipping cannot fix, and the constraint can say so.
+    for _ in range(100):
+        row.value = (row.value or 0) + 1
+        candidate = f'TR-{row.value:04d}'
+        taken = db.session.query(Transaction.id).filter(
+            Transaction.reference == candidate).first()
+        if not taken:
+            db.session.flush()
+            return candidate
     db.session.flush()
     return f'TR-{row.value:04d}'
 
@@ -5057,11 +5074,24 @@ def _transaction_filters(rows, args):
                       t.property.postcode if t.property else None]
             return any(q in (v or '').lower() for v in fields)
         rows = [t for t in rows if hit(t)]
-    for key, get in (('type', lambda t: t.transaction_type),
+    # 'Capital' and 'Leasehold' are the words this field used to take. BOTH
+    # sides are put into today's vocabulary before they are compared, because
+    # either side can still be carrying an old one: a bookmark or a saved link
+    # supplies ?type=Capital, and a row written before the rename, or brought
+    # in by an import, still reads 'Leasehold'. Mapping only the query would
+    # stop those rows matching anything at all — which is how the dead values
+    # went unnoticed in the first place.
+    def _kind(value):
+        text = str(value or '').strip()
+        return LEGACY_KINDS.get(text, text)
+
+    for key, get in (('type', lambda t: _kind(t.transaction_type)),
                      ('status', lambda t: t.status),
                      ('fee_earner_id', lambda t: t.fee_earner_id),
                      ('client', lambda t: t.owner_display)):
         want = (args.get(key) or '').strip()
+        if key == 'type':
+            want = _kind(want)
         if want:
             # Compared as text, because a fee earner is an id and a status is
             # a word, and both arrive from the query string as strings.

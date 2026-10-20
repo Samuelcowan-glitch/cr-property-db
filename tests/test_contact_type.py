@@ -45,7 +45,12 @@ with A.app.app_context():
 
 cl = A.app.test_client()
 cl.post('/login', data={'username': 'admin', 'password': 'pw'}, follow_redirects=True)
-FOUR = ['Landlord', 'Tenant', 'Buyer', 'Seller']
+# Solicitor was added once transactions started recording both sides' firms:
+# a solicitor is a person the CRM genuinely deals with, not a role played by a
+# client. Prospect went the other way — it described how interested somebody
+# was rather than what part they play, and it is a status, which contacts
+# already have.
+TYPES = ['Landlord', 'Tenant', 'Buyer', 'Seller', 'Solicitor']
 
 
 def options_in(body, field):
@@ -64,18 +69,18 @@ def make(**extra):
         return A.Contact.query.order_by(A.Contact.id.desc()).first()
 
 
-# ─── 1. The four types, and nothing wider ───────────────────────────────────
-assert A.CONTACT_TYPES == FOUR, A.CONTACT_TYPES
+# ─── 1. The five types, and nothing wider ───────────────────────────────────
+assert A.CONTACT_TYPES == TYPES, A.CONTACT_TYPES
 new_page = cl.get('/contacts/new').get_data(as_text=True)
 offered = options_in(new_page, 'contact_type')
-for t in FOUR:
+for t in TYPES:
     assert t in offered, f'{t} is not offered when adding a contact'
-assert offered - set(FOUR) <= {'&mdash; Select &mdash;'}, offered
-print('1. adding a contact offers Landlord, Tenant, Buyer and Seller only')
+assert offered - set(TYPES) <= {'&mdash; Select &mdash;'}, offered
+print('1. adding a contact offers only Landlord, Tenant, Buyer, Seller, Solicitor')
 
 
 # ─── 2. The old free-for-all list is gone ───────────────────────────────────
-for gone in ('Prospect', 'Solicitor', 'Developer', 'Surveyor', 'Other',
+for gone in ('Prospect', 'Developer', 'Surveyor', 'Other',
              'Prospective Buyer', 'Agent'):
     assert gone not in offered, f'{gone} is still offered as a type'
 print('2. the twelve-option list it used to offer is gone')
@@ -157,7 +162,7 @@ print('10. what was already in Job Title is kept, just no longer shown')
 
 # ─── 11. One sidebar page per type ──────────────────────────────────────────
 nav = cl.get('/contacts').get_data(as_text=True)
-for t in FOUR:
+for t in TYPES:
     assert f'type={t}' in nav, f'there is no {t} page in the sidebar'
 assert 'type=Client' not in nav, 'the old Clients page is still in the sidebar'
 print('11. the sidebar has one page per type')
@@ -175,7 +180,7 @@ print('12. each page gathers the older labels that meant the same thing')
 
 
 # ─── 13. The heading matches the page ───────────────────────────────────────
-for t in FOUR:
+for t in TYPES:
     page = cl.get(f'/contacts?type={t}').get_data(as_text=True)
     assert f'<h2>{t}s</h2>' in page, f'the {t} page is not headed {t}s'
 assert '<h2>All Contacts</h2>' in cl.get('/contacts').get_data(as_text=True)

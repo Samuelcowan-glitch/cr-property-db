@@ -192,8 +192,13 @@ for where, text in [('the properties list', props),
     low = text.lower()
     assert 'reference' not in low, f'a reference appears on {where}'
     assert 'project_ref' not in low, f'a reference field appears on {where}'
-# A project still has one.
-assert 'Reference' in full and 'project_ref' in full, 'the project lost its reference'
+# A project still has one — but it is shown, never typed. References are
+# allocated once and are immutable, so there is no field to edit: the record
+# prints "Ref: CR-L001" and the create page offers nothing at all.
+assert 'Ref:' in full, 'the project lost its reference'
+assert 'CR/2026/001' in full, 'the project record does not show its reference'
+assert 'name="project_ref"' not in full, \
+    'the reference is editable again — it is meant to be immutable'
 print('12. no reference number on any property page; projects keep theirs')
 
 # ── 13. Searching and filtering still work ──────────────────────────────────
