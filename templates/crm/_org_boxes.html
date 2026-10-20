@@ -140,7 +140,26 @@
     </div>
   </div>
 
-  <div class="frow frow--full">
+  <div class="frow">
+    {#
+       Two fields that sound alike and are not. "Business category" is one of a
+       short list, and it is what draws the icon on the companies list. "Nature
+       of business" is the longer description in the company's own words, which
+       is often lifted from Companies House and is no use for grouping.
+
+       A datalist rather than a <select>: the list is offered, but a category
+       already on a record that is not on the list is not silently thrown away
+       by the browser.
+    #}
+    <div class="fcell fcell--label">Business category</div>
+    <div class="fcell fcell--edit">
+      <input name="business_category" form="{{ form_id }}" list="business-categories"
+             value="{{ v.get('business_category') or '' }}"
+             placeholder="Retail, Hospitality, Office / Professional services…">
+      <datalist id="business-categories">
+        {% for c in BUSINESS_CATEGORIES %}<option value="{{ c }}">{% endfor %}
+      </datalist>
+    </div>
     <div class="fcell fcell--label">Nature of business</div>
     <div class="fcell fcell--edit">
       <input name="nature_of_business" form="{{ form_id }}"

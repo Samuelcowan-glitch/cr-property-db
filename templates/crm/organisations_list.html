@@ -5,6 +5,8 @@
   <a href="{{ url_for('organisation_new') }}" class="btn btn-primary btn-sm">+ Add Organisation</a>
 {% endblock %}
 
+{% import "crm/_org_logo.html" as logos %}
+
 {% block content %}
 <div class="section-header">
   <h2>Organisations</h2>
@@ -42,7 +44,17 @@
     <tbody>
       {% for o in orgs %}
       <tr>
-        <td><a href="{{ url_for('organisation_detail', id=o.id) }}"><strong>{{ o.name }}</strong></a></td>
+        <td>
+          <a class="co-name" href="{{ url_for('organisation_detail', id=o.id) }}">
+            {{ logos.org_logo(o, size=38) }}
+            <span class="co-name__text">
+              <strong>{{ o.name }}</strong>
+              {%- if o.business_category %}
+              <span class="co-name__cat">{{ o.business_category }}</span>
+              {%- endif %}
+            </span>
+          </a>
+        </td>
         <td><span style="display:inline-block;padding:2px 9px;border-radius:3px;font-size:11px;font-weight:700;color:#fff;background:{{ status_colors.get(o.status, '#5f6368') }}">{{ o.status or '—' }}</span></td>
         <td>{{ o.org_type or '—' }}</td>
         <td>{% if o.email %}<a href="mailto:{{ o.email }}">{{ o.email }}</a>{% else %}—{% endif %}</td>

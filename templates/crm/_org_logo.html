@@ -1,0 +1,56 @@
+{#
+  ══════════════════════════════════════════════════════════════════════════
+  A company's mark — logo, else category icon, else initials
+  ══════════════════════════════════════════════════════════════════════════
+
+  Kept separate from templates/_property_row.html ON PURPOSE.
+
+  That macro's thumbnail is hard-wired to listing_photo_image(id=photo.id).
+  Passing a company through it would serve whatever property photograph
+  happened to share that id — a different building's picture against a
+  company's name. There is no safe way to share the two, so they do not share.
+  This macro only ever reads organisation_logo_image(id=o.id).
+
+  Three states, one box. The tile is a fixed square (static/css/companies.css),
+  so a row keeps its height whether the company has a logo, a category or
+  neither, and the table does not jump as you scroll.
+
+    org_logo(o)            — 40px, for a table row
+    org_logo(o, size=72)   — larger, for a record header
+#}
+{% import "crm/_category_icons.html" as icons %}
+
+{% macro org_logo(o, size=38) %}
+{%- set label = o.trading_name or o.name or '' -%}
+{#- The class carries which of the three states this is, because the tile's
+    ground and type are different in each and the CSS switches on it:
+    .co-tile / .co-tile.is-icon / .co-tile.is-initials. -#}
+{%- set words = label.split() -%}
+{%- set initials = (words[0][0] ~ (words[1][0] if words|length > 1 else '')) if words else '' -%}
+{%- if o.logo_mime -%}
+  {#- logo_mime, not logo_data: the companies list defers the blob, and
+      testing the bytes here would load every one of them straight back. The
+      two are always written together, so the mime type is the reliable
+      "this company has a logo". -#}
+  <span class="co-tile" style="--co-tile-size:{{ size }}px"
+        title="{{ label }}{% if o.business_category %} — {{ o.business_category }}{% endif %}">
+    <img class="co-logo" alt="{{ label }} logo"
+         src="{{ url_for('organisation_logo_image', id=o.id) }}"
+         loading="lazy" decoding="async">
+  </span>
+{%- elif o.business_category -%}
+  <span class="co-tile is-icon" style="--co-tile-size:{{ size }}px"
+        title="{{ label }} — {{ o.business_category }}">
+    {{- icons.category_icon(o.business_category, size=size) -}}
+  </span>
+{%- elif initials -%}
+  <span class="co-tile is-initials" style="--co-tile-size:{{ size }}px"
+        title="{{ label }}" aria-hidden="true">{{ initials|upper }}</span>
+{%- else -%}
+  {#- No name to take initials from. An empty tile, still the right size, so
+      the row does not change height. -#}
+  <span class="co-tile is-icon" style="--co-tile-size:{{ size }}px">
+    {{- icons.category_icon(none, size=size) -}}
+  </span>
+{%- endif -%}
+{% endmacro %}

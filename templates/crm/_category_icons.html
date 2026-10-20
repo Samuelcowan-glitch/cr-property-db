@@ -1,0 +1,162 @@
+{#
+  ══════════════════════════════════════════════════════════════════════════
+  Business category icons — one line-drawn set
+  ══════════════════════════════════════════════════════════════════════════
+
+  The codebase already has an icon convention, and this file follows it rather
+  than inventing one. The precedent is `.perf-icon` (static/css/cr-design.css
+  L738) with its mark-up in templates/transactions/list.html L326+: an inline
+  SVG, no sprite and no icon font, `fill: none`, the shape carried by a stroke,
+  `stroke-linecap: round` and `stroke-linejoin: round`, drawn at a light
+  weight. lucide-react is not available here; this is server-rendered Jinja, so
+  every icon is written out inline.
+
+  THE STYLE RULES — a future icon must keep all six:
+    1. viewBox "0 0 24 24", with roughly 2px of clear margin inside it, so the
+       drawings share one optical size whatever the rendered box.
+    2. fill="none" — line-drawn, never filled, never two-tone.
+    3. stroke="currentColor" — the icon inherits the CRM's ink colour, so it
+       can be muted or inverted by the surrounding class alone.
+    4. stroke-width 1.6, the same on all sixteen. This is `.perf-icon`'s 1.3 on
+       a 16px box, rescaled to a 24px box.
+    5. stroke-linecap and stroke-linejoin both "round".
+    6. Simple beats detailed: these are read at 38–56px. Three or four strokes
+       that say the thing, no interior decoration, no text.
+
+  Every icon shares the single <svg> wrapper below, which is what guarantees
+  the set cannot drift. Add a new category by adding one {% elif %} branch of
+  paths — nothing else.
+
+  Unknown or missing category falls back to the neutral building.
+  ══════════════════════════════════════════════════════════════════════════
+#}
+
+{% macro category_icon(category, size=40) %}
+{#- Normalise: "Office / Professional Services" -> "office professional services" -#}
+{%- set k = (category or '')|lower|trim|replace('&', 'and')|replace('/', ' ')|replace('-', ' ')|replace(',', ' ') -%}
+{%- set k = k.split()|join(' ') -%}
+{%- set names = {
+     'retail': 'retail',
+     'food and beverage': 'food',
+     'office professional services': 'office',
+     'construction and property': 'construction',
+     'industrial and manufacturing': 'industrial',
+     'logistics and distribution': 'logistics',
+     'health and medical': 'health',
+     'beauty and wellness': 'beauty',
+     'fitness and leisure': 'fitness',
+     'technology and it': 'technology',
+     'creative and media': 'creative',
+     'education': 'education',
+     'finance and insurance': 'finance',
+     'hospitality': 'hospitality',
+     'other': 'other'
+   } -%}
+{#- A legacy or shortened value still finds its icon on its first word. -#}
+{%- set aliases = {
+     'retail': 'retail', 'shop': 'retail', 'food': 'food', 'hospitality': 'hospitality',
+     'office': 'office', 'professional': 'office', 'construction': 'construction',
+     'property': 'construction', 'industrial': 'industrial', 'manufacturing': 'industrial',
+     'logistics': 'logistics', 'distribution': 'logistics', 'health': 'health',
+     'medical': 'health', 'beauty': 'beauty', 'wellness': 'beauty', 'fitness': 'fitness',
+     'leisure': 'fitness', 'technology': 'technology', 'it': 'technology',
+     'creative': 'creative', 'media': 'creative', 'education': 'education',
+     'finance': 'finance', 'insurance': 'finance', 'other': 'other'
+   } -%}
+{%- set slug = names.get(k) or aliases.get(k.split(' ')|first) or 'unknown' -%}
+<svg class="cat-icon cat-icon--{{ slug }}" width="{{ size }}" height="{{ size }}"
+     viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
+     stroke-linecap="round" stroke-linejoin="round" role="img" focusable="false"
+     aria-hidden="true">
+  <title>{{ category or 'No category' }}</title>
+{%- if slug == 'retail' %}
+  {#- Shopfront: awning, fascia, doorway -#}
+  <path d="M2.5 9 4.6 4.5h14.8L21.5 9z"/>
+  <path d="M4 9v11.5h16V9"/>
+  <path d="M9.5 20.5v-6.5h5v6.5"/>
+{%- elif slug == 'food' %}
+  {#- Fork and knife -#}
+  <path d="M8 3v5"/><path d="M9.6 3v5"/><path d="M11.2 3v5"/>
+  <path d="M7.6 8h4"/><path d="M9.6 8v13"/>
+  <path d="M15.4 21V3c2.5 2.2 3.6 5.4 3.6 8.5 0 1.1-.9 2-2 2h-1.6"/>
+{%- elif slug == 'office' %}
+  {#- Briefcase -#}
+  <rect x="2.5" y="7.5" width="19" height="12.5" rx="1.6"/>
+  <path d="M9 7.5V5.6a1.6 1.6 0 0 1 1.6-1.6h2.8A1.6 1.6 0 0 1 15 5.6v1.9"/>
+  <path d="M2.5 13.2h19"/>
+{%- elif slug == 'construction' %}
+  {#- Hard hat -#}
+  <path d="M4 16.5a8 8 0 0 1 16 0"/>
+  <path d="M2.5 16.5h19"/>
+  <path d="M9.4 16.5V8.9"/><path d="M14.6 16.5V8.9"/>
+{%- elif slug == 'industrial' %}
+  {#- Factory with chimneys -#}
+  <path d="M4 20.5v-8h16v8"/>
+  <path d="M2.5 20.5h19"/>
+  <path d="M7.8 12.5V6.5h2.6v6"/>
+  <path d="M14 12.5V9.4h2.6v3.1"/>
+  <path d="M7.4 16.8h2.8"/><path d="M13.8 16.8h2.8"/>
+{%- elif slug == 'logistics' %}
+  {#- Lorry: box body, cab, wheels -#}
+  <rect x="1.8" y="7" width="11.7" height="9.5" rx="1.2"/>
+  <path d="M13.5 10.6h3.9l2.8 3.4v2.5h-6.7"/>
+  <circle cx="6.6" cy="18.6" r="2"/>
+  <circle cx="16.8" cy="18.6" r="2"/>
+{%- elif slug == 'health' %}
+  {#- Medical cross -#}
+  <path d="M9.6 3h4.8v6.6H21v4.8h-6.6V21H9.6v-6.6H3V9.6h6.6z"/>
+{%- elif slug == 'beauty' %}
+  {#- Scissors -#}
+  <circle cx="6.2" cy="18.3" r="2.2"/>
+  <circle cx="16.6" cy="18.3" r="2.2"/>
+  <path d="M7.8 16.4 18.4 3.4"/>
+  <path d="M15 16.4 4.4 3.4"/>
+{%- elif slug == 'fitness' %}
+  {#- Dumbbell -#}
+  <path d="M6.6 8v8"/><path d="M3.6 9.8v4.4"/>
+  <path d="M17.4 8v8"/><path d="M20.4 9.8v4.4"/>
+  <path d="M6.6 12h10.8"/>
+{%- elif slug == 'technology' %}
+  {#- Microchip -#}
+  <rect x="7" y="7" width="10" height="10" rx="1.4"/>
+  <path d="M10 7V4"/><path d="M14 7V4"/>
+  <path d="M10 20v-3"/><path d="M14 20v-3"/>
+  <path d="M7 10H4"/><path d="M7 14H4"/>
+  <path d="M20 10h-3"/><path d="M20 14h-3"/>
+{%- elif slug == 'creative' %}
+  {#- Camera -#}
+  <path d="M2.5 19V8.6h4.2L8.1 5.8h7.8l1.4 2.8h4.2V19z"/>
+  <circle cx="12" cy="13.4" r="3.2"/>
+{%- elif slug == 'education' %}
+  {#- Mortarboard -#}
+  <path d="M2.5 9.2 12 5.2l9.5 4-9.5 4z"/>
+  <path d="M6.6 11v4.6c0 1.5 2.4 2.6 5.4 2.6s5.4-1.1 5.4-2.6V11"/>
+{%- elif slug == 'finance' %}
+  {#- Pound sterling on a coin -#}
+  <circle cx="12" cy="12" r="9"/>
+  <path d="M14.6 8.7A2.6 2.6 0 0 0 10 10.5V15c0 1-.5 1.7-1.4 2h7"/>
+  <path d="M9.2 12.4h3.7"/>
+{%- elif slug == 'hospitality' %}
+  {#- Bed -#}
+  <path d="M2.5 20.5V6.5"/>
+  <path d="M2.5 11.6h16.4a2.6 2.6 0 0 1 2.6 2.6v6.3"/>
+  <path d="M2.5 16.2h19"/>
+  <path d="M6.2 11.6V8.9h4.6v2.7"/>
+{%- elif slug == 'other' %}
+  {#- Other: a marked but unspecified category -#}
+  <circle cx="12" cy="12" r="9"/>
+  <circle cx="7.9" cy="12" r="1"/>
+  <circle cx="12" cy="12" r="1"/>
+  <circle cx="16.1" cy="12" r="1"/>
+{%- else %}
+  {#- Neutral fallback: no category recorded -#}
+  <path d="M4 20.5V5.4a1 1 0 0 1 1-1h8.6a1 1 0 0 1 1 1V20.5"/>
+  <path d="M14.6 10.6H19a1 1 0 0 1 1 1v8.9"/>
+  <path d="M2.5 20.5h19"/>
+  <path d="M7 8.2h1.8"/><path d="M10.4 8.2h1.8"/>
+  <path d="M7 12.2h1.8"/><path d="M10.4 12.2h1.8"/>
+  <path d="M7 16.2h1.8"/><path d="M10.4 16.2h1.8"/>
+  <path d="M17 14.4h.9"/>
+{%- endif %}
+</svg>
+{% endmacro %}

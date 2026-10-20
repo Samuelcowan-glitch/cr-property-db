@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% import "crm/_org_boxes.html" as ob %}
+{% import "crm/_org_logo.html" as logos %}
 {% block title %}{{ org.name }}{% endblock %}
 {% block topbar_title %}{{ org.display_name }}{% endblock %}
 {% block topbar_actions %}
@@ -22,6 +23,10 @@
 <form id="org-form" method="post" action="{{ url_for('organisation_save', id=org.id) }}"></form>
 <form id="role-form" method="post" action="{{ url_for('organisation_role_add', id=org.id) }}"></form>
 <form id="req-form" method="post" action="{{ url_for('organisation_requirement_add', id=org.id) }}"></form>
+{# The logo posts on its own: a file needs multipart/form-data, which the
+   page's urlencoded org-form cannot carry. #}
+<form id="logo-form" method="post" enctype="multipart/form-data"
+      action="{{ url_for('organisation_logo_upload', id=org.id) }}"></form>
 
 <div class="rec-page">
 
@@ -31,6 +36,12 @@
   </div>
 
   <div class="rec-header">
+    {# The mark sits beside the name inside .rec-header-id, so the header's
+       right-hand .rec-tags is left where it was — .rec-header is a
+       space-between flex row and a third child would have split it. Same
+       macro as the list, so the two cannot disagree about this company. #}
+    <div class="rec-header-id">
+    {{ logos.org_logo(org, size=56) }}
     <div>
       <h2>{{ org.display_name }}</h2>
       <div class="rec-facts">
@@ -43,6 +54,7 @@
         </span>
         {% endif %}
       </div>
+    </div>
     </div>
     <div class="rec-tags">
       {{ ob.status_tag(org.status) }}
@@ -65,6 +77,50 @@
     Change the status above to bring it back.
   </div>
   {% endif %}
+
+  {# ── The mark ───────────────────────────────────────────────────────────
+     Only on an existing record: there is nothing to attach a logo to until
+     the company has been created, which is why this is not in _org_boxes
+     alongside the fields the Add page shares.
+  #}
+  <div class="box box--grid">
+    <div class="box-head">Logo</div>
+    <div class="frow frow--full">
+      <div class="fcell fcell--label">Company logo</div>
+      <div class="fcell fcell--edit">
+        <div class="co-logo-field">
+          {{ logos.org_logo(org, size=48) }}
+          <input type="file" name="logo" form="logo-form"
+                 accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml">
+          <button type="submit" form="logo-form" class="btn btn-sm btn-outline">Upload</button>
+          {% if org.website %}
+          <button type="submit" form="logo-form" class="btn btn-sm btn-outline"
+                  formaction="{{ url_for('organisation_logo_fetch', id=org.id) }}">
+            Look on {{ org.website|replace('https://','')|replace('http://','')|replace('www.','')|truncate(28, true) }}
+          </button>
+          {% endif %}
+          {% if org.logo_mime %}
+          <button type="submit" form="logo-form" class="btn btn-sm btn-outline"
+                  formaction="{{ url_for('organisation_logo_clear', id=org.id) }}">Remove</button>
+          {% endif %}
+        </div>
+        <div class="co-logo-hint">
+          {%- if org.logo_mime -%}
+            {% if org.logo_source == 'website' %}Taken from {{ org.logo_origin }}{% else %}Uploaded{% endif %}
+            {%- if org.logo_tried_on %} on {{ org.logo_tried_on.strftime('%d %b %Y') }}{% endif %}.
+            Shown on the companies list and at the top of this page.
+          {%- elif org.logo_note -%}
+            No logo: {{ org.logo_note }}
+            {%- if org.logo_tried_on %} (looked on {{ org.logo_tried_on.strftime('%d %b %Y') }}){% endif %}.
+            The business category icon is shown instead.
+          {%- else -%}
+            No logo yet. Upload one, or look on the company's own website.
+            Until then the business category icon is shown.
+          {%- endif -%}
+        </div>
+      </div>
+    </div>
+  </div>
 
   <div class="rec-cols-narrow">
 

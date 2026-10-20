@@ -1,0 +1,178 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   Companies — the logo / category tile
+   ══════════════════════════════════════════════════════════════════════════
+
+   One square tile that holds, in order of preference: the company's uploaded
+   logo, the icon for its business category, or its initials. All three sit in
+   the same box at the same size, so a row never changes height and a header
+   never shifts when a logo is missing — the same trick .org-thumb /
+   .org-thumb.is-empty plays for property photographs.
+
+   Nothing here invents a colour. Every value is a token from cr-design.css
+   (--cr-card, --cr-rule, --cr-paper, --cr-muted, --cr-navy, --cr-ease) or the
+   retuned aliases the older stylesheets read (--grey-100, --navy). The radius
+   is the 3px the small CRM panels use, not the 7px card chamfer: this is a
+   component inside a row, not a card.
+
+   Loaded after cr-design.css so these rules win on ties.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── The tile ─────────────────────────────────────────────────────────────
+   Fixed square, hairline border, warm card ground. flex: none and the
+   explicit width/height are what stop it stretching inside a flex row or
+   being squeezed by a long company name in a grid cell. */
+.co-tile {
+  --co-tile-size: 40px;
+  width: var(--co-tile-size);
+  height: var(--co-tile-size);
+  flex: none;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  padding: 3px;
+  border: var(--cr-hair, 1px) solid var(--cr-rule, #d9d1c2);
+  border-radius: 3px;
+  background: var(--cr-card, #fffefb);
+  color: var(--cr-muted, #6b6858);
+  line-height: 0;
+}
+
+/* The three sizes in use: the companies list, the form preview, the profile
+   header. Set as a custom property so one class changes everything inside. */
+.co-tile--sm { --co-tile-size: 38px; }   /* companies list row */
+.co-tile--md { --co-tile-size: 48px; }   /* form preview */
+.co-tile--lg { --co-tile-size: 56px; }   /* company profile header */
+
+/* A tile that is also a link to the company must not pick up link colour or
+   an underline from the surrounding table. */
+a.co-tile { text-decoration: none; }
+a.co-tile:hover { border-color: var(--cr-navy, #2e2c71); }
+
+/* ── The logo ─────────────────────────────────────────────────────────────
+   contain, never cover: a logo is artwork and must not be cropped, and a wide
+   wordmark has to be allowed to letterbox inside the square. */
+.co-logo {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  object-position: center;
+}
+
+/* ── The category icon ────────────────────────────────────────────────────
+   Muted so the tile reads as a placeholder rather than as a second logo. The
+   icon inherits stroke from currentColor, so colour is set here, once. */
+.co-tile .cat-icon {
+  width: 100%;
+  height: 100%;
+  display: block;
+  color: var(--cr-muted, #6b6858);
+  opacity: .75;
+  transition: opacity .14s var(--cr-ease, ease), color .14s var(--cr-ease, ease);
+}
+.co-tile.is-icon { background: var(--cr-paper, #f2eee5); }
+
+/* The neutral fallback — no category recorded — is quieter again. */
+.co-tile .cat-icon--unknown { opacity: .5; }
+
+/* A row or card that is hovered or selected brings the icon up to ink. */
+.ct-card:hover .co-tile .cat-icon,
+tr:hover .co-tile .cat-icon,
+a.co-tile:hover .cat-icon,
+.co-tile:hover .cat-icon {
+  color: var(--cr-navy, #2e2c71);
+  opacity: 1;
+}
+
+/* ── The initials fallback ────────────────────────────────────────────────
+   Last resort: no logo, no category. Square rather than round, which is what
+   distinguishes a company from the round .ct-initials of a contact. */
+.co-tile.is-initials {
+  background: #dbe2f0;
+  border-color: var(--cr-rule, #d9d1c2);
+  color: var(--navy, #100f2c);
+  font-size: 13px;
+  font-weight: var(--w-heading, 600);
+  letter-spacing: .02em;
+  text-transform: uppercase;
+  line-height: 1;
+  padding: 0;
+}
+.co-tile--lg.is-initials { font-size: 18px; }
+
+/* ── Standalone sizing on the icon ────────────────────────────────────────
+   category_icon() is also used outside a tile — beside the category in the
+   profile facts, for example — where it should sit on the text baseline. */
+.cat-icon { vertical-align: -.18em; }
+
+/* ── The profile header identity block ───────────────────────────────────
+   .rec-header is display:flex; justify-content:space-between, and its first
+   child holds the <h2> and .rec-facts. Wrapping those in .rec-header-id puts
+   the tile to the left of the name without disturbing the header's right-hand
+   .rec-tags. min-width: 0 stops a long legal name widening the header. */
+.rec-header-id {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+.rec-header-id > div { min-width: 0; }
+
+/* ── The upload control in the form ──────────────────────────────────────
+   Preview tile, file input and the Remove tick on one quiet row inside an
+   .fcell--edit. */
+.co-logo-field {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.co-logo-field input[type="file"] { font-size: 12px; max-width: 100%; }
+.co-logo-hint {
+  font-size: 11px;
+  color: var(--cr-muted, #6b6858);
+}
+.co-logo-remove {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  color: var(--cr-muted, #6b6858);
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .rec-header-id { gap: 9px; }
+  .co-tile--lg { --co-tile-size: 46px; }
+}
+
+/* ── The name cell on the companies list ──────────────────────────────────
+   The mark sits WITH the name rather than in a column of its own, which is
+   how a project row reads, and means the existing table keeps its five
+   columns. The row height is set by the tile, so it is the same whether a
+   company has a logo, a category or neither. */
+.co-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: inherit;
+  min-width: 0;             /* lets a long name ellipsis rather than push out */
+}
+.co-name__text { min-width: 0; line-height: 1.3; }
+.co-name strong { display: block; }
+.co-name:hover strong { text-decoration: underline; }
+
+/* The category under the name, in the same quiet register the CRM uses for a
+   row's second line. It repeats what the icon says, for anyone who cannot
+   tell the sixteen line drawings apart at 38px — which is most people, most
+   of the time. */
+.co-name__cat {
+  display: block;
+  font-size: 11px;
+  color: var(--cr-muted, #6b6858);
+  letter-spacing: .01em;
+}

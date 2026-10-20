@@ -1256,6 +1256,36 @@ ORG_TYPES = [
     'Contractor', 'Supplier', 'Introducer', 'Other',
 ]
 
+# What the business actually does, as distinct from ORG_TYPES above, which is
+# the part it plays in OUR dealings: a restaurant is a Food and beverage
+# business and may be a Tenant at the same time.
+#
+# One entry per icon in templates/crm/_category_icons.html, spelled the same
+# way — the icon macro matches on this text, so a category added here without
+# an icon falls back to the neutral building rather than breaking.
+BUSINESS_CATEGORIES = [
+    'Retail',
+    'Food and beverage',
+    'Office / Professional services',
+    'Construction and property',
+    'Industrial and manufacturing',
+    'Logistics and distribution',
+    'Health and medical',
+    'Beauty and wellness',
+    'Fitness and leisure',
+    'Technology and IT',
+    'Creative and media',
+    'Education',
+    'Finance and insurance',
+    'Hospitality',
+    'Other',
+]
+
+# Offered on every form that edits a company, the same way OFFER_STATUSES and
+# PROGRESSION_STAGES are, so the two pages that build an organisation cannot
+# drift apart on the list.
+app.jinja_env.globals['BUSINESS_CATEGORIES'] = BUSINESS_CATEGORIES
+
 # One status at a time, and always shown in words. Colour only ever supports
 # the word; it never carries the meaning on its own.
 ORG_STATUSES = [
@@ -1345,6 +1375,23 @@ class Organisation(db.Model):
     payment_terms    = db.Column(db.String(120))
     vat_status       = db.Column(db.String(60))
     accounts_notes   = db.Column(db.Text)
+
+    # ── How the company is shown ──────────────────────────────────────────
+    # A logo, a business category, or neither: the tile falls back from one to
+    # the next so a row is never empty and never changes height. See
+    # templates/crm/_org_logo.html.
+    #
+    # The logo lives in the database rather than on disk because Railway's
+    # filesystem does not survive a deploy. It is deliberately NOT a
+    # ListingPhoto: a company logo and a property photograph are different
+    # things and must never be served from each other's id.
+    business_category = db.Column(db.String(60), index=True)
+    logo_data   = db.Column(db.LargeBinary)
+    logo_mime   = db.Column(db.String(60))
+    logo_source = db.Column(db.String(20))     # 'upload' | 'website'
+    logo_origin = db.Column(db.String(400))    # where a fetched one came from
+    logo_tried_on = db.Column(db.Date)         # so a failure is not retried
+    logo_note   = db.Column(db.String(200))    # why a lookup found nothing
 
     contacts = db.relationship('Contact', backref='organisation', lazy=True,
                                foreign_keys='Contact.organisation_id')
@@ -6676,7 +6723,11 @@ def _organisation_required(form, org=None):
 @app.route('/organisations')
 def organisations_list():
     q = (request.args.get('q') or '').strip()
-    query = Organisation.query
+    # The logo is a blob on the row. Without defer() every company's image
+    # bytes would be read to draw a list that only needs to know whether
+    # there IS one, so the tile asks for it by URL instead and the browser
+    # caches it. `logo_mime` stands in for "has a logo" in the template.
+    query = Organisation.query.options(db.defer(Organisation.logo_data))
     statuses = [s for s in request.args.getlist('status') if s in ORG_STATUS_NAMES]
     if statuses:
         query = query.filter(Organisation.status.in_(statuses))
@@ -6689,7 +6740,8 @@ def organisations_list():
         query = query.filter(db.or_(
             Organisation.name.ilike(like), Organisation.trading_name.ilike(like),
             Organisation.legal_name.ilike(like), Organisation.company_number.ilike(like),
-            Organisation.email.ilike(like), Organisation.org_type.ilike(like)))
+            Organisation.email.ilike(like), Organisation.org_type.ilike(like),
+            Organisation.business_category.ilike(like)))
     orgs = query.order_by(Organisation.name).all()
     return render_template(
         'crm/organisations_list.html', orgs=orgs, q=q, statuses=statuses,
@@ -6888,6 +6940,119 @@ def _role_target(form):
         value = (form.get(field) or '').strip()
         out[key] = int(value) if value.isdigit() else None
     return out
+
+
+@app.route('/organisations/<int:id>/logo')
+def organisation_logo_image(id):
+    """Serve a company's logo.
+
+    Entirely separate from listing_photo_image: an organisation id and a
+    listing-photo id are different numbering, and serving one from the other
+    would put a stranger's building against a company's name.
+    """
+    from flask import send_file
+    import io as _io
+    org = Organisation.query.get_or_404(id)
+    if not org.logo_data:
+        abort(404)
+    resp = send_file(_io.BytesIO(org.logo_data),
+                     mimetype=org.logo_mime or 'image/png')
+    # Not immutable: a logo can be replaced on the same id, unlike a photo.
+    # An hour is long enough to keep a list snappy and short enough that a
+    # correction shows up the same morning.
+    resp.headers['Cache-Control'] = 'private, max-age=3600'
+    return resp
+
+
+def _store_org_logo(org, data, mime, source, origin=None, note=None):
+    """Put an image on the record, or record why there is none.
+
+    Re-encoded through Pillow rather than stored as it arrived: it proves the
+    bytes really are an image before they are kept, strips any metadata that
+    came with them, and holds the size down. A logo is shown at 72px at the
+    largest, so 256px square is generous.
+    """
+    import io as _io
+    if data is None:
+        org.logo_note = note
+        org.logo_tried_on = date.today()
+        return False
+    try:
+        from PIL import Image
+        im = Image.open(_io.BytesIO(data))
+        im.load()
+        if im.mode not in ('RGB', 'RGBA', 'L'):
+            im = im.convert('RGBA')
+        im.thumbnail((256, 256), Image.LANCZOS)
+        buf = _io.BytesIO()
+        # PNG throughout, so transparency survives — most logos rely on it.
+        im.convert('RGBA').save(buf, format='PNG', optimize=True)
+        org.logo_data = buf.getvalue()
+        org.logo_mime = 'image/png'
+    except Exception:
+        app.logger.exception('Could not read a logo for organisation %s', org.id)
+        org.logo_note = 'That file could not be read as an image.'
+        org.logo_tried_on = date.today()
+        return False
+    org.logo_source = source
+    org.logo_origin = origin
+    org.logo_note = None
+    org.logo_tried_on = date.today()
+    return True
+
+
+@app.route('/organisations/<int:id>/logo/upload', methods=['POST'])
+def organisation_logo_upload(id):
+    org = Organisation.query.get_or_404(id)
+    f = request.files.get('logo')
+    if not f or not f.filename:
+        flash('Choose an image file to upload.', 'error')
+    elif _store_org_logo(org, f.read(), f.mimetype, 'upload', origin=f.filename):
+        db.session.commit()
+        flash(f'Logo set for {org.name}.', 'success')
+    else:
+        db.session.commit()
+        flash(org.logo_note or 'That file could not be used.', 'error')
+    return redirect(url_for('organisation_detail', id=org.id))
+
+
+@app.route('/organisations/<int:id>/logo/fetch', methods=['POST'])
+def organisation_logo_fetch(id):
+    """Look for the logo on the company's own website.
+
+    Asked for by hand, never on a page load: it is an outbound request to a
+    third party, it can be slow, and a company that has no usable logo would
+    otherwise be retried on every view. The outcome is recorded either way.
+    """
+    org = Organisation.query.get_or_404(id)
+    if not org.website:
+        flash('Add the company\u2019s website first, then look again.', 'error')
+        return redirect(url_for('organisation_detail', id=org.id))
+    import org_logo
+    found = org_logo.fetch_logo(org.website)        # a dict; never raises
+    if found['ok']:
+        _store_org_logo(org, found['data'], found['mime'], 'website',
+                        origin=found['url'])
+        db.session.commit()
+        # The source is named rather than hidden, because a favicon dug out of
+        # a site root deserves a glance in a way a declared logo does not.
+        flash(f"Logo taken from {found['source']} at {found['url']}.", 'success')
+    else:
+        _store_org_logo(org, None, None, None, note=found['reason'])
+        db.session.commit()
+        flash(f"No logo found: {found['reason']}", 'error')
+    return redirect(url_for('organisation_detail', id=org.id))
+
+
+@app.route('/organisations/<int:id>/logo/clear', methods=['POST'])
+def organisation_logo_clear(id):
+    org = Organisation.query.get_or_404(id)
+    org.logo_data = org.logo_mime = org.logo_source = org.logo_origin = None
+    org.logo_note = org.logo_tried_on = None
+    db.session.commit()
+    flash(f'Logo removed from {org.name}. The category icon is shown instead.',
+          'success')
+    return redirect(url_for('organisation_detail', id=org.id))
 
 
 @app.route('/organisations/<int:id>/roles', methods=['POST'])
@@ -8257,6 +8422,9 @@ ORGANISATION_FIELDS = [
     ('companies_house_status', 'companies_house_status', _ftext),
     ('incorporated_on',    'incorporated_on',    _parse_date),
     ('nature_of_business', 'nature_of_business', _ftext),
+    # What the business does. Free text is accepted but the form offers the
+    # list, because the icon only matches a spelling it knows.
+    ('business_category',  'business_category',  _ftext),
     ('notes',              'notes',              _ftext),
 ]
 
