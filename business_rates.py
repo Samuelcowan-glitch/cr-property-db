@@ -31,8 +31,11 @@ MULTIPLIER_TYPES = [
     'Other',
 ]
 
-# How a relief is expressed. Nothing here is ever applied on the CRM's own
-# initiative — eligibility is the ratepayer's to establish, not ours to assume.
+# How a relief is expressed. Only one of these is ever worked out by the CRM
+# itself — Small Business Rate Relief, and then only once somebody has DECLARED
+# the one fact the CRM cannot hold (see small_business_rate_relief below).
+# Everything else is entered by hand: eligibility is the ratepayer's to
+# establish, not ours to assume.
 RELIEF_TYPES = [
     'Small Business Rate Relief',
     'Retail, Hospitality and Leisure Relief',
@@ -45,6 +48,103 @@ RELIEF_TYPES = [
 ]
 
 MONEY = Decimal('0.01')
+
+
+# ── Small Business Rate Relief (England) ────────────────────────────────────
+# Source: https://www.gov.uk/apply-for-business-rate-relief/small-business-rate-relief
+# Checked 20 October 2026. Thresholds unchanged by the 1 April 2026 revaluation.
+#
+# 100% relief where the rateable value is £12,000 or less. Between £12,001 and
+# £14,999 the relief tapers linearly to nothing, and there is none at all at
+# £15,000 or more. A future change to any of these is a one-line edit here.
+#
+# Money is pence throughout, so £12,000 is 1_200_000.
+SBRR_FULL_RV_MAX = 1_200_000            # RV £12,000 — 100% relief at or below
+SBRR_TAPER_RV_MAX = 1_500_000           # RV £15,000 — no relief at or above
+SBRR_TAPER_TOP = Decimal('15000')       # the taper's top, in POUNDS
+SBRR_TAPER_BAND = Decimal('3000')       # the £3,000 band it tapers across
+SBRR_PERCENT = Decimal('0.001')         # how finely a tapered percentage is held
+
+# The one fact the CRM does not hold, written the way it is put to the user.
+# SBRR needs the ratepayer to occupy only one property (or one main property
+# plus others each under £2,900 rateable value, totalling under £20,000 —
+# £28,000 in London). The CRM knows none of that, so it is declared, never
+# assumed. Same page as above.
+SBRR_DECLARATION = ("This is the ratepayer\u2019s only business property in England")
+
+SBRR_NAME = 'Small Business Rate Relief'
+
+
+def small_business_rate_relief(rateable_value_pence, declared=False):
+    """What SBRR comes to for a rateable value, and why.
+
+    `declared` is somebody in the office ticking SBRR_DECLARATION. It is the
+    ratepayer's property count — which the CRM has no way of knowing — and so
+    the relief is worked out from it rather than assumed. Without it no relief
+    is applied, and the reason is returned so the screen can say so in a line
+    instead of silently showing none.
+
+    Returns a dict every time, never None:
+
+      applies  whether any relief is due
+      percent  the percentage due, as a Decimal, or None
+      band     'full', 'taper', 'above-threshold', 'not-declared' or 'no-rv'
+      reason   one line of plain English, suitable for the screen as it is
+    """
+    declared = bool(declared)
+    out = {'declared': declared, 'applies': False, 'percent': None,
+           'band': 'no-rv', 'reason': '', 'name': SBRR_NAME}
+
+    if rateable_value_pence is None:
+        out['reason'] = ('No ' + SBRR_NAME + ' has been worked out: there is no '
+                         'rateable value to work it out from.')
+        return out
+
+    rv = int(rateable_value_pence)
+
+    if rv <= SBRR_FULL_RV_MAX:
+        out['band'] = 'full'
+        out['percent'] = Decimal('100')
+    elif rv < SBRR_TAPER_RV_MAX:
+        out['band'] = 'taper'
+        # relief % = (15,000 − RV) / 3,000 × 100, i.e. (15,000 − RV) / 30.
+        pounds = Decimal(rv) / 100
+        pct = (SBRR_TAPER_TOP - pounds) / SBRR_TAPER_BAND * 100
+        out['percent'] = pct.quantize(SBRR_PERCENT, rounding=ROUND_HALF_UP)
+    else:
+        out['band'] = 'above-threshold'
+
+    if out['band'] == 'above-threshold':
+        out['reason'] = (
+            f'No {SBRR_NAME}: it is only available where the rateable value is '
+            f'under {money(SBRR_TAPER_RV_MAX)}, and this is {money(rv)}.')
+        return out
+
+    if not declared:
+        out['band'] = 'not-declared'
+        out['reason'] = (
+            f'No {SBRR_NAME} has been applied. At {money(rv)} this property '
+            f'would qualify for {percent_str(out["percent"])}%, but the relief '
+            'also depends on how many properties the ratepayer occupies, which '
+            'the CRM does not know. Tick \u201c' + SBRR_DECLARATION
+            + '\u201d to apply it.')
+        out['percent'] = None
+        return out
+
+    out['applies'] = True
+    if out['band'] == 'full':
+        out['reason'] = (
+            f'{SBRR_NAME} at 100%, applied automatically: the rateable value is '
+            f'{money(SBRR_FULL_RV_MAX)} or less and the declaration has been '
+            'made. Nothing is payable.')
+    else:
+        out['reason'] = (
+            f'{SBRR_NAME} at {percent_str(out["percent"])}%, applied '
+            f'automatically: {money(rv)} falls in the taper between '
+            f'{money(SBRR_FULL_RV_MAX + 100)} and '
+            f'{money(SBRR_TAPER_RV_MAX - 100)}, where the relief runs down from '
+            '100% to nothing.')
+    return out
 
 
 # ── Money ───────────────────────────────────────────────────────────────────
@@ -201,8 +301,17 @@ def eligible_multipliers(rows, rateable_value_pence=None, property_type=None):
                 continue
             if high is not None and rateable_value_pence >= high:
                 continue
+        # A row tied to a category is only ever a candidate where the
+        # property's type actually matches it. Before, a category row was kept
+        # whenever the CRM did not know the type — and then sorted to the FRONT
+        # — so the 2026/27 retail, hospitality and leisure multipliers would
+        # have been proposed for every property, which is exactly the kind of
+        # assumption about the occupier's use that this module must not make.
+        # Qualifying for them is a fact the billing authority establishes, so
+        # they stay in the list to be picked by hand and are never suggested.
         category = (row.get('category') or '').strip()
-        if category and property_type and category.lower() != str(property_type).lower():
+        if category and (not property_type
+                         or category.lower() != str(property_type).lower()):
             continue
         out.append(row)
     # A row with a threshold is a better fit than a catch-all, and one tied to
@@ -245,7 +354,7 @@ def suggest_multiplier(rows, rateable_value_pence=None, property_type=None):
 def calculate(rateable_value_pence, multiplier_scaled,
               relief_percent=None, relief_amount_pence=None,
               transitional_pence=None, supplement_pence=None,
-              other_pence=None):
+              other_pence=None, sbrr_declared=False):
     """The estimated annual liability, and every step that produced it.
 
     Base liability      = rateable value × multiplier
@@ -257,6 +366,19 @@ def calculate(rateable_value_pence, multiplier_scaled,
     never allowed below zero — a property cannot have a negative rates bill —
     and the breakdown says so when that floor is reached.
 
+    Relief comes from one of two places, and the result says which:
+
+      manual     a percentage or an amount passed in, typed by a person
+      automatic  Small Business Rate Relief, worked out here from the rateable
+                 value, but only where `sbrr_declared` says the one fact the
+                 CRM cannot hold has been declared
+
+    A manual figure always WINS. Somebody who types a percentage has a reason
+    for it — a council's own figure, a relief the CRM does not model — and the
+    calculator must not quietly replace it with its own arithmetic. The
+    automatic figure is still worked out and returned so the screen can say
+    what was passed over.
+
     Returns None where there is nothing to calculate from.
     """
     if rateable_value_pence is None or multiplier_scaled is None:
@@ -264,18 +386,49 @@ def calculate(rateable_value_pence, multiplier_scaled,
 
     base = _apply(rateable_value_pence, multiplier_scaled)
 
+    def _percent_of_base(pct):
+        return int((Decimal(base) * Decimal(str(pct)) / 100)
+                   .quantize(Decimal('1'), rounding=ROUND_HALF_UP))
+
+    sbrr = small_business_rate_relief(rateable_value_pence, sbrr_declared)
+
     relief = 0
     relief_lines = []
-    if relief_percent:
-        pct = Decimal(str(relief_percent))
-        taken = int((Decimal(base) * pct / 100).quantize(Decimal('1'),
-                                                         rounding=ROUND_HALF_UP))
+    relief_source = None
+    relief_note = sbrr['reason']
+    relief_percent_used = None
+
+    manual = bool(relief_percent) or bool(relief_amount_pence)
+    if manual:
+        relief_source = 'manual'
+        if relief_percent:
+            pct = Decimal(str(relief_percent))
+            relief_percent_used = pct
+            taken = _percent_of_base(pct)
+            relief += taken
+            relief_lines.append(
+                (f'Relief at {percent_str(pct)}% of the base liability '
+                 '(entered by hand)', -taken))
+        if relief_amount_pence:
+            relief += int(relief_amount_pence)
+            relief_lines.append(('Relief as a fixed amount (entered by hand)',
+                                 -int(relief_amount_pence)))
+        if sbrr['applies']:
+            relief_note = (
+                'The relief entered by hand has been used. It overrides the '
+                f'automatic {SBRR_NAME} of {percent_str(sbrr["percent"])}%, '
+                f'which would have been {money(_percent_of_base(sbrr["percent"]))}.')
+        else:
+            relief_note = ('The relief shown was entered by hand. '
+                           + sbrr['reason'])
+    elif sbrr['applies']:
+        relief_source = 'automatic'
+        relief_percent_used = sbrr['percent']
+        taken = _percent_of_base(sbrr['percent'])
         relief += taken
-        relief_lines.append((f'Relief at {percent_str(pct)}% of the base liability',
-                             -taken))
-    if relief_amount_pence:
-        relief += int(relief_amount_pence)
-        relief_lines.append(('Relief as a fixed amount', -int(relief_amount_pence)))
+        relief_lines.append(
+            (f'{SBRR_NAME} at {percent_str(sbrr["percent"])}% of the base '
+             'liability (worked out automatically)', -taken))
 
     additions = []
     for label, value in (('Supplement', supplement_pence),
@@ -295,6 +448,10 @@ def calculate(rateable_value_pence, multiplier_scaled,
         'base': base,
         'relief': relief,
         'relief_lines': relief_lines,
+        'relief_source': relief_source,
+        'relief_percent_used': relief_percent_used,
+        'relief_note': relief_note,
+        'sbrr': sbrr,
         'additions': additions,
         'adjustments': sum(v for _, v in additions),
         'total': total,

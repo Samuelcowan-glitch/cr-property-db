@@ -312,6 +312,11 @@ class RatesCalculation(db.Model):
     relief_type   = db.Column(db.String(80))
     relief_percent = db.Column(db.Numeric(6, 3))
     relief_amount = db.Column(db.BigInteger)      # pence
+    # Which of the two the figure above came from, and the declaration that
+    # allowed the automatic one. Kept with the estimate because "why is there
+    # 50% relief on this?" has to be answerable a year later.
+    relief_source = db.Column(db.String(20))      # 'automatic' | 'manual' | None
+    sbrr_declared = db.Column(db.Boolean, default=False)
     transitional  = db.Column(db.BigInteger)      # pence, may be negative
     supplement    = db.Column(db.BigInteger)      # pence
     supplement_label = db.Column(db.String(120))
@@ -3848,6 +3853,9 @@ def _rates_inputs(form, prop=None):
             value = row.value
 
     relief_type = (form.get('relief_type') or '').strip() or None
+    # The one fact the CRM cannot hold, declared rather than assumed. Off
+    # unless somebody has ticked it; see br.small_business_rate_relief.
+    sbrr_declared = bool(form.get('sbrr_declared'))
     relief_percent = None
     raw_pct = (form.get('relief_percent') or '').strip()
     if raw_pct:
@@ -3881,6 +3889,7 @@ def _rates_inputs(form, prop=None):
         'multiplier_overridden': overridden,
         'override_reason': (form.get('override_reason') or '').strip() or None,
         'relief_type': relief_type,
+        'sbrr_declared': sbrr_declared,
         'relief_percent': relief_percent,
         'relief_amount': amount('relief_amount'),
         'transitional': amount('transitional', allow_negative=True),
@@ -3899,7 +3908,8 @@ def _rates_result(inputs):
         relief_amount_pence=inputs['relief_amount'],
         transitional_pence=inputs['transitional'],
         supplement_pence=inputs['supplement'],
-        other_pence=inputs['other_adjustment'])
+        other_pence=inputs['other_adjustment'],
+        sbrr_declared=inputs['sbrr_declared'])
 
 
 def _rates_payload(prop, inputs, errors, result):
@@ -3915,6 +3925,13 @@ def _rates_payload(prop, inputs, errors, result):
             f"A {inputs['relief_type'] or 'relief'} has been applied because it was "
             'entered on this form. The CRM has not checked eligibility, which '
             'depends on the occupier and on how many properties they hold.')
+    if inputs['sbrr_declared']:
+        assumptions.append(
+            'Small Business Rate Relief has been worked out automatically '
+            f'because “{br.SBRR_DECLARATION}” has been ticked on this '
+            'form. Nobody has checked that against the ratepayer’s other '
+            'holdings, and the relief is lost if they occupy anything else '
+            'beyond what the rules allow.')
     if inputs['supplement']:
         assumptions.append(
             f"A supplement of {br.money(inputs['supplement'])} "
@@ -3955,6 +3972,14 @@ def _rates_payload(prop, inputs, errors, result):
             'overridden': inputs['multiplier_overridden'],
             'base': br.money(result['base']),
             'relief': br.money(result['relief']) if result['relief'] else None,
+            'relief_source': result['relief_source'],
+            'relief_note': result['relief_note'],
+            'relief_percent_used': (br.percent_str(result['relief_percent_used'])
+                                    if result['relief_percent_used'] is not None
+                                    else None),
+            'sbrr_applies': result['sbrr']['applies'],
+            'sbrr_percent': (br.percent_str(result['sbrr']['percent'])
+                             if result['sbrr']['percent'] is not None else None),
             'adjustments': (br.money(result['adjustments'])
                             if result['adjustments'] else None),
             'total': br.money(result['total']),
@@ -3964,6 +3989,16 @@ def _rates_payload(prop, inputs, errors, result):
             'lines': [(label, br.money(value)) for label, value in result['lines']],
         },
         'assumptions': assumptions,
+        # Said whether or not a figure could be produced, so the relief panel
+        # never sits silent. A year with no multiplier still explains the
+        # relief position.
+        'relief_note': (result['relief_note'] if result else
+                        br.small_business_rate_relief(
+                            inputs['rateable_value'],
+                            inputs['sbrr_declared'])['reason']),
+        'relief_source': result['relief_source'] if result else None,
+        'tax_year': inputs['tax_year'],
+        'has_multipliers': bool(multiplier_rows(inputs['tax_year'])),
     }
 
 
@@ -4013,9 +4048,15 @@ def property_rates_save(id):
         multiplier_overridden=inputs['multiplier_overridden'],
         override_reason=inputs['override_reason'],
         base_payable=result['base'],
-        relief_type=inputs['relief_type'],
-        relief_percent=inputs['relief_percent'],
+        relief_type=(inputs['relief_type']
+                     or (br.SBRR_NAME if result['relief_source'] == 'automatic'
+                         else None)),
+        relief_percent=(inputs['relief_percent']
+                        if result['relief_source'] == 'manual'
+                        else result['relief_percent_used']),
         relief_amount=inputs['relief_amount'],
+        relief_source=result['relief_source'],
+        sbrr_declared=inputs['sbrr_declared'],
         transitional=inputs['transitional'],
         supplement=inputs['supplement'],
         supplement_label=inputs['supplement_label'],
@@ -9858,6 +9899,26 @@ COUNCIL_SEED = [
 #
 # rv_min / rv_max are in pence and rv_max is exclusive, so the small business
 # multiplier covers rateable values below £51,000.
+#
+# 2026/27 is the first year England has had FIVE multipliers rather than two.
+# 1 April 2026 was a revaluation: a new rating list took effect, rateable
+# values changed and the multipliers were rebased, which is why 55.5p became
+# 48.0p. A 2025/26 bill and a 2026/27 bill must therefore never be compared on
+# the same rateable value.
+#
+# The two retail, hospitality and leisure multipliers are set 5p below their
+# national equivalents (48.0 − 5 = 43.0, 43.2 − 5 = 38.2) and the high-value
+# multiplier 2.8p above the standard (48.0 + 2.8 = 50.8), which is the check
+# that these are not transcription errors.
+#
+# There is NO reduced rate at £500,000 and above: the high-value multiplier
+# overrides the RHL ones, so a shop with a rateable value of £500,000 pays
+# 50.8p and not 43.0p. Hence the £500,000 ceiling on the three middle rows.
+#
+# The RHL rows carry a category, so they are never proposed on the CRM's own
+# initiative — qualifying use is a fact the billing authority establishes and
+# most councils make the ratepayer apply or self-certify. They stay in the list
+# to be chosen by hand.
 MULTIPLIER_SEED = [
     ('2023/24', 'Standard multiplier',       'Standard',       51200, 5_100_000, None),
     ('2023/24', 'Small business multiplier', 'Small business', 49900, None, 5_100_000),
@@ -9865,8 +9926,22 @@ MULTIPLIER_SEED = [
     ('2024/25', 'Small business multiplier', 'Small business', 49900, None, 5_100_000),
     ('2025/26', 'Standard multiplier',       'Standard',       55500, 5_100_000, None),
     ('2025/26', 'Small business multiplier', 'Small business', 49900, None, 5_100_000),
+    # 2026/27, from MHCLG business rates information letter 2/2026 (10 Feb 2026).
+    ('2026/27', 'Small business multiplier', 'Small business', 43200, None, 5_100_000),
+    ('2026/27', 'Standard multiplier',       'Standard',       48000, 5_100_000, 50_000_000),
+    ('2026/27', 'High-value multiplier',     'Other',          50800, 50_000_000, None),
+    ('2026/27', 'Small business retail, hospitality and leisure multiplier',
+     'Small business', 38200, None, 5_100_000, 'Retail, Hospitality or Leisure'),
+    ('2026/27', 'Standard retail, hospitality and leisure multiplier',
+     'Standard',       43000, 5_100_000, 50_000_000, 'Retail, Hospitality or Leisure'),
 ]
 MULTIPLIER_SOURCE = 'https://www.gov.uk/calculate-your-business-rates'
+
+# Where a year's figures came from, where it is not the general page above.
+MULTIPLIER_SOURCE_BY_YEAR = {
+    '2026/27': ('https://www.gov.uk/government/publications/'
+                '22026-notification-of-non-domestic-rating-multipliers-for-202627'),
+}
 
 
 def seed_rates_reference():
@@ -9880,15 +9955,23 @@ def seed_rates_reference():
         if not Council.query.filter_by(name=row['name']).first():
             db.session.add(Council(**row))
             added['councils'] += 1
-    for tax_year, name, kind, value, rv_min, rv_max in MULTIPLIER_SEED:
+    for row in MULTIPLIER_SEED:
+        # A row may carry a category as a seventh field; most do not.
+        tax_year, name, kind, value, rv_min, rv_max = row[:6]
+        category = row[6] if len(row) > 6 else None
+        # Still keyed on year and name, so a row already on record — including
+        # one the office has corrected — is left exactly as it is. Adding
+        # 2026/27 here therefore changes nothing for the years above.
         exists = RatesMultiplier.query.filter_by(tax_year=tax_year, name=name).first()
         if exists:
             continue
         starts, ends = br.tax_year_bounds(tax_year)
         db.session.add(RatesMultiplier(
             tax_year=tax_year, name=name, multiplier_type=kind, value=value,
-            rv_min=rv_min, rv_max=rv_max, starts_on=starts, ends_on=ends,
-            source=MULTIPLIER_SOURCE, verified_on=None))
+            category=category, rv_min=rv_min, rv_max=rv_max,
+            starts_on=starts, ends_on=ends,
+            source=MULTIPLIER_SOURCE_BY_YEAR.get(tax_year, MULTIPLIER_SOURCE),
+            verified_on=None))
         added['multipliers'] += 1
     if added['councils'] or added['multipliers']:
         db.session.commit()

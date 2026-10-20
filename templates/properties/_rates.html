@@ -70,6 +70,11 @@
   </div>
   {% endif %}
 
+  {# The chosen year may have no multipliers at all — the figures are
+     published once a year, and the year turns over before they are. Said
+     plainly, in place of a blank breakdown or a figure at last year's rate. #}
+  <div class="br-stale" data-br-noyear hidden></div>
+
   <div class="frow">
     <div class="fcell fcell--label">Rateable value <span class="req">*</span></div>
     <div class="fcell fcell--edit">
@@ -133,19 +138,49 @@
         {% endfor %}
       </select>
       <span class="fcell-hint">
-        Never applied on the CRM&rsquo;s own initiative. Eligibility depends on the
-        occupier and on how many properties they hold.
+        Only Small Business Rate Relief is worked out by the CRM, and only once
+        the declaration below has been ticked. Every other relief is entered by
+        hand: eligibility depends on the occupier, and on facts the CRM does not
+        hold.
       </span>
     </div>
     <div class="fcell fcell--label">Relief</div>
     <div class="fcell fcell--edit br-pair">
       <input type="text" inputmode="decimal" name="relief_percent" form="rates-form"
              data-br="relief_percent" placeholder="%" aria-label="Relief percentage"
-             value="{{ current.relief_percent if current and current.relief_percent else '' }}">
+             value="{{ current.relief_percent if current and current.relief_percent and current.relief_source != 'automatic' else '' }}">
       <span class="br-or">or</span>
       <input type="text" inputmode="decimal" name="relief_amount" form="rates-form"
              data-br="relief_amount" placeholder="£" aria-label="Relief as an amount"
-             value="{{ br.from_pence(current.relief_amount) if current and current.relief_amount else '' }}">
+             value="{{ br.from_pence(current.relief_amount) if current and current.relief_amount and current.relief_source != 'automatic' else '' }}">
+    </div>
+  </div>
+
+  {# ── The declaration ──
+     Small Business Rate Relief turns on how many properties the ratepayer
+     occupies. The CRM has no way of knowing that, which is why this relief was
+     never applied on its own before. So the fact is DECLARED here rather than
+     assumed: ticked, the relief is worked out and applied automatically;
+     unticked, the line below says why none has been. Anything typed in the
+     Relief boxes above wins over the automatic figure, and the line says so. #}
+  <div class="frow frow--full">
+    <div class="fcell fcell--label">Small Business Rate Relief</div>
+    <div class="fcell fcell--edit">
+      <label class="br-check">
+        <input type="checkbox" name="sbrr_declared" form="rates-form"
+               data-br="sbrr_declared" value="1"
+               {{ 'checked' if current and current.sbrr_declared }}>
+        {{ br.SBRR_DECLARATION }}
+      </label>
+      <span class="fcell-hint" data-br-relief-note>
+        {%- if current and current.rateable_value is not none -%}
+        {{ br.small_business_rate_relief(current.rateable_value,
+                                         current.sbrr_declared)['reason'] }}
+        {%- else -%}
+        Tick this only if somebody has asked the ratepayer. Unticked, no Small
+        Business Rate Relief is applied.
+        {%- endif -%}
+      </span>
     </div>
   </div>
 

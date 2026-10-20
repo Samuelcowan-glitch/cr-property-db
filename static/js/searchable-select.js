@@ -80,6 +80,12 @@
     function readOptions() {
       items = [];
       Array.prototype.forEach.call(sel.options, function (opt, i) {
+        // A hidden option is one the page has ruled out — the rates calculator
+        // hides every multiplier belonging to another tax year. This panel used
+        // to ignore `hidden` entirely, so those options stayed pickable and the
+        // server then refused the calculation. The native <select> honours
+        // hidden; so does this now.
+        if (opt.hidden) { return; }
         var group = opt.parentNode && opt.parentNode.tagName === 'OPTGROUP'
           ? opt.parentNode.label : '';
         items.push({

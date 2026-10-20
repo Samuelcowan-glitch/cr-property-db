@@ -555,17 +555,19 @@ print('38. a council is added centrally, with no change to the property table')
 
 
 # ─── 39. A multiplier is added for a future year without a code change ──────
+# 2027/28 rather than 2026/27: the 2026/27 figures are published and seeded, so
+# the year that tests "a future year the CRM has nothing for" has moved on.
 r = cl.post('/admin/rates/multiplier',
-            data={'tax_year': '2026/27', 'name': 'Standard multiplier',
+            data={'tax_year': '2027/28', 'name': 'Standard multiplier',
                   'multiplier_type': 'Standard', 'value': '0.561',
                   'rv_min': '51000', 'source': 'https://www.gov.uk/', 'active': '1',
                   'verified': '1', 'verified_on': '2026-04-02'},
             follow_redirects=True)
 assert r.status_code == 200
 with A.app.app_context():
-    row = A.RatesMultiplier.query.filter_by(tax_year='2026/27').first()
+    row = A.RatesMultiplier.query.filter_by(tax_year='2027/28').first()
     assert row and row.value == 56100 and row.verified_on, 'the multiplier was not added'
-    pick = A.suggest_multiplier_for('2026/27', br.to_pence('90000'))
+    pick = A.suggest_multiplier_for('2027/28', br.to_pence('90000'))
     assert pick and pick['value'] == 56100, pick
 print('39. next year’s multiplier is a row, not a release, and is used at once')
 
@@ -765,10 +767,19 @@ print(f'51. the calculator opens on {opens_on}, a year with multipliers on recor
 
 
 # ─── 52. A year with no multipliers explains itself ─────────────────────────
+# Every year the calculator offers now has figures on record — 2026/27's were
+# published and seeded, and test 39 added the year after. So the bare year is
+# made rather than looked for: the multiplier test 39 added is retired, which
+# is what the office would do to a figure it no longer stands behind, and the
+# year it belongs to goes back to having nothing.
 with A.app.app_context():
+    for row in A.RatesMultiplier.query.filter_by(tax_year='2027/28').all():
+        row.active = False
+    db.session.commit()
     empty = next((y for y in br.tax_year_options(date.today())
                   if not A.multiplier_rows(y)), None)
 assert empty, 'no empty year to test with'
+page = cl.get(f"/properties/{IDS['hflet']['prop']}").get_data(as_text=True)
 r = cl.get(f"/properties/{IDS['hflet']['prop']}/rates/suggest?tax_year={empty}"
            f"&rateable_value=50000").get_json()
 assert r['empty'] and r['message'], r
@@ -874,7 +885,9 @@ for value, expected in ((100, '100'), (40, '40'), (80, '80'), (50, '50'),
     assert got == expected, f'{value} shown as {got}, expected {expected}'
     assert 'E' not in got and 'e' not in got, f'{value} came out as {got}'
 r = br.calculate(br.to_pence('45000'), br.to_multiplier('0.499'), relief_percent=40)
-assert 'Relief at 40% of the base liability' == r['relief_lines'][0][0], \
+# The line now says where the figure came from, because one relief is worked
+# out by the CRM itself and the rest are typed in.
+assert 'Relief at 40% of the base liability (entered by hand)' == r['relief_lines'][0][0], \
     r['relief_lines'][0][0]
 r = br.calculate(br.to_pence('45000'), br.to_multiplier('0.499'), relief_percent=100)
 assert 'Relief at 100%' in r['relief_lines'][0][0], r['relief_lines'][0][0]
@@ -978,6 +991,120 @@ names = _c.Counter(re.findall(r'<option[^>]*>([^<]+)</option>', block))
 repeated = [n.strip() for n, count in names.items() if count > 1]
 assert not repeated, f'these councils appear more than once: {repeated}'
 print('61. every council is offered exactly once, chosen or not')
+
+
+# ─── 62. Small Business Rate Relief, worked out from a declaration ──────────
+# The relief used to be applied only if somebody typed a percentage by hand,
+# which is why it was almost never applied at all. It is worked out now — but
+# from a DECLARED fact, because eligibility turns on how many properties the
+# ratepayer occupies and the CRM holds no such thing.
+page = cl.get(f"/properties/{IDS['hflet']['prop']}").get_data(as_text=True)
+assert 'data-br="sbrr_declared"' in page, 'the declaration is not on the panel'
+tick = page[page.index('data-br="sbrr_declared"'):]
+tick = tick[:tick.index('</label>')]
+assert 'checked' not in tick, 'the declaration is ticked by default'
+assert 'only business property in England' in page, \
+    'the declaration is not worded plainly'
+
+# The small business multiplier for 2026/27, chosen the way the screen does.
+with A.app.app_context():
+    SB2627 = A.RatesMultiplier.query.filter_by(
+        tax_year='2026/27', name='Small business multiplier').first()
+    assert SB2627 and SB2627.value == 43200, 'the 2026/27 43.2p rate is not seeded'
+    SB2627 = SB2627.id
+
+# RV 13,500 in 2026/27: small business multiplier 43.2p, base 5,832.00,
+# taper (15,000 - 13,500) / 30 = 50%, so 2,916.00 payable.
+out = calc(IDS['hflet']['prop'], tax_year='2026/27', multiplier_id=SB2627, rateable_value='13500',
+           sbrr_declared='1')
+assert out['ok'], out
+assert out['result']['total'] == '£2,916.00', out['result']['total']
+assert out['result']['relief_source'] == 'automatic', out['result']
+assert out['result']['relief'] == '£2,916.00', out['result']['relief']
+assert any('Small Business Rate Relief at 50%' in line[0]
+           for line in out['result']['lines']), out['result']['lines']
+# 100% at 12,000 and under: nothing payable.
+out = calc(IDS['hflet']['prop'], tax_year='2026/27', multiplier_id=SB2627, rateable_value='11000',
+           sbrr_declared='1')
+assert out['result']['total'] == '£0.00', out['result']['total']
+print('62. Small Business Rate Relief is worked out from a declaration, not assumed')
+
+
+# ─── 63. Without the declaration, no relief — and the reason is said ───────
+out = calc(IDS['hflet']['prop'], tax_year='2026/27', multiplier_id=SB2627, rateable_value='13500')
+assert out['ok'], out
+assert out['result']['total'] == '£5,832.00', out['result']['total']
+assert out['result']['relief'] is None, out['result']['relief']
+assert out['result']['relief_source'] is None
+note = out['relief_note']
+assert 'only business property' in note and 'does not know' in note, note
+# The line says what the property WOULD get, so the choice not to tick the
+# declaration is an informed one — but no percentage is reported as applied.
+assert 'would qualify for 50%' in note, note
+assert out['result']['sbrr_percent'] is None, out['result']['sbrr_percent']
+# Above the threshold the reason is the rateable value, not the declaration.
+out = calc(IDS['hflet']['prop'], tax_year='2026/27', multiplier_id=SB2627, rateable_value='20000',
+           sbrr_declared='1')
+assert out['result']['relief'] is None, out['result']['relief']
+assert 'under £15,000' in out['relief_note'], out['relief_note']
+# And the reason is given even when no figure could be produced at all.
+out = calc(IDS['hflet']['prop'], tax_year=empty, rateable_value='13500')
+assert not out['ok'] and out['relief_note'], out
+assert out['has_multipliers'] is False, out
+print('63. no relief is ever applied silently; the reason is stated in a line')
+
+
+# ─── 64. A figure entered by hand beats the automatic one ──────────────────
+out = calc(IDS['hflet']['prop'], tax_year='2026/27', multiplier_id=SB2627, rateable_value='13500',
+           sbrr_declared='1', relief_percent='25')
+assert out['result']['relief_source'] == 'manual', out['result']
+assert out['result']['total'] == '£4,374.00', out['result']['total']   # 5,832 - 25%
+assert 'overrides the automatic' in out['relief_note'], out['relief_note']
+assert any('entered by hand' in line[0] for line in out['result']['lines']), \
+    out['result']['lines']
+print('64. a relief entered by hand wins, and the breakdown says which was used')
+
+
+# ─── 65. The declaration and its source are kept with the estimate ─────────
+r = save(IDS['hflet']['prop'], tax_year='2026/27', multiplier_id=SB2627, rateable_value='13500',
+         sbrr_declared='1')
+assert r.status_code in (200, 302), r.status_code
+with A.app.app_context():
+    row = (A.RatesCalculation.query
+           .filter_by(property_id=IDS['hflet']['prop'], is_current=True).first())
+    assert row.estimated_payable == 291600, row.estimated_payable
+    assert row.sbrr_declared is True, 'the declaration was not kept'
+    assert row.relief_source == 'automatic', row.relief_source
+    assert str(row.relief_percent) in ('50', '50.000'), row.relief_percent
+    assert row.relief_type == 'Small Business Rate Relief', row.relief_type
+print('65. the declaration, the percentage and where it came from are all kept')
+
+
+# ─── 66. Changing any input redraws the figure ─────────────────────────────
+# The three faults the screen had, each checked where it lived.
+js = open(f'{ROOT}/static/js/business-rates.js').read()
+# (a) The suggestion used to give up for good once the multiplier was touched,
+#     so changing the year afterwards left a multiplier the server refuses and
+#     a breakdown that nothing could bring back.
+assert 'touchedMultiplier' not in js, \
+    'the suggestion still stops working once the multiplier is touched'
+# (b) Overlapping requests were drawn in the order they arrived.
+assert 'mine !== asking' in js, 'responses are still drawn out of order'
+# (c) A refusal was swallowed, leaving a stale figure and no explanation.
+assert '__status' in js and 'do not have permission' in js, \
+    'a refused request is still silent'
+# And the custom dropdown now honours the options the calculator rules out.
+ss = open(f'{ROOT}/static/js/searchable-select.js').read()
+assert 'if (opt.hidden) { return; }' in ss, \
+    'the searchable dropdown still offers options the page has hidden'
+# Every input in the panel is wired, including the new tick.
+panel = page[page.index('data-rates'):]
+panel = panel[:panel.index('On the particulars')]
+names = set(re.findall(r'data-br="([a-z_]+)"', panel))
+for required in ('rateable_value', 'tax_year', 'multiplier_id', 'relief_type',
+                 'relief_percent', 'relief_amount', 'sbrr_declared'):
+    assert required in names, f'{required} is not wired for recalculation'
+print('66. every input recalculates, in order, and a refusal says so')
 
 
 print('\nBUSINESS RATES: ALL CHECKS PASSED')
