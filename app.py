@@ -9275,9 +9275,22 @@ def _enquiry_fields(form, e, links, property_id, pd, pf):
         req_size_max=pf(form.get('req_size_max')),
         req_budget_min=pf(form.get('req_budget_min')),
         req_budget_max=pf(form.get('req_budget_max')),
-        req_budget_unit=form.get('req_budget_unit') or 'pa',
+        # 'pa' only where a budget was actually given. It used to default
+        # unconditionally, so every enquiry carried a basis for a budget it
+        # did not have — which read as "per annum" on the record and, worse,
+        # left nothing blank for the property's own basis to fill, so a
+        # £1,500 pcm shop produced a £1,200–£1,900 PER ANNUM budget and
+        # matched nothing at all. A basis with no figure says nothing.
+        req_budget_unit=(form.get('req_budget_unit')
+                         or ('pa' if (form.get('req_budget_min')
+                                      or form.get('req_budget_max')) else None)),
         req_use_class=form.get('req_use_class') or None,
         req_category=form.get('req_category') or None,
+        # A column since the requirements were added, and never once written:
+        # the form did not offer it and nothing else set it, so the matcher's
+        # type check could not fire. Derived from the property now, and
+        # editable here.
+        req_property_type=form.get('req_property_type') or None,
         req_area=form.get('req_area') or None,
         req_tenure=form.get('req_tenure') or None,
         req_occupation_date=pd(form.get('req_occupation_date')),
@@ -9448,8 +9461,23 @@ def enquiry_new():
                 e.organisation_id = contact.organisation_id
         _attach_letting_instruction(e, request.form)
         db.session.add(e)
+        db.session.flush()
+        # Whatever the property can tell us that the form did not. Taken over
+        # the telephone there is rarely time to ask for a budget and a type,
+        # and the property being asked about answers both. Blanks only, so
+        # anything that WAS asked for stands.
+        kind = SIDES.get(enquiry_type_key(e.enquiry_type), (None, None))[1]
+        filled, why = ([], {})
+        if kind in LOOKING_FOR:
+            filled, why = apply_profile_from_property(
+                e, e.linked_property, e.linked_project)
         db.session.commit()
-        flash('Enquiry recorded.', 'success')
+        note = profile_note(e.linked_property, filled, why)
+        if note:
+            audit('edit', entity='Enquiry', entity_id=e.id, detail=note)
+            flash('Enquiry recorded. ' + note, 'success')
+        else:
+            flash('Enquiry recorded.', 'success')
         return redirect(url_for('enquiry_detail', id=e.id))
     return render_template('crm/enquiry_form.html', enquiry=None,
                            projects=_lettable_projects(),
@@ -9497,23 +9525,24 @@ def _enquiry_activity(e):
 @app.route('/enquiries/<int:id>')
 def enquiry_detail(id):
     e = Enquiry.query.get_or_404(id)
-    # Match properties to enquiry requirements
+    # Properties answering what this enquiry asked for.
+    #
+    # Scored by score_requirement, the same function the applicant's own
+    # matched properties and a property's matched applicants use. It had its
+    # own scoring here, which drifted: it compared a budget to an asking rent
+    # without putting the two on the same basis, so a £2,200 pcm shop read as
+    # far too cheap for a £20,000–£30,000 pa budget; it never checked the
+    # property type; and it counted a partial fit as a match where the shared
+    # rule requires every requirement actually set to be met.
+    #
+    # One matcher, so the enquiry and the applicant it becomes cannot offer
+    # different properties for the same requirements.
     matched = []
-    q = Property.query.filter_by(website_listed=True)
-    if e.req_category:
-        q = q.filter_by(website_category=e.req_category)
-    if e.req_use_class:
-        q = q.filter_by(use_class=e.req_use_class)
-    candidates = q.all()
-    for p in candidates:
-        score = 0
-        if e.req_size_min and p.size and p.size >= e.req_size_min: score += 1
-        if e.req_size_max and p.size and p.size <= e.req_size_max: score += 1
-        if e.req_budget_max and p.listing_price and p.listing_price <= e.req_budget_max: score += 2
-        if e.req_budget_min and p.listing_price and p.listing_price >= e.req_budget_min: score += 1
+    for p in Property.query.filter_by(website_listed=True).all():
+        score, _why = score_requirement(e, p)
         if score > 0:
             matched.append((score, p))
-    matched.sort(key=lambda x: x[0], reverse=True)
+    matched.sort(key=lambda x: (-x[0], x[1].address or ''))
     matched_props = [p for _, p in matched[:6]]
     return render_template('crm/enquiry_detail.html', e=e, matched_props=matched_props,
                            today=date.today(),
@@ -9562,6 +9591,58 @@ def enquiry_log_contact(id):
     db.session.commit()
     flash(f'Contact logged for "{e.subject}". Follow-up set.', 'success')
     return redirect(request.referrer or url_for('enquiries_list'))
+
+
+@app.route('/enquiries/<int:id>/register-applicant', methods=['POST'])
+@requires('edit')
+def enquiry_register_applicant(id):
+    """Register the enquirer as an applicant on the instruction they asked about.
+
+    Everything the enquiry established is carried onto the person — the
+    budget range, the property type, the area, the size — because the matcher
+    reads the applicant and not the enquiry. Nothing already on them is
+    overwritten, and everything carried over stays editable on their own
+    requirements box afterwards.
+    """
+    e = Enquiry.query.get_or_404(id)
+    contact = e.contact
+    if contact is None:
+        flash('There is nobody on this enquiry to register. Link a contact first.',
+              'error')
+        return redirect(url_for('enquiry_detail', id=id))
+
+    # A landlord or a seller asking about their own property is not looking
+    # for one. Registering them would have them chased as an applicant.
+    kind = (contact.contact_type or '').strip()
+    if kind and kind not in LOOKING_FOR:
+        flash(f'{contact.full_name} is recorded as a {kind}, so they are not '
+              'an applicant. Change their type first if that is wrong.', 'error')
+        return redirect(url_for('enquiry_detail', id=id))
+
+    if not kind:
+        # The enquiry has already established which side of the market they
+        # are on; this is the same rule the enquiry form uses.
+        settled = SIDES.get(enquiry_type_key(e.enquiry_type), (None, None))[1]
+        if settled in LOOKING_FOR:
+            contact.contact_type = settled
+            sync_type_to_role(contact)
+
+    row, written, reasons = register_applicant_from_enquiry(e, contact)
+    db.session.commit()
+
+    note = profile_note(e.linked_property, written, reasons)
+    audit('edit', entity='Contact', entity_id=contact.id,
+          detail=f'registered as an applicant from enquiry {e.id}'
+                 + (f'; {note}' if note else ''))
+
+    where = e.linked_project.name if e.linked_project is not None else None
+    said = [f'{contact.full_name} is registered as an applicant']
+    if where:
+        said.append(f'on {where}')
+    flash(' '.join(said) + '.'
+          + (' ' + note if note else '')
+          + ' Everything filled in can be changed on their record.', 'success')
+    return redirect(url_for('enquiry_detail', id=id))
 
 
 @app.route('/enquiries/<int:id>/archive', methods=['POST'])
@@ -9726,6 +9807,168 @@ def enquiry_send_email(id):
 
 # ── Property-Contact Matching & Auto-linking ──────────────────────────────────
 
+# ── What a property tells us about the person enquiring about it ────────────
+import applicant_profile as apro
+
+
+def advertised_figure(prop, project=None):
+    """The figure the property is actually advertised at, and its basis.
+
+    The listing is the advert, so it is asked first: it is what the website
+    and the portals show and what somebody enquiring has just read. The
+    property's own fields are the fallback, for a property on the books
+    without a live listing.
+
+    Returns (amount, unit), either of which may be None.
+    """
+    listing = None
+    if project is not None and getattr(project, 'project_listings', None):
+        listing = project.project_listings[0]
+    elif prop is not None:
+        # A property reached without its instruction: take its newest listing.
+        listing = (Listing.query.filter_by(property_id=prop.id)
+                   .order_by(Listing.id.desc()).first())
+
+    for source in (listing, prop):
+        if source is None:
+            continue
+        amount = getattr(source, 'listing_price', None)
+        unit = getattr(source, 'listing_price_unit', None)
+        if amount and unit:
+            return amount, unit
+    return None, None
+
+
+def derive_applicant_profile(prop, project=None):
+    """The requirements implied by the property an enquiry is about.
+
+    Nothing is written here — the caller decides what to do with it, and
+    every caller fills blanks only. Returns (fields, reasons); see
+    applicant_profile.profile_from_property.
+    """
+    if prop is None:
+        return {}, {}
+    amount, unit = advertised_figure(prop, project)
+    return apro.profile_from_property(
+        property_type=getattr(prop, 'property_type', None),
+        use_class=getattr(prop, 'use_class', None),
+        category=getattr(prop, 'website_category', None),
+        area=getattr(prop, 'area', None),
+        price=amount, price_unit=unit)
+
+
+def apply_profile_from_property(record, prop, project=None):
+    """Fill a record's blank requirement fields from the property.
+
+    Used on an enquiry as it is taken, and on an applicant as they are
+    registered. Only ever fills a blank: a figure somebody has typed, or one
+    carried over from an earlier enquiry, is left alone.
+
+    Returns (written, reasons) — the field names actually filled, and where
+    they came from, so the record can say so.
+    """
+    fields, reasons = derive_applicant_profile(prop, project)
+    if not fields:
+        return [], {}
+    written = apro.fill_blanks(record, fields)
+    return written, reasons
+
+
+def profile_note(prop, written, reasons):
+    """One line for the audit log and the activity trail, in plain words."""
+    if not written:
+        return None
+    # The budget is three fields and one decision, so it is said once.
+    money = [f for f in written if f.startswith('req_budget')]
+    parts = []
+    if money:
+        parts.append(reasons.get('req_budget', 'a budget range'))
+    for name in written:
+        if name in ('req_budget_min', 'req_budget_max', 'req_budget_unit'):
+            continue
+        if name in reasons:
+            parts.append(reasons[name])
+    where = getattr(prop, 'address', None) or 'the property enquired about'
+    return f'Filled in from {where}: ' + '; '.join(parts) + '.'
+
+
+# Which requirement fields move from an enquiry onto the applicant. The
+# enquiry is where the conversation was recorded, so it is the better source
+# than the property: anything the office corrected on the enquiry is carried
+# over as corrected, not re-derived from the advert.
+CARRIED_TO_APPLICANT = (
+    'req_category', 'req_property_type', 'req_use_class', 'req_area',
+    'req_size_min', 'req_size_max',
+    'req_budget_min', 'req_budget_max', 'req_budget_unit',
+    'req_tenure', 'req_notes',
+)
+
+
+def register_applicant_from_enquiry(enq, contact=None):
+    """Turn an enquiry into a registered applicant.
+
+    Three things happen, and all three only ever fill a blank:
+
+      1. The requirements recorded on the enquiry are carried onto the person,
+         because the matcher reads the person and not the enquiry.
+      2. Anything the enquiry never established is worked out from the
+         property it is about, so an enquiry taken in a hurry still leaves a
+         usable profile.
+      3. They are put on the instruction's applicant register, with the
+         property reference in the note so it reads plainly on the list.
+
+    Nothing already on the applicant is overwritten. Somebody who has told us
+    they want 2,000 sq ft in Chelsea keeps that, whatever they happened to
+    ring about today.
+
+    Returns (applicant_row, written, reasons).
+    """
+    contact = contact or enq.contact
+    if contact is None:
+        return None, [], {}
+
+    prop = enq.linked_property
+    project = enq.linked_project
+
+    # 1. The enquiry's own answers.
+    from_enquiry = {name: getattr(enq, name, None) for name in CARRIED_TO_APPLICANT}
+    written = apro.fill_blanks(contact, from_enquiry)
+    reasons = {name: 'recorded on the enquiry' for name in written}
+
+    # 2. Then the property, for whatever is still blank.
+    if prop is not None:
+        more, why = apply_profile_from_property(contact, prop, project)
+        written += more
+        reasons.update({k: v for k, v in why.items()
+                        if k in more or k == 'req_budget'})
+
+    # A requirement is only ever matched for the side of the market they are
+    # on, and the budget basis is what says which. Without it the matcher
+    # cannot tell a letting from a sale.
+    if not contact.req_budget_unit and contact.req_budget_max:
+        amount, unit = advertised_figure(prop, project)
+        if unit:
+            contact.req_budget_unit = unit
+            written.append('req_budget_unit')
+
+    # 3. The register. The reference goes in the note so the applicant list
+    #    says which instruction brought them in without another lookup.
+    row = None
+    if project is not None:
+        row = ProjectApplicant.query.filter_by(
+            project_id=project.id, contact_id=contact.id).first()
+        if row is None:
+            ref = project.project_ref or (prop.address if prop is not None else None)
+            row = ProjectApplicant(
+                project_id=project.id, contact_id=contact.id,
+                status='Active Applicant', auto_linked=False,
+                notes=f'Registered from enquiry'
+                      + (f' on {ref}' if ref else ''))
+            db.session.add(row)
+
+    return row, written, reasons
+
+
 def auto_link_contact_to_projects(contact):
     """When a contact enquires, auto-register them on any matching active project."""
     if not contact.req_category:
@@ -9779,6 +10022,31 @@ def property_on_the_market(prop):
             continue
         return pj.instruction_type
     return None
+
+
+# Months in a year, for putting a monthly rent and an annual one on the same
+# footing. A quoted pcm figure is a twelfth of the year's rent, not a calendar
+# month's worth of some other sum, so this is exact rather than an estimate.
+MONTHS_IN_YEAR = 12
+
+
+def annual_equivalent(amount, unit):
+    """A rent as a yearly figure, whatever basis it was quoted on.
+
+    A sale price is returned as it stands: it is a capital figure and
+    multiplying it by twelve would be nonsense. A unit nobody has recorded is
+    taken as annual, which is how the office quotes commercial rent by
+    default.
+    """
+    if amount in (None, ''):
+        return None
+    try:
+        amount = float(amount)
+    except (TypeError, ValueError):
+        return None
+    if (unit or '').strip().lower() == 'pcm':
+        return amount * MONTHS_IN_YEAR
+    return amount
 
 
 def score_requirement(c, prop):
@@ -9854,12 +10122,28 @@ def score_requirement(c, prop):
         score += 2; reasons.append('Size in range')
 
     # ── Budget, as a range ──
+    #
+    # Both sides are put on the same basis before they are compared. An
+    # applicant's budget may be monthly and a property's rent annual —
+    # commercial space is advertised both ways — and comparing the two
+    # figures as they stand is meaningless: £2,200 pcm read against a
+    # £20,000–£30,000 pa budget looks far too cheap and the property is
+    # dropped, when £26,400 a year is squarely inside it.
+    #
+    # A sale price is left alone. It is not a rent and does not annualise;
+    # the check above has already made sure a sale budget only ever meets a
+    # for-sale property.
     if c.req_budget_min or c.req_budget_max:
         if not prop.listing_price:
             return 0, []
-        if c.req_budget_min and prop.listing_price < c.req_budget_min:
+        asking = annual_equivalent(prop.listing_price, prop.listing_price_unit)
+        low = annual_equivalent(c.req_budget_min, c.req_budget_unit)
+        high = annual_equivalent(c.req_budget_max, c.req_budget_unit)
+        if asking is None:
             return 0, []
-        if c.req_budget_max and prop.listing_price > c.req_budget_max:
+        if low is not None and asking < low:
+            return 0, []
+        if high is not None and asking > high:
             return 0, []
         score += 3; reasons.append('Within budget')
 
@@ -12608,6 +12892,21 @@ def api_enquiry():
         received_date=date.today(),
     )
     db.session.add(enq)
+
+    # What the property says about what they are looking for. Somebody asking
+    # about a shop at £1,500 a month is looking for a shop at about £1,500 a
+    # month, and every one of these fields used to be left empty for the
+    # office to type back in from the property the enquiry was already linked
+    # to. The matcher reads them, so an applicant with none of them set
+    # matched nothing at all.
+    #
+    # Only on the applicant side. A landlord enquiring about their own
+    # building is not looking for one like it, and giving them a budget would
+    # put them into somebody else's matching.
+    derived, derived_why = [], {}
+    if contact_type in LOOKING_FOR:
+        derived, derived_why = apply_profile_from_property(enq, prop, proj)
+
     # The record says what they are at the top; the roles underneath are what
     # the rest of the CRM reads. A lead that names somebody a Tenant gives
     # them the Tenant role too, rather than leaving the two disagreeing.
@@ -12623,6 +12922,19 @@ def api_enquiry():
     # Auto-link contact to matching active projects
     linked_projects = []
     if contact and applicant_side:
+        # The requirements go onto the PERSON before anything is matched.
+        # auto_link_contact_to_projects returns nothing at all unless
+        # req_category is set, and match_contacts_to_property only looks at
+        # contacts that have one — so a website lead used to be registered
+        # against the one property it named and matched against nothing else
+        # in the book, however well it fitted.
+        carried, carried_why = register_applicant_from_enquiry(enq, contact)[1:]
+        if carried:
+            db.session.commit()
+            note = profile_note(prop, carried, carried_why)
+            if note:
+                audit('edit', entity='Contact', entity_id=contact.id, detail=note)
+
         linked_projects = auto_link_contact_to_projects(contact)
         # Also directly link to the specific project if known
         if proj and contact:
@@ -12635,7 +12947,7 @@ def api_enquiry():
                     notes=f'Enquired via website: {subject}',
                 )
                 db.session.add(pa)
-                db.session.commit()
+        db.session.commit()
 
     return jsonify({
         'ok': True,

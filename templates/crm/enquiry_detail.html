@@ -15,6 +15,8 @@
 <form id="stage-form"   method="post" action="{{ url_for('enquiry_set_stage', id=e.id) }}"></form>
 <form id="diary-form"   method="post" action="{{ url_for('enquiry_schedule', id=e.id) }}"></form>
 <form id="email-form"   method="post" action="{{ url_for('enquiry_send_email', id=e.id) }}"></form>
+<form id="applicant-form" method="post"
+      action="{{ url_for('enquiry_register_applicant', id=e.id) }}"></form>
 <form id="archive-form" method="post" action="{{ url_for('enquiry_archive', id=e.id) }}">
   <input type="hidden" name="next" value="{{ here }}">
 </form>
@@ -485,6 +487,58 @@
         <p style="font-size:13px;color:var(--grey-600);padding:12px 0;margin:0">
           Nothing recorded yet. Notes, emails, status changes and diary appointments all appear here.
         </p>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- ── Register as an applicant ── -->
+    {#
+       The requirements above belong to the enquiry. The matcher reads the
+       PERSON, so until they are carried across, an enquirer is on the books
+       with nothing recorded about what they want and matches nothing.
+
+       Only offered where there is somebody to register and they are on the
+       looking side of the market: a landlord asking about their own building
+       is not an applicant.
+    #}
+    {% set already = e.contact and e.linked_project and e.linked_project.id in
+                     (e.contact.project_links or [])|map(attribute='project_id')|list %}
+    <div class="box">
+      <div class="box-head">
+        <span class="box-title">Applicant registration</span>
+        <span style="font-size:11.5px;color:var(--grey-600)">Carry this across to the person</span>
+      </div>
+      <div style="padding:12px 14px">
+        {% if not e.contact %}
+        <p style="font-size:13px;color:var(--grey-600);margin:0">
+          There is nobody on this enquiry yet. Link a contact under
+          <strong>Contact details</strong> and this becomes available.
+        </p>
+        {% elif e.contact.contact_type and e.contact.contact_type not in LOOKING_FOR %}
+        <p style="font-size:13px;color:var(--grey-600);margin:0">
+          {{ e.contact.full_name }} is recorded as a
+          <strong>{{ e.contact.contact_type }}</strong>, so they are not an
+          applicant. Change their type on their record if that is wrong.
+        </p>
+        {% else %}
+        <p style="font-size:13px;color:var(--grey-600);margin:0 0 10px">
+          Puts the location, type, size and budget above onto
+          <a href="{{ url_for('contact_detail', id=e.contact.id) }}">{{ e.contact.full_name }}</a>,
+          so they are matched against everything on the register and not only
+          this property{% if e.linked_project %}, and adds them to the
+          applicant list on
+          <strong>{{ e.linked_project.project_ref or e.linked_project.name }}</strong>{% endif %}.
+          Nothing already on their record is changed, and everything filled
+          in can be edited there afterwards.
+        </p>
+        <button type="submit" form="applicant-form" class="btn btn-primary btn-sm">
+          {{ 'Update their requirements' if already else 'Register as applicant' }}
+        </button>
+        {% if already %}
+        <span style="font-size:11.5px;color:var(--grey-600);margin-left:8px">
+          Already on the applicant list for this instruction
+        </span>
+        {% endif %}
         {% endif %}
       </div>
     </div>
